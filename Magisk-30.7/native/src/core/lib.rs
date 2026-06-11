@@ -14,7 +14,6 @@ use base::derive::Decodable;
 use daemon::{MagiskD, connect_daemon_for_cxx};
 use logging::{android_logging, zygisk_close_logd, zygisk_get_logd, zygisk_logging};
 use magisk::magisk_main;
-use mount::revert_unmount;
 use resetprop::{get_prop, resetprop_main};
 use selinux::{lgetfilecon, setfilecon};
 use socket::{recv_fd, recv_fds, send_fd};
