@@ -49,8 +49,6 @@ int rm_list(int client);
 void ls_list(int client);
 
 bool proc_context_match(int pid, std::string_view context);
-void *logcat(void *arg);
-extern bool logcat_exit;
 
 // Sulist functions
 bool is_uid_on_sulist(int uid);
