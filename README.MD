@@ -95,7 +95,13 @@ git clone https://github.com/topjohnwu/crt0.git native/src/external/crt0
 - **zygisk/zygisk.hpp**：添加sulist函数声明
 - **include/consts.hpp**：修改包名
 
-#### 4. UI设置修改
+#### 4. Zygisk反检测增强
+- **zygisk/solist.hpp**：SoList隐藏功能，从linker链表中抹掉Zygisk模块记录
+- **zygisk/memory.cpp/hpp**：JNI hook内存分配器，使用mmap单调分配器避免内存碎片痕迹
+- **zygisk/module.cpp**：内存重映射隐藏，从/proc/self/maps中抹掉Zygisk模块内存映射
+- **zygisk/hook.cpp**：添加SoList隐藏和内存释放调用
+
+#### 5. UI设置修改
 - **app/apk/src/main/java/.../SettingsItems.kt**：添加MagiskHide和SuList设置项
 - **app/apk/src/main/java/.../SettingsViewModel.kt**：在设置列表中添加MagiskHide和SuList
 - **app/core/src/main/res/values/strings.xml**：添加SuList相关字符串
