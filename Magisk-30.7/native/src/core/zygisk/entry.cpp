@@ -13,6 +13,32 @@ using namespace std;
 using comp_entry = void(*)(int);
 extern "C" void exec_companion_entry(int, comp_entry);
 
+// Sulist support functions
+static int clean_ns64 = -1, clean_ns32 = -1;
+
+int remote_request_sulist() {
+    if (int fd = zygisk_request(ZygiskRequest::SulistRootNs); fd >= 0) {
+        int res = read_int(fd);
+        close(fd);
+        return res;
+    }
+    return -1;
+}
+
+int remote_request_umount() {
+    if (int fd = zygisk_request(ZygiskRequest::RevertUnmount); fd >= 0) {
+        // directly open fd path from magisk proc without recv_fd
+        auto ns_path = read_string(fd);
+        auto clean_ns = xopen(ns_path.data(), O_RDONLY);
+        LOGD("denylist: set to clean ns [%s] fd=[%d]\n", ns_path.data(), clean_ns);
+        if (clean_ns > 0) xsetns(clean_ns, CLONE_NEWNS);
+        close(clean_ns);
+        close(fd);
+        return 0;
+    }
+    return -1;
+}
+
 static void zygiskd(int socket) {
     if (getuid() != 0 || fcntl(socket, F_GETFD) < 0)
         exit(-1);

@@ -115,6 +115,8 @@ pub mod ffi {
         GetInfo,
         ConnectCompanion,
         GetModDir,
+        SulistRootNs,
+        RevertUnmount,
     }
 
     #[repr(u32)]
@@ -123,6 +125,10 @@ pub mod ffi {
         ProcessOnDenyList = 0x00000002,
         DenyListEnforced = 0x40000000,
         ProcessIsMagiskApp = 0x80000000,
+        ProcessOnAllowList = 0x00000004,
+        AllowlistEnforcing = 0x00000008,
+        DoRevertUnmount = 0x00000010,
+        DoAllow = 0x00000020,
     }
 
     #[derive(Decodable)]

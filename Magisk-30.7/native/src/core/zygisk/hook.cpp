@@ -157,9 +157,13 @@ DCL_HOOK_FUNC(int, fork) {
 DCL_HOOK_FUNC(static int, unshare, int flags) {
     int res = old_unshare(flags);
     if (g_ctx && (flags & CLONE_NEWNS) != 0 && res == 0) {
-        if (g_ctx->flags & DO_REVERT_UNMOUNT) {
-            revert_unmount();
-        }
+        int ret = (g_ctx->flags & DO_ALLOW)?
+                remote_request_sulist() :
+        (g_ctx->flags & DO_REVERT_UNMOUNT)?
+                remote_request_umount() : 0 /* do nothing */;
+        if (ret == -1) ZLOGE("remote request failed\n");
+        // clean up mount id hole by unshare mount namespace twice
+        old_unshare(CLONE_NEWNS);
         // Restore errno back to 0
         errno = 0;
     }
