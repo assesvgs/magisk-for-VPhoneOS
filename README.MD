@@ -16,6 +16,23 @@ Some highlight features:
 
 ## Kitsune Mask Integration (本次修改)
 
+### 目录结构
+```
+magisk-for-VPhoneOS/
+├── app/                    # Android应用代码
+├── docs/                   # 文档
+├── native/                 # 原生代码（C++/Rust）
+│   └── src/
+│       ├── core/           # 核心功能
+│       │   ├── deny/       # MagiskHide功能
+│       │   ├── zygisk/     # Zygisk模块
+│       │   └── kitsune.cpp # Kitsune Mask特有功能
+│       └── include/        # 头文件
+├── scripts/                # 构建脚本
+├── tools/                  # 工具
+└── README.MD               # 本文件
+```
+
 ### 目的
 以Magisk-30.7为基础，集成Kitsune Mask的特性，创建一个增强版Magisk，解决Kitsune Mask 27001版本中MagiskHide无法正常卸载/sbin的问题。
 
