@@ -83,7 +83,6 @@ void revert_unmount(int pid = -1);
 
 // Kitsune Mask specific
 extern int magisktmpfs_fd;
-extern const char *applet_names[];
 extern bool HAVE_32;
 extern int su_bin_fd;
 extern bool logging_muted;
