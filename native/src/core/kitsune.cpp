@@ -17,9 +17,10 @@ using namespace std;
 int magisktmpfs_fd = -1;
 bool HAVE_32 = false;
 int su_bin_fd = -1;
+bool logging_muted = false;
 
 // tmpfs_mount function from KitsuneMag-kitsune
-static int tmpfs_mount(const char *from, const char *to) {
+int tmpfs_mount(const char *from, const char *to) {
     return xmount(from, to, "tmpfs", 0, "mode=755");
 }
 
