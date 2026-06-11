@@ -219,7 +219,7 @@ object Zygisk : BaseSettingsItem.Toggle() {
     val mismatch get() = value != Info.isZygiskEnabled
 }
 
-object DenyList : BaseSettingsItem.Toggle() {
+object MagiskHide : BaseSettingsItem.Toggle() {
     override val title = CoreR.string.settings_denylist_title.asText()
     override val description get() = CoreR.string.settings_denylist_summary.asText()
 
@@ -227,9 +227,30 @@ object DenyList : BaseSettingsItem.Toggle() {
         set(value) {
             field = value
             val cmd = if (value) "enable" else "disable"
-            Shell.cmd("magisk --denylist $cmd").submit { result ->
+            Shell.cmd("magisk --hide $cmd").submit { result ->
                 if (result.isSuccess) {
                     Config.denyList = value
+                } else {
+                    field = !value
+                    notifyPropertyChanged(BR.checked)
+                }
+            }
+        }
+}
+
+object SuList : BaseSettingsItem.Toggle() {
+    override val title = "SuList".asText()
+    override val description get() = 
+        if (!Config.denyList) "Enable MagiskHide first".asText()
+        else "Use SuList mode (whitelist)".asText()
+
+    override var value = false
+        set(value) {
+            field = value
+            val cmd = if (value) "enable" else "disable"
+            Shell.cmd("magisk --hide sulist $cmd").submit { result ->
+                if (result.isSuccess) {
+                    // Update config
                 } else {
                     field = !value
                     notifyPropertyChanged(BR.checked)
