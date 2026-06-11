@@ -126,3 +126,22 @@ include $(CWD)/libcxx/Android.mk
 ifdef B_CRT0
 include $(CWD)/crt0/Android.mk
 endif
+
+# libphmap.a (header-only)
+include $(CLEAR_VARS)
+LOCAL_MODULE:= libphmap
+LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/parallel-hashmap
+include $(BUILD_STATIC_LIBRARY)
+
+# libxdl.a
+include $(CLEAR_VARS)
+LOCAL_MODULE := libxdl
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/_xDL/xdl/src/main/cpp/include
+LOCAL_EXPORT_C_INCLUDES := $(LOCAL_C_INCLUDES)
+LOCAL_SRC_FILES := \
+    _xDL/xdl/src/main/cpp/xdl.c \
+    _xDL/xdl/src/main/cpp/xdl_iterate.c \
+    _xDL/xdl/src/main/cpp/xdl_linker.c \
+    _xDL/xdl/src/main/cpp/xdl_lzma.c \
+    _xDL/xdl/src/main/cpp/xdl_util.c
+include $(BUILD_STATIC_LIBRARY)
