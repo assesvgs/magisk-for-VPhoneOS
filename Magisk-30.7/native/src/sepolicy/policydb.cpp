@@ -1,15 +1,14 @@
-#include "include/sepolicy.hpp"
-
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 #include <cil/cil.h>
 
 #include <base.hpp>
-#include <flags.h>
+#include <stream.hpp>
 
-using namespace std;
+#include "policy.hpp"
 
 #define SHALEN 64
 static bool cmp_sha256(const char *a, const char *b) {
@@ -75,49 +74,51 @@ static bool check_precompiled(const char *precompiled) {
 
 static void load_cil(struct cil_db *db, const char *file) {
     mmap_data d(file);
-    cil_add_file(db, file, (const char *) d.data(), d.size());
+    cil_add_file(db, file, (const char *) d.buf(), d.sz());
     LOGD("cil_add [%s]\n", file);
 }
 
-SePolicy SePolicy::from_data(rust::Slice<const uint8_t> data) noexcept {
+sepolicy *sepolicy::from_data(char *data, size_t len) {
     LOGD("Load policy from data\n");
 
     policy_file_t pf;
     policy_file_init(&pf);
-    pf.data = (char *) data.data();
-    pf.len = data.size();
+    pf.data = data;
+    pf.len = len;
     pf.type = PF_USE_MEMORY;
 
     auto db = static_cast<policydb_t *>(malloc(sizeof(policydb_t)));
     if (policydb_init(db) || policydb_read(db, &pf, 0)) {
         LOGE("Fail to load policy from data\n");
         free(db);
-        return {};
+        return nullptr;
     }
 
-    return {std::make_unique<sepol_impl>(db)};
+    auto sepol = new sepol_impl(db);
+    return sepol;
 }
 
-SePolicy SePolicy::from_file(::Utf8CStr file) noexcept {
-    LOGD("Load policy from: %.*s\n", static_cast<int>(file.size()), file.data());
+sepolicy *sepolicy::from_file(const char *file) {
+    LOGD("Load policy from: %s\n", file);
 
     policy_file_t pf;
     policy_file_init(&pf);
-    auto fp = xopen_file(file.data(), "re");
+    auto fp = xopen_file(file, "re");
     pf.fp = fp.get();
     pf.type = PF_USE_STDIO;
 
     auto db = static_cast<policydb_t *>(malloc(sizeof(policydb_t)));
     if (policydb_init(db) || policydb_read(db, &pf, 0)) {
-        LOGE("Fail to load policy from %.*s\n", static_cast<int>(file.size()), file.data());
+        LOGE("Fail to load policy from %s\n", file);
         free(db);
-        return {};
+        return nullptr;
     }
 
-    return {std::make_unique<sepol_impl>(db)};
+    auto sepol = new sepol_impl(db);
+    return sepol;
 }
 
-SePolicy SePolicy::compile_split() noexcept {
+sepolicy *sepolicy::compile_split() {
     char path[128], plat_ver[10];
     cil_db_t *db = nullptr;
     sepol_policydb_t *pdb = nullptr;
@@ -208,21 +209,23 @@ SePolicy SePolicy::compile_split() noexcept {
         load_cil(db, cil_file);
 
     if (cil_compile(db))
-        return {};
+        return nullptr;
     if (cil_build_policydb(db, &pdb))
-        return {};
-    return {std::make_unique<sepol_impl>(&pdb->p)};
+        return nullptr;
+
+    auto sepol = new sepol_impl(&pdb->p);
+    return sepol;
 }
 
-SePolicy SePolicy::from_split() noexcept {
+sepolicy *sepolicy::from_split() {
     const char *odm_pre = ODM_POLICY_DIR "precompiled_sepolicy";
     const char *vend_pre = VEND_POLICY_DIR "precompiled_sepolicy";
     if (access(odm_pre, R_OK) == 0 && check_precompiled(odm_pre))
-        return SePolicy::from_file(odm_pre);
+        return sepolicy::from_file(odm_pre);
     else if (access(vend_pre, R_OK) == 0 && check_precompiled(vend_pre))
-        return SePolicy::from_file(vend_pre);
+        return sepolicy::from_file(vend_pre);
     else
-        return SePolicy::compile_split();
+        return sepolicy::compile_split();
 }
 
 sepol_impl::~sepol_impl() {
@@ -230,38 +233,28 @@ sepol_impl::~sepol_impl() {
     free(db);
 }
 
-static int vec_write(void *v, const char *buf, int len) {
-    auto vec = static_cast<vector<char> *>(v);
-    vec->insert(vec->end(), buf, buf + len);
-    return len;
-}
-
-bool SePolicy::to_file(::Utf8CStr file) const noexcept {
+bool sepolicy::to_file(const char *file) {
     // No partial writes are allowed to /sys/fs/selinux/load, thus the reason why we
     // first dump everything into memory, then directly call write system call
-    vector<char> out;
-    FILE *fp = funopen(&out, nullptr, vec_write, nullptr, nullptr);
-    // Since we're directly writing to memory, disable buffering
-    setbuf(fp, nullptr);
+    heap_data data;
+    auto fp = make_stream_fp<byte_stream>(data);
 
     policy_file_t pf;
     policy_file_init(&pf);
     pf.type = PF_USE_STDIO;
-    pf.fp = fp;
+    pf.fp = fp.get();
     if (policydb_write(impl->db, &pf)) {
         LOGE("Fail to create policy image\n");
-        fclose(fp);
         return false;
     }
-    fclose(fp);
 
-    int fd = xopen(file.data(), O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
+    int fd = xopen(file, O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
     if (fd < 0)
         return false;
     if (struct stat st{}; xfstat(fd, &st) == 0 && st.st_size > 0) {
         ftruncate(fd, 0);
     }
-    xwrite(fd, out.data(), out.size());
+    xwrite(fd, data.buf(), data.sz());
 
     close(fd);
     return true;

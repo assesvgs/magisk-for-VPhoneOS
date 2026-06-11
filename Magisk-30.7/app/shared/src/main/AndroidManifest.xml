@@ -25,7 +25,6 @@
 
     <application
         android:allowBackup="false"
-        android:enableOnBackInvokedCallback="false"
         android:label="Kitsune Mask"
         android:requestLegacyExternalStorage="true"
         android:supportsRtl="true"
