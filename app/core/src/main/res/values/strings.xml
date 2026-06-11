@@ -144,6 +144,9 @@
     <string name="settings_denylist_summary">Processes on the hidelist will have all Magisk modifications reverted</string>
     <string name="settings_denylist_config_title">Configure MagiskHide</string>
     <string name="settings_denylist_config_summary">Select the processes to be included on the hidelist</string>
+    <string name="settings_magiskhide_title">MagiskHide</string>
+    <string name="settings_magiskhide_summary">Magisk modifications are reverted for processes on hidelist</string>
+    <string name="settings_sulist">SuList</string>
     <string name="settings_sulist_title">Enforce SuList</string>
     <string name="settings_sulist_summary">Only processes on sulist can invoke Magisk root access</string>
     <string name="settings_sulist_config_title">Configure SuList</string>

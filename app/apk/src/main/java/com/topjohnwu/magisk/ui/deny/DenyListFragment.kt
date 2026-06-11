@@ -27,7 +27,8 @@ class DenyListFragment : BaseFragment<FragmentDenyMd2Binding>(), MenuProvider {
 
     override fun onStart() {
         super.onStart()
-        activity?.setTitle(CoreR.string.denylist)
+        if (Info.sulist) activity?.setTitle(CoreR.string.settings_sulist)
+        else activity?.setTitle(CoreR.string.settings_magiskhide_title)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
