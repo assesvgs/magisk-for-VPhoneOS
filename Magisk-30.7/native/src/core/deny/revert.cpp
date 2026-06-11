@@ -244,3 +244,6 @@ void mount_mirrors() {
 static int tmpfs_mount(const char *from, const char *to) {
     return xmount(from, to, "tmpfs", 0, "mode=755");
 }
+
+// HAVE_32 variable
+bool HAVE_32 = false;

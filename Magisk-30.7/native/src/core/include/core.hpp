@@ -84,6 +84,7 @@ void update_deny_flags(int uid, rust::Str process, uint32_t &flags);
 // Kitsune Mask specific
 extern int magisktmpfs_fd;
 extern const char *applet_names[];
+extern bool HAVE_32;
 void su_mount();
 void mount_mirrors();
 
