@@ -457,6 +457,35 @@ void update_deny_flags(int uid, rust::Str process, uint32_t &flags) {
     }
 }
 
+void rescan_apps() {
+    LOGD("denylist: rescanning apps\n");
+
+    app_id_to_pkgs.clear();
+
+    auto data_dir = xopen_dir(APP_DATA_DIR);
+    if (!data_dir)
+        return;
+    dirent *entry;
+    while ((entry = xreaddir(data_dir.get()))) {
+        // For each user
+        int dfd = xopenat(dirfd(data_dir.get()), entry->d_name, O_RDONLY);
+        if (auto dir = xopen_dir(dfd)) {
+            while ((entry = xreaddir(dir.get()))) {
+                struct stat st{};
+                // For each package
+                if (xfstatat(dfd, entry->d_name, &st, 0))
+                    continue;
+                int app_id = to_app_id(st.st_uid);
+                if (auto it = pkg_to_procs.find(entry->d_name); it != pkg_to_procs.end()) {
+                    app_id_to_pkgs[app_id].insert(it->first);
+                }
+            }
+        } else {
+            close(dfd);
+        }
+    }
+}
+
 // Sulist functionality
 bool sulist_enabled = false;
 
