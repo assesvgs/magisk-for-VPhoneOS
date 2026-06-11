@@ -420,7 +420,7 @@ void initialize_denylist() {
     }
 }
 
-bool is_deny_target(int uid, string_view process) {
+bool is_deny_target(int uid, string_view process, int max_len) {
     mutex_guard lock(data_lock);
     if (!ensure_data())
         return false;
@@ -429,6 +429,8 @@ bool is_deny_target(int uid, string_view process) {
     if (app_id >= 90000) {
         if (auto it = pkg_to_procs.find(ISOLATED_MAGIC); it != pkg_to_procs.end()) {
             for (const auto &s : it->second) {
+                if (max_len > 0 && s.length() > (size_t)max_len && process.length() > (size_t)max_len && process.starts_with(s.substr(0, max_len)))
+                    return true;
                 if (process.starts_with(s))
                     return true;
             }
