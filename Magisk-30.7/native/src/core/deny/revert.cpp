@@ -5,6 +5,9 @@
 #include <sys/stat.h>
 
 #include <core.hpp>
+#include <base.hpp>
+#include <consts.hpp>
+#include <selinux.hpp>
 
 #include <link.h>
 
@@ -211,39 +214,49 @@ void revert_daemon(int pid, int client) {
     }
 }
 
-// Extended revert_unmount function with additional unmounting
-// Note: This is a simplified version - full implementation requires parse_mount_info
-void revert_unmount_ex(int pid) {
+void revert_unmount(int pid) {
     if (pid > 0) {
         if (switch_mnt_ns(pid))
             return;
         LOGD("denylist: handling PID=[%d]\n", pid);
     }
-    
-    // Call the Rust revert_unmount function for basic unmounting
-    revert_unmount(pid);
-    
-    // Additional unmounting for /sbin if needed
-    LOGD("denylist: extended unmount completed\n");
+    set<string> targets;
+
+    // Unmount dummy skeletons and MAGISKTMP
+    // since mirror nodes are always mounted under skeleton, we don't have to specifically unmount
+
+    // magisk tmpfs
+    for (auto &info: parse_mount_info("self")) {
+        if (info.source == "magisk")
+            targets.insert(info.target);
+    }
+    for (auto &s : reversed(targets))
+        lazy_unmount(s.data());
+    targets.clear();
+
+    // tmpfs mount
+    for (auto &info: parse_mount_info("self")) {
+        if (info.source == "worker")
+            targets.insert(info.target);
+    }
+    for (auto &s : reversed(targets))
+        lazy_unmount(s.data());
+    targets.clear();
+
+    // module bind mount
+    for (auto &info: parse_mount_info("self")) {
+        if (info.root.starts_with("/adb/modules") ||
+            info.target.starts_with("/data/adb/modules"))
+            targets.insert(info.target);
+    }
+    for (auto &s : reversed(targets))
+        lazy_unmount(s.data());
+    targets.clear();
+
+    // Unmount early-mount.d files
+    for (auto &info: parse_mount_info("self")) {
+        if (info.source == EARLYMNTNAME) { // bind mount from early-mount
+            lazy_unmount(info.target.data());
+        }
+    }
 }
-
-// Kitsune Mask specific variables and functions
-int magisktmpfs_fd = -1;
-
-void su_mount() {
-    // Simplified implementation - just mount modules
-    LOGD("su_mount: mounting modules\n");
-}
-
-void mount_mirrors() {
-    // Not used - placeholder
-    LOGD("mount_mirrors: placeholder\n");
-}
-
-// tmpfs_mount function
-static int tmpfs_mount(const char *from, const char *to) {
-    return xmount(from, to, "tmpfs", 0, "mode=755");
-}
-
-// HAVE_32 variable
-bool HAVE_32 = false;
