@@ -128,6 +128,7 @@ include $(CWD)/crt0/Android.mk
 endif
 
 # libphmap.a (header-only)
+LOCAL_PATH := $(CWD)
 include $(CLEAR_VARS)
 LOCAL_MODULE:= libphmap
 LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/parallel-hashmap
