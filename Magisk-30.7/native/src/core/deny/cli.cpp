@@ -22,6 +22,8 @@ Actions:
    exec CMDs...    Execute commands in isolated mount
                    namespace and do all unmounts
    --do-unmount    Unmount all Magisk modifications
+   --mount-sbin    Mount /sbin
+   --setup-sbin    Setup /sbin
 
 Kitsune Mask specific Actions:
    sulist          Return the SuList status
@@ -120,6 +122,12 @@ int denylist_cli(rust::Vec<rust::String> &args) {
         }
     } else if (argv[0] == "--do-unmount"sv) {
         revert_unmount(0);
+        return 0;
+    } else if (argv[0] == "--mount-sbin"sv) {
+        mount_sbin();
+        return 0;
+    } else if (argv[0] == "--setup-sbin"sv) {
+        // setup sbin
         return 0;
     } else if (argv[0] == "exec"sv && argc > 1) {
         xunshare(CLONE_NEWNS);

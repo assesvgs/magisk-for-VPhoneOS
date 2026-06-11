@@ -68,3 +68,15 @@ extern atomic<bool> denylist_enforced;
 
 // Deny flags update function
 void update_deny_flags(int uid, rust::Str process, uint32_t &flags);
+
+// revert.cpp functions
+bool is_rootfs();
+void recreate_sbin_v2(const char *mirror, bool use_bind_mount);
+int mount_sbin();
+void do_mount_magisk(int pid);
+void mount_magisk_to_pid(int pid);
+void revert_daemon(int pid, int client);
+
+// ptrace.cpp functions
+void proc_monitor();
+void umount_all_zygote();

@@ -30,6 +30,8 @@ Some highlight features:
 - **命令格式修改**：将`--denylist`改为`--hide`
 - **添加sulist支持**：实现SuList功能，允许白名单模式
 - **添加--do-unmount命令**：支持手动卸载Magisk修改
+- **添加--mount-sbin命令**：支持挂载/sbin
+- **添加--setup-sbin命令**：支持设置/sbin
 
 #### 2. 应用名称和图标
 - **应用名称**：从"Magisk"改为"Kitsune Mask"
@@ -39,6 +41,8 @@ Some highlight features:
 - **deny/deny.hpp**：添加sulist相关的枚举和函数声明
 - **deny/cli.cpp**：修改为--hide命令，添加sulist命令支持
 - **deny/utils.cpp**：在原始基础上添加sulist功能
+- **deny/revert.cpp**：添加/sbin挂载/卸载功能
+- **deny/ptrace.cpp**：添加进程监控功能
 - **core/lib.rs**：添加ZygiskRequest扩展（SulistRootNs, RevertUnmount）
 - **core/magisk.rs**：修改为--hide命令
 - **zygisk/entry.cpp**：添加remote_request_sulist和remote_request_umount函数
@@ -81,6 +85,8 @@ Some highlight features:
 | `deny/deny.hpp` | 添加sulist支持 |
 | `deny/cli.cpp` | 修改为--hide命令，添加sulist命令 |
 | `deny/utils.cpp` | 添加sulist功能 |
+| `deny/revert.cpp` | 添加/sbin挂载/卸载功能 |
+| `deny/ptrace.cpp` | 添加进程监控功能 |
 | `core/lib.rs` | 添加ZygiskRequest扩展 |
 | `core/magisk.rs` | 修改为--hide命令 |
 | `zygisk/entry.cpp` | 添加sulist函数 |
@@ -117,6 +123,12 @@ magisk --hide ls
 
 # 手动卸载Magisk修改
 magisk --hide --do-unmount
+
+# 挂载/sbin
+magisk --hide --mount-sbin
+
+# 设置/sbin
+magisk --hide --setup-sbin
 ```
 
 #### 2. SuList命令
