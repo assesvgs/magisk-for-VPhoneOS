@@ -27,10 +27,33 @@ magisk-for-VPhoneOS/
 │       │   ├── deny/       # MagiskHide功能
 │       │   ├── zygisk/     # Zygisk模块
 │       │   └── kitsune.cpp # Kitsune Mask特有功能
+│       ├── external/       # 外部依赖（子模块）
+│       │   ├── selinux/    # SELinux策略处理
+│       │   ├── lz4/        # LZ4压缩算法
+│       │   ├── libcxx/     # C++标准库
+│       │   ├── cxx-rs/     # Rust/C++ FFI桥接
+│       │   ├── lsplt/      # PLT hook框架
+│       │   ├── system_properties/ # Android系统属性
+│       │   └── crt0/       # C运行时启动代码
 │       └── include/        # 头文件
 ├── scripts/                # 构建脚本
 ├── tools/                  # 工具
 └── README.MD               # 本文件
+```
+
+### 子模块下载
+```bash
+# 初始化并下载所有子模块
+git submodule update --init --recursive
+
+# 或者手动下载（如果上面的命令失败）
+git clone https://github.com/topjohnwu/selinux.git native/src/external/selinux
+git clone https://github.com/lz4/lz4.git native/src/external/lz4
+git clone https://github.com/topjohnwu/libcxx.git native/src/external/libcxx
+git clone https://github.com/topjohnwu/cxx.git native/src/external/cxx-rs
+git clone https://github.com/LSPosed/LSPlt.git native/src/external/lsplt
+git clone https://github.com/topjohnwu/system_properties.git native/src/external/system_properties
+git clone https://github.com/topjohnwu/crt0.git native/src/external/crt0
 ```
 
 ### 目的
