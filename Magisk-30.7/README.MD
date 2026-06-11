@@ -209,6 +209,27 @@ magisk --hide sulist disable
 
 所有核心功能已完成集成，代码结构与原始Magisk-30.7兼容。
 
+### 技术分析：Logcat vs Ptrace 进程监控
+
+#### Logcat监控（原始Magisk-30.7）
+- **工作原理**：读取Android日志系统，解析`am_proc_start`事件
+- **优点**：实现简单，不影响目标进程
+- **缺点**：依赖日志系统，可能有延迟，CPU使用率高，可能遗漏进程
+
+#### Ptrace监控（Kitsune Mag）
+- **工作原理**：使用`ptrace(PTRACE_SEIZE)`附加到zygote，监控fork事件
+- **优点**：更可靠，实时性好，CPU使用率低，不依赖日志系统
+- **缺点**：实现复杂，需要root权限
+
+#### 结论
+**Ptrace更好**，原因：
+1. **可靠性**：不会遗漏进程
+2. **实时性**：事件驱动，无延迟
+3. **CPU效率**：使用waitpid等待事件，CPU使用率低
+4. **兼容性**：不依赖日志格式，兼容性更好
+
+Kitsune Mag选择ptrace是正确的，这也是为什么它比原始Magisk-30.7更可靠的原因之一。
+
 ## Downloads
 
 [Github](https://github.com/topjohnwu/Magisk/releases) is the only source where you can get official Magisk information and downloads.
