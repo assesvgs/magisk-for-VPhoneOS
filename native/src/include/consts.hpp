@@ -16,8 +16,13 @@
 #define BBPATH        INTLROOT "/busybox"
 #define ROOTOVL       INTLROOT "/rootdir"
 #define SHELLPTS      INTLROOT "/pts"
+#define MODULEMNT     INTLROOT "/modules"
 #define MAIN_CONFIG   INTLROOT "/config"
 #define MAIN_SOCKET   DEVICEDIR "/socket"
+
+// Early mount
+#define EARLYMNT      INTLROOT "/early-mount.d"
+#define EARLYMNTNAME  "early-mount.d/v2"
 
 constexpr const char *applet_names[] = { "su", "resetprop", nullptr };
 
