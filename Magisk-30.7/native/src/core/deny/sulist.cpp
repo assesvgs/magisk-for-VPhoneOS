@@ -22,7 +22,7 @@ using namespace std;
 
 // Global variables
 bool sulist_enabled = false;
-static atomic<bool> denylist_enforced = false;
+atomic<bool> denylist_enforced = false;
 static const char *table_name = "hidelist";
 
 // Data structures for package/process tracking
@@ -58,7 +58,7 @@ void rescan_apps() {
             while ((entry = xreaddir(dir.get()))) {
                 struct stat st{};
                 // For each package
-                if (xfstatat(dfd, entry->d_name, &st, 0))
+                if (fstatat(dfd, entry->d_name, &st, 0))
                     continue;
                 int app_id = to_app_id(st.st_uid);
                 if (auto it = pkg_to_procs.find(entry->d_name); it != pkg_to_procs.end()) {
@@ -261,6 +261,12 @@ void update_sulist_config(bool enable) {
 void initialize_denylist() {
     // This is a placeholder - the actual implementation needs
     // to read from the database
+}
+
+// Scan deny apps (called from daemon)
+void scan_deny_apps() {
+    mutex_guard lock(data_lock);
+    rescan_apps();
 }
 
 // Mount Magisk for a specific process

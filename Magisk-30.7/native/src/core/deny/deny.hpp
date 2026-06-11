@@ -1,6 +1,9 @@
 #pragma once
 
 #include <string_view>
+#include <atomic>
+
+#include <core.hpp>
 
 #define ISOLATED_MAGIC "isolated"
 
