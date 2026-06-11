@@ -383,6 +383,25 @@ void ZygiskContext::run_modules_pre(rust::Vec<int> &fds) {
             m.preServerSpecialize(args.server);
         }
     }
+
+    // Memory remapping hiding - hide Zygisk module memory mappings from /proc/self/maps
+    // Only for non-system apps (UID >= 10000)
+    if ((flags & APP_SPECIALIZE) && (args.app->uid % 100000) >= 10000) {
+        for (auto &info : lsplt::MapInfo::Scan()) {
+            if (strstr(info.path.data(), "/memfd:jit-zygisk-cache") == nullptr &&
+                strstr(info.path.data(), "/modules/") == nullptr)
+                continue;
+            void *addr = reinterpret_cast<void *>(info.start);
+            size_t size = info.end - info.start;
+            void *copy = xmmap(nullptr, size, PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+            if ((info.perms & PROT_READ) == 0) {
+                mprotect(addr, size, PROT_READ);
+            }
+            memcpy(copy, addr, size);
+            mremap(copy, size, size, MREMAP_MAYMOVE | MREMAP_FIXED, addr);
+            mprotect(addr, size, info.perms);
+        }
+    }
 }
 
 void ZygiskContext::run_modules_post() {
@@ -394,6 +413,15 @@ void ZygiskContext::run_modules_post() {
             m.postServerSpecialize(args.server);
         }
         m.tryUnload();
+    }
+
+    // SoList hiding - hide Zygisk modules from detection
+    // Only for non-system apps (UID >= 10000)
+    if ((flags & APP_SPECIALIZE) && (args.app->uid % 100000) >= 10000) {
+        if (SoList::Initialize()) {
+            SoList::NullifySoName("/memfd:jit-zygisk-cache");
+            SoList::NullifySoName("/modules/");
+        }
     }
 }
 

@@ -12,6 +12,8 @@
 #include "zygisk.hpp"
 #include "module.hpp"
 #include "jni_hooks.hpp"
+#include "solist.hpp"
+#include "memory.hpp"
 
 using namespace std;
 
@@ -256,6 +258,9 @@ ZygiskContext::~ZygiskContext() {
     for (auto &m : modules) {
         m.clearApi();
     }
+
+    // Release JNI hook memory
+    jni_hook::memory_block::release();
 
     // Cleanup
     g_hook->should_unmap = true;
