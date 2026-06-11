@@ -41,10 +41,12 @@ Some highlight features:
 - **deny/deny.hpp**：添加sulist相关的枚举和函数声明
 - **deny/cli.cpp**：修改为--hide命令，添加sulist命令支持
 - **deny/utils.cpp**：在原始基础上添加sulist功能
-- **deny/revert.cpp**：添加/sbin挂载/卸载功能
+- **deny/revert.cpp**：完整移植/sbin挂载/卸载功能
 - **deny/ptrace.cpp**：添加进程监控功能
+- **core/kitsune.cpp**：定义Kitsune Mask全局变量和函数
 - **core/lib.rs**：添加ZygiskRequest扩展（SulistRootNs, RevertUnmount）
 - **core/magisk.rs**：修改为--hide命令
+- **core/mount.rs**：移除Rust版本的revert_unmount，使用C++版本
 - **core/include/core.hpp**：添加Kitsune Mask相关声明
 - **zygisk/entry.cpp**：添加remote_request_sulist和remote_request_umount函数
 - **zygisk/hook.cpp**：添加sulist支持
@@ -91,10 +93,12 @@ Some highlight features:
 | `deny/deny.hpp` | 添加sulist支持 |
 | `deny/cli.cpp` | 修改为--hide命令，添加sulist命令 |
 | `deny/utils.cpp` | 添加sulist功能 |
-| `deny/revert.cpp` | 添加/sbin挂载/卸载功能 |
+| `deny/revert.cpp` | 完整移植/sbin挂载/卸载功能 |
 | `deny/ptrace.cpp` | 添加进程监控功能 |
+| `core/kitsune.cpp` | 定义Kitsune Mask全局变量和函数 |
 | `core/lib.rs` | 添加ZygiskRequest扩展 |
 | `core/magisk.rs` | 修改为--hide命令 |
+| `core/mount.rs` | 移除Rust版本的revert_unmount |
 | `core/include/core.hpp` | 添加Kitsune Mask相关声明 |
 | `zygisk/entry.cpp` | 添加sulist函数 |
 | `zygisk/hook.cpp` | 添加sulist支持 |
@@ -155,16 +159,23 @@ magisk --hide sulist disable
 ### 已知问题
 
 1. **编译验证**：需要在实际环境中编译测试
-2. **sulist功能**：SuList功能为简化实现，完整功能需要进一步开发
-3. **revert_unmount_ex**：扩展卸载功能为简化版本，完整实现需要移植parse_mount_info
+2. **mount_mirrors函数**：当前为占位符，需要根据实际需求实现
 
 ### 深度审查结果
 
-经过10次深度审查，发现并修复了以下问题：
-1. revert.cpp依赖问题：添加了缺失的变量和函数定义
-2. ptrace.cpp依赖问题：添加了HAVE_32变量
-3. 函数冲突问题：将revert_unmount重命名为revert_unmount_ex
-4. UI设置问题：添加了MagiskHide和SuList的UI设置
+经过10次深度审查和完整移植，发现并解决了以下问题：
+
+1. **revert.cpp依赖问题**：创建kitsune.cpp文件，定义了所有缺失的变量和函数
+2. **revert_unmount函数冲突**：移除了Rust版本的revert_unmount，使用功能更完整的C++版本
+3. **su_mount函数缺失**：从Kitsune Mag完整移植了su_mount、enable_mount_su、mount_su函数
+4. **全局变量缺失**：正确定义了magisktmpfs_fd、su_bin_fd、HAVE_32变量
+
+### 完整移植的功能
+
+1. **revert_unmount功能**：完整移植，包括卸载magisk tmpfs、worker mounts、module bind mounts、early-mount.d files
+2. **su_mount功能**：完整移植，包括load_modules和mount_su
+3. **/sbin挂载功能**：完整移植mount_sbin和recreate_sbin_v2
+4. **do_mount_magisk功能**：完整移植，支持为特定进程挂载Magisk
 
 所有核心功能已完成集成，代码结构与原始Magisk-30.7兼容。
 
