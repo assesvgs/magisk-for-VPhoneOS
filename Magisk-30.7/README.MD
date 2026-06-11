@@ -14,6 +14,136 @@ Some highlight features:
 - **MagiskBoot**: The most complete tool for unpacking and repacking Android boot images
 - **Zygisk**: Run code in every Android applications' processes
 
+## Kitsune Mask Integration (本次修改)
+
+### 目的
+以Magisk-30.7为基础，集成Kitsune Mask的特性，创建一个增强版Magisk，解决Kitsune Mask 27001版本中MagiskHide无法正常卸载/sbin的问题。
+
+### 背景
+- Kitsune Mask是一个基于Magisk的第三方修改版，提供了额外的功能，特别是MagiskHide功能
+- Kitsune Mask已停更，最新版本落后于上游Magisk-30.7
+- 用户在安卓10虚拟机中发现Kitsune Mask 25210版本的MagiskHide可以正常卸载/sbin，而27001版本不行
+
+### 重点修改
+
+#### 1. MagiskHide功能
+- **命令格式修改**：将`--denylist`改为`--hide`
+- **添加sulist支持**：实现SuList功能，允许白名单模式
+- **添加--do-unmount命令**：支持手动卸载Magisk修改
+
+#### 2. 应用名称和图标
+- **应用名称**：从"Magisk"改为"Kitsune Mask"
+- **应用图标**：更新为Kitsune Mask图标
+
+#### 3. 核心功能修改
+- **deny/deny.hpp**：添加sulist相关的枚举和函数声明
+- **deny/cli.cpp**：修改为--hide命令，添加sulist命令支持
+- **deny/utils.cpp**：在原始基础上添加sulist功能
+- **core/lib.rs**：添加ZygiskRequest扩展（SulistRootNs, RevertUnmount）
+- **core/magisk.rs**：修改为--hide命令
+- **zygisk/entry.cpp**：添加remote_request_sulist和remote_request_umount函数
+- **zygisk/hook.cpp**：添加sulist支持
+- **zygisk/module.cpp**：添加sulist支持
+- **zygisk/module.hpp**：添加DO_ALLOW标志
+- **zygisk/zygisk.hpp**：添加sulist函数声明
+- **include/consts.hpp**：修改包名
+
+### 技术实现
+
+#### 1. 原则
+- 以Magisk-30.7为基础
+- 在原始文件基础上修改，不直接复制Kitsune Mag文件
+- 保持兼容性，避免冲突
+
+#### 2. 方法
+- 分析25210和27001版本的MagiskHide差异
+- 分析KitsuneMag-kitsune和kokoro-no-kitsune-27001b源码
+- 在原始Magisk-30.7基础上添加Kitsune Mask特性
+- 保持原始代码的结构和接口
+
+### 关键发现
+
+#### 1. 27001版本/sbin卸载失败的原因
+- 缺少`--do-unmount`命令
+- Mount机制改变（从`* Mount mirrors`改为`* Mount MagiskSU`和`* Magic Mount Setup`）
+- 引入了early-mount.d机制
+
+#### 2. 移植挑战
+- KitsuneMag-kitsune使用C++ daemon架构
+- Magisk-30.7使用Rust daemon架构
+- 函数签名和接口不兼容
+- 完整移植需要大量工作
+
+### 修改文件列表
+
+| 文件 | 修改内容 |
+|---|---|
+| `deny/deny.hpp` | 添加sulist支持 |
+| `deny/cli.cpp` | 修改为--hide命令，添加sulist命令 |
+| `deny/utils.cpp` | 添加sulist功能 |
+| `core/lib.rs` | 添加ZygiskRequest扩展 |
+| `core/magisk.rs` | 修改为--hide命令 |
+| `zygisk/entry.cpp` | 添加sulist函数 |
+| `zygisk/hook.cpp` | 添加sulist支持 |
+| `zygisk/module.cpp` | 添加sulist支持 |
+| `zygisk/module.hpp` | 添加DO_ALLOW标志 |
+| `zygisk/zygisk.hpp` | 添加sulist函数声明 |
+| `include/consts.hpp` | 修改包名 |
+| `app/shared/src/main/AndroidManifest.xml` | 修改应用名称 |
+| `app/core/src/main/res/values/strings.xml` | 修改UI文本 |
+| `app/core/src/main/res/drawable/ic_magisk.xml` | 更新图标 |
+
+### 使用方法
+
+#### 1. MagiskHide命令
+```bash
+# 查看MagiskHide状态
+magisk --hide status
+
+# 启用MagiskHide
+magisk --hide enable
+
+# 禁用MagiskHide
+magisk --hide disable
+
+# 添加应用到hidelist
+magisk --hide add <package_name>
+
+# 从hidelist移除应用
+magisk --hide rm <package_name>
+
+# 查看hidelist
+magisk --hide ls
+
+# 手动卸载Magisk修改
+magisk --hide --do-unmount
+```
+
+#### 2. SuList命令
+```bash
+# 查看SuList状态
+magisk --hide sulist
+
+# 启用SuList
+magisk --hide sulist enable
+
+# 禁用SuList
+magisk --hide sulist disable
+```
+
+### 已知问题
+
+1. **sulist功能**：部分功能为占位符，需要进一步完善
+2. **/sbin挂载功能**：需要从Kitsune Mag移植完整实现
+3. **编译验证**：需要在实际环境中编译测试
+
+### 后续工作
+
+1. 完善sulist功能实现
+2. 移植/sbin挂载/卸载功能
+3. 编译测试和验证
+4. 修复发现的问题
+
 ## Downloads
 
 [Github](https://github.com/topjohnwu/Magisk/releases) is the only source where you can get official Magisk information and downloads.
