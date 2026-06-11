@@ -288,6 +288,11 @@ bool is_sulist_enabled() {
     return sulist_enabled;
 }
 
+// Check if a UID is on the sulist
+bool is_uid_on_sulist(int uid) {
+    return is_uid_on_list(uid);
+}
+
 // Update deny flags for a process
 void update_deny_flags(int uid, rust::Str process, uint32_t &flags) {
     string_view proc_view(process.begin(), process.end());
