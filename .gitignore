@@ -12,3 +12,6 @@ native/out
 # Android Studio
 *.iml
 .idea
+
+# Superpowers docs
+docs/superpowers/
