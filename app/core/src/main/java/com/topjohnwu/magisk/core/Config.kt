@@ -100,6 +100,7 @@ object Config : PreferenceConfig, DBConfig {
     @JvmField var keepEnc = false
     @JvmField var recovery = false
     var denyList = false
+    var sulist = false
 
     var askedHome by preference(Key.ASKED_HOME, false)
     var bootloop by dbSettings(Key.BOOTLOOP, 0)
