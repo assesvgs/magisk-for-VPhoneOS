@@ -201,6 +201,21 @@ magisk --hide sulist disable
 1. **编译验证**：需要在实际环境中编译测试
 2. **mount_mirrors函数**：当前为占位符，需要根据实际需求实现
 
+### 子模块依赖修复
+
+在集成子模块时，发现并修复了以下依赖问题：
+
+1. **selinux.hpp缺失** ✅ 已修复
+   - 问题：revert.cpp引用了selinux.hpp，但这个文件在Magisk-30.7中不存在
+   - 修复：从KitsuneMag-kitsune复制了selinux.hpp到`native/src/core/include/`
+
+2. **cxx-rs include路径** ✅ 已修复
+   - 问题：sqlite.hpp引用了<rust/cxx.h>，但cxx-rs的include路径没有在Android.mk中配置
+   - 修复：在`native/src/base/Android.mk`中添加了cxx-rs的include路径
+
+3. **lsplt依赖** ✅ 无问题
+   - lsplt.hpp在子模块中已经存在
+
 ### 交叉验证结果
 
 经过与原始Magisk-30.7的详细对比，发现并修复了以下问题：
