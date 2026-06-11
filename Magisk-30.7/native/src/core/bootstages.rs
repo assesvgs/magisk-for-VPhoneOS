@@ -177,6 +177,9 @@ impl MagiskD {
         // Reset the bootloop counter once we have boot-complete
         self.set_db_setting(DbEntryKey::BootloopCount, 0).log_ok();
 
+        // Mount MagiskSU (Kitsune Mask feature)
+        enable_mount_su();
+
         // At this point it's safe to create the folder
         let secure_dir = cstr!(SECURE_DIR);
         if !secure_dir.exists() {

@@ -157,6 +157,9 @@ pub mod ffi {
         fn check_key_combo() -> bool;
         fn unlock_blocks();
         fn update_deny_flags(uid: i32, process: &str, flags: &mut u32);
+
+        // Kitsune Mask specific
+        fn enable_mount_su();
         fn initialize_denylist();
         fn switch_mnt_ns(pid: i32) -> i32;
         fn exec_root_shell(client: i32, pid: i32, req: &mut SuRequest, mode: MntNsMode);
