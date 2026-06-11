@@ -1,8 +1,8 @@
 use crate::consts::{APP_PACKAGE_NAME, BBPATH, DATABIN, MODULEROOT, SECURE_DIR};
 use crate::daemon::MagiskD;
 use crate::ffi::{
-    DbEntryKey, RequestCode, check_key_combo, exec_common_scripts, exec_module_scripts,
-    get_magisk_tmp, initialize_denylist,
+    DbEntryKey, RequestCode, check_key_combo, enable_mount_su, exec_common_scripts,
+    exec_module_scripts, get_magisk_tmp, initialize_denylist,
 };
 use crate::logging::setup_logfile;
 use crate::module::disable_modules;
