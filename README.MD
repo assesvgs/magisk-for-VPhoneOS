@@ -11,8 +11,8 @@
 基础代码来源：`https://github.com/topjohnwu/Magisk.git` tag v30.7
 
 Kitsune Mask 参考来源：
-- `KitsuneMag-kitsune`（kitsune 分支，版本 25210）
-- `kokoro-no-kitsune-27001b`（版本 27001b）
+- `KitsuneMag-kitsune`
+- `kokoro-no-kitsune-27001b`
 
 ## 与原版 Magisk 30.7 的差异
 
