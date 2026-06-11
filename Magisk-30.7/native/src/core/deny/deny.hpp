@@ -76,6 +76,7 @@ int mount_sbin();
 void do_mount_magisk(int pid);
 void mount_magisk_to_pid(int pid);
 void revert_daemon(int pid, int client);
+void revert_unmount_ex(int pid);
 
 // ptrace.cpp functions
 void proc_monitor();

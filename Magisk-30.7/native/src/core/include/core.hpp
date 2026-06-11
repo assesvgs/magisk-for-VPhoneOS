@@ -81,6 +81,12 @@ bool is_deny_target(int uid, std::string_view process);
 void revert_unmount(int pid = -1) noexcept;
 void update_deny_flags(int uid, rust::Str process, uint32_t &flags);
 
+// Kitsune Mask specific
+extern int magisktmpfs_fd;
+extern const char *applet_names[];
+void su_mount();
+void mount_mirrors();
+
 // MagiskSU
 void exec_root_shell(int client, int pid, SuRequest &req, MntNsMode mode);
 
