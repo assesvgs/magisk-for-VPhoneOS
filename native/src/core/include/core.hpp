@@ -77,13 +77,16 @@ int denylist_cli(rust::Vec<rust::String> &args);
 void denylist_handler(int client);
 void initialize_denylist();
 void scan_deny_apps();
-bool is_deny_target(int uid, std::string_view process);
+bool is_deny_target(int uid, std::string_view process, int max_len = 0);
 void update_deny_flags(int uid, rust::Str process, uint32_t &flags);
+void revert_unmount(int pid = -1);
 
 // Kitsune Mask specific
 extern int magisktmpfs_fd;
 extern const char *applet_names[];
 extern bool HAVE_32;
+extern int su_bin_fd;
+extern bool logging_muted;
 void su_mount();
 void mount_mirrors();
 
