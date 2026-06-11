@@ -37,7 +37,7 @@ Advanced Options (Internal APIs):
    --clone SRC DEST          clone SRC to DEST
    --sqlite SQL              exec SQL commands to Magisk database
    --path                    print Magisk tmpfs mount path
-   --denylist ARGS           denylist config CLI
+   --hide ARGS               MagiskHide config CLI
    --preinit-device          resolve a device to store preinit files
 
 Available applets:
@@ -170,7 +170,7 @@ struct Sqlite {
 struct PathCmd {}
 
 #[derive(FromArgs)]
-#[argh(subcommand, name = "--denylist")]
+#[argh(subcommand, name = "--hide")]
 struct DenyList {
     #[argh(positional, greedy)]
     args: Vec<String>,

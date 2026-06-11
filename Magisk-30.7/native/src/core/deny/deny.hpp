@@ -1,16 +1,8 @@
 #pragma once
 
-#include <pthread.h>
 #include <string_view>
-#include <functional>
-#include <map>
-#include <atomic>
-
-#include <core.hpp>
 
 #define ISOLATED_MAGIC "isolated"
-
-#define SIGTERMTHRD SIGUSR1
 
 namespace DenyRequest {
 enum : int {
@@ -53,7 +45,6 @@ int add_list(int client);
 int rm_list(int client);
 void ls_list(int client);
 
-// Misc
-int new_daemon_thread(void(*entry)());
-bool is_uid_on_list(int uid);
-void rescan_apps();
+bool proc_context_match(int pid, std::string_view context);
+void *logcat(void *arg);
+extern bool logcat_exit;

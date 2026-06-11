@@ -1,8 +1,7 @@
 #include <sys/wait.h>
 #include <sys/mount.h>
 
-#include <consts.hpp>
-#include <base.hpp>
+#include <core.hpp>
 
 #include "deny.hpp"
 
@@ -11,17 +10,20 @@ using namespace std;
 [[noreturn]] static void usage() {
     fprintf(stderr,
 R"EOF(MagiskHide Config CLI
-Usage: magiskhide [action [arguments...] ]
+
+Usage: magisk --hide [action [arguments...] ]
 Actions:
    status          Return the MagiskHide status
    enable          Enable MagiskHide
    disable         Disable MagiskHide
-   add PKG [PROC]  Add a new target to the hidelist (sulist)
-   rm PKG [PROC]   Remove target(s) from the hidelist (sulist)
-   ls              Print the current hidelist (sulist)
+   add PKG [PROC]  Add a new target to the hidelist
+   rm PKG [PROC]   Remove target(s) from the hidelist
+   ls              Print the current hidelist
    exec CMDs...    Execute commands in isolated mount
                    namespace and do all unmounts
-Magisk Delta specific Actions:
+   --do-unmount    Unmount all Magisk modifications
+
+Kitsune Mask specific Actions:
    sulist          Return the SuList status
    sulist [enable|disable]
                    Enable or disable SuList (need reboot)
@@ -30,7 +32,7 @@ Magisk Delta specific Actions:
     exit(1);
 }
 
-void denylist_handler(int client, const sock_cred *cred) {
+void denylist_handler(int client) {
     if (client < 0) {
         revert_unmount();
         return;
@@ -55,19 +57,15 @@ void denylist_handler(int client, const sock_cred *cred) {
     case DenyRequest::LIST:
         ls_list(client);
         return;
-    case DenyRequest::ENFORCE_SULIST:
-        update_sulist_config(true);
-        res = DenyResponse::OK;
-        break;
-    case DenyRequest::DISABLE_SULIST:
-        update_sulist_config(false);
-        res = DenyResponse::OK;
-        break;
     case DenyRequest::STATUS:
-        res = (denylist_enforced)? DenyResponse::ENFORCED : DenyResponse::NOT_ENFORCED;
+        res = denylist_enforced ? DenyResponse::ENFORCED : DenyResponse::NOT_ENFORCED;
         break;
     case DenyRequest::SULIST_STATUS:
-        res = (sulist_enabled)? DenyResponse::SULIST_ENFORCED : DenyResponse::SULIST_NOT_ENFORCED;
+        res = DenyResponse::SULIST_NOT_ENFORCED;
+        break;
+    case DenyRequest::ENFORCE_SULIST:
+    case DenyRequest::DISABLE_SULIST:
+        res = DenyResponse::SULIST_NO_DISABLE;
         break;
     default:
         // Unknown request code
@@ -77,46 +75,58 @@ void denylist_handler(int client, const sock_cred *cred) {
     close(client);
 }
 
-int denylist_cli(int argc, char **argv) {
-    if (argc < 2)
+int denylist_cli(rust::Vec<rust::String> &args) {
+    if (args.empty())
         usage();
 
-    int req = -1;
-    if (argv[1] == "enable"sv)
+    // Convert rust strings into c strings
+    size_t argc = args.size();
+    std::vector<const char *> argv;
+    ranges::transform(args, std::back_inserter(argv), [](rust::String &arg) { return arg.c_str(); });
+    // End with nullptr
+    argv.push_back(nullptr);
+
+    int req;
+    if (argv[0] == "enable"sv)
         req = DenyRequest::ENFORCE;
-    else if (argv[1] == "disable"sv)
+    else if (argv[0] == "disable"sv)
         req = DenyRequest::DISABLE;
-    else if (argv[1] == "add"sv){
-    	req = DenyRequest::ADD;
-    } else if (argv[1] == "rm"sv){
-    	req = DenyRequest::REMOVE;
-    } else if (argv[1] == "ls"sv)
+    else if (argv[0] == "add"sv)
+        req = DenyRequest::ADD;
+    else if (argv[0] == "rm"sv)
+        req = DenyRequest::REMOVE;
+    else if (argv[0] == "ls"sv)
         req = DenyRequest::LIST;
-    else if (argv[1] == "status"sv)
+    else if (argv[0] == "status"sv)
         req = DenyRequest::STATUS;
-    else if (argv[1] == "sulist"sv && argc >= 2) {
-    	if (argc >= 3) {
-            if (argv[2] == "enable"sv)
+    else if (argv[0] == "sulist"sv) {
+        if (argc >= 2) {
+            if (argv[1] == "enable"sv)
                 req = DenyRequest::ENFORCE_SULIST;
-            else if (argv[2] == "disable"sv)
+            else if (argv[1] == "disable"sv)
                 req = DenyRequest::DISABLE_SULIST;
-        } else req = DenyRequest::SULIST_STATUS;
-    } else if (argv[1] == "exec"sv && argc > 2) {
+        } else {
+            req = DenyRequest::SULIST_STATUS;
+        }
+    } else if (argv[0] == "--do-unmount"sv) {
+        revert_unmount(0);
+        return 0;
+    } else if (argv[0] == "exec"sv && argc > 1) {
         xunshare(CLONE_NEWNS);
         xmount(nullptr, "/", nullptr, MS_PRIVATE | MS_REC, nullptr);
         revert_unmount();
-        execvp(argv[2], argv + 2);
+        execvp(argv[1], (char **) argv.data() + 1);
         exit(1);
     } else {
         usage();
     }
 
     // Send request
-    int fd = connect_daemon(+RequestCode::DENYLIST);
+    int fd = connect_daemon(RequestCode::DENYLIST);
     write_int(fd, req);
     if (req == DenyRequest::ADD || req == DenyRequest::REMOVE) {
-        write_string(fd, argv[2]);
-        write_string(fd, argv[3] ? argv[3] : "");
+        write_string(fd, argv[1]);
+        write_string(fd, argv[2] ? argv[2] : "");
     }
 
     // Get response
@@ -128,13 +138,13 @@ int denylist_cli(int argc, char **argv) {
         fprintf(stderr, "MagiskHide is disabled\n");
         goto return_code;
     case DenyResponse::ENFORCED:
-    	fprintf(stderr, "MagiskHide is enabled\n");
+        fprintf(stderr, "MagiskHide is enabled\n");
         goto return_code;
     case DenyResponse::SULIST_NOT_ENFORCED:
         fprintf(stderr, "SuList is not enforced\n");
         return 1;
     case DenyResponse::SULIST_ENFORCED:
-    	fprintf(stderr, "SuList is enforced\n");
+        fprintf(stderr, "SuList is enforced\n");
         return 0;
     case DenyResponse::ITEM_EXIST:
         fprintf(stderr, "Target already exists in hidelist\n");
