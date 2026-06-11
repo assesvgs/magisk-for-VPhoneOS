@@ -402,7 +402,21 @@ void ZygiskContext::app_specialize_pre() {
 
     rust::Vec<int> module_fds;
     owned_fd fd = get_module_info(args.app->uid, module_fds);
-    if ((info_flags & UNMOUNT_MASK) == UNMOUNT_MASK) {
+
+    // Check for sulist mode
+    if (info_flags & +ZygiskStateFlags::AllowlistEnforcing) {
+        // Sulist mode
+        if (info_flags & +ZygiskStateFlags::ProcessOnAllowList) {
+            // Process is on allowlist - mount Magisk for it
+            ZLOGI("[%s] is on the sulist (allow)\n", process);
+            flags |= DO_ALLOW;
+        } else {
+            // Process is NOT on allowlist - unmount Magisk
+            ZLOGI("[%s] is NOT on the sulist (revert)\n", process);
+            flags |= DO_REVERT_UNMOUNT;
+        }
+    } else if ((info_flags & UNMOUNT_MASK) == UNMOUNT_MASK) {
+        // Normal denylist mode
         ZLOGI("[%s] is on the denylist\n", process);
         flags |= DO_REVERT_UNMOUNT;
     } else if (fd >= 0) {

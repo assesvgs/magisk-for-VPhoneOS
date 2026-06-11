@@ -61,11 +61,21 @@ void denylist_handler(int client) {
         res = denylist_enforced ? DenyResponse::ENFORCED : DenyResponse::NOT_ENFORCED;
         break;
     case DenyRequest::SULIST_STATUS:
-        res = DenyResponse::SULIST_NOT_ENFORCED;
+        res = sulist_enabled ? DenyResponse::SULIST_ENFORCED : DenyResponse::SULIST_NOT_ENFORCED;
         break;
     case DenyRequest::ENFORCE_SULIST:
+        if (!sulist_enabled) {
+            sulist_enabled = true;
+            update_sulist_config(true);
+        }
+        res = DenyResponse::OK;
+        break;
     case DenyRequest::DISABLE_SULIST:
-        res = DenyResponse::SULIST_NO_DISABLE;
+        if (sulist_enabled) {
+            sulist_enabled = false;
+            update_sulist_config(false);
+        }
+        res = DenyResponse::OK;
         break;
     default:
         // Unknown request code
