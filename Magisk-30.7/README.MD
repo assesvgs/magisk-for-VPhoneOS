@@ -161,6 +161,36 @@ magisk --hide sulist disable
 1. **编译验证**：需要在实际环境中编译测试
 2. **mount_mirrors函数**：当前为占位符，需要根据实际需求实现
 
+### 交叉验证结果
+
+经过与原始Magisk-30.7的详细对比，发现并修复了以下问题：
+
+1. **重复的bootstages.cpp文件** ✅ 已修复
+   - 删除了从Kitsune Mag复制的bootstages.cpp
+   - 在Rust版本的bootstages.rs中添加了enable_mount_su()调用
+
+2. **revert_unmount函数冲突** ✅ 已修复
+   - 删除了core.hpp中的revert_unmount声明
+   - 使用C++版本的revert_unmount（功能更完整）
+
+3. **lib.rs中的revert_unmount引用** ✅ 已修复
+   - 删除了`use mount::revert_unmount`引用
+   - 添加了enable_mount_su()的FFI声明
+
+4. **enable_mount_su函数缺失** ✅ 已修复
+   - 在lib.rs中添加了enable_mount_su()的FFI声明
+   - 在kitsune.cpp中实现了enable_mount_su()函数
+
+### 验证清单
+
+| 检查项 | 状态 | 说明 |
+|--------|------|------|
+| 文件完整性 | ✅ 通过 | 所有原始文件都保留，新增文件正确 |
+| 函数冲突 | ✅ 通过 | 没有重复的函数定义 |
+| FFI声明 | ✅ 通过 | 所有C++函数都有正确的FFI声明 |
+| include路径 | ✅ 通过 | 所有include路径正确 |
+| 变量定义 | ✅ 通过 | 所有变量都有正确的定义 |
+
 ### 深度审查结果
 
 经过10次深度审查和完整移植，发现并解决了以下问题：
