@@ -54,7 +54,6 @@ extern bool logcat_exit;
 
 // Sulist functions
 bool is_uid_on_sulist(int uid);
-int mount_magisk_for_pid(int pid);
 int unmount_magisk_for_pid(int pid);
 bool is_sulist_enabled();
 void update_sulist_config(bool enable);

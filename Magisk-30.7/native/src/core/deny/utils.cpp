@@ -443,14 +443,8 @@ void update_deny_flags(int uid, rust::Str process, uint32_t &flags) {
 bool sulist_enabled = false;
 
 bool is_uid_on_sulist(int uid) {
-    // For now, use the same logic as denylist
+    // Use the same logic as denylist
     return is_uid_on_list(uid);
-}
-
-int mount_magisk_for_pid(int pid) {
-    // This is a placeholder - the actual implementation needs
-    // to be ported from KitsuneMag-kitsune's revert.cpp
-    return 0;
 }
 
 int unmount_magisk_for_pid(int pid) {
