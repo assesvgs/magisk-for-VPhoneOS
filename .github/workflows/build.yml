@@ -2,14 +2,14 @@ name: Magisk Build
 
 on:
   push:
-    branches: [master]
+    branches: [master, main, kitsune-mask-integration]
     paths:
       - "app/**"
       - "native/**"
       - "build.py"
       - ".github/workflows/build.yml"
   pull_request:
-    branches: [master]
+    branches: [master, main, kitsune-mask-integration]
   workflow_dispatch:
 
 jobs:
