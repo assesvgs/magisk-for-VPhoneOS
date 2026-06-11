@@ -15,6 +15,15 @@
 
 using namespace std;
 
+// Thread entry wrapper for void(*)() functions
+static int new_daemon_thread(void(*entry)()) {
+    thread_entry proxy = [](void *entry) -> void * {
+        reinterpret_cast<void(*)()>(entry)();
+        return nullptr;
+    };
+    return new_daemon_thread(proxy, (void *) entry);
+}
+
 // For the following data structures:
 // If package name == ISOLATED_MAGIC, or app ID == -1, it means isolated service
 
@@ -363,7 +372,7 @@ int enable_deny() {
         if (procfp == nullptr && (procfp = opendir("/proc")) == nullptr)
             return DenyResponse::ERROR;
 
-        LOGI("* Enable DenyList\n");
+        LOGI("* Enable MagiskHide\n");
 
         if (!ensure_data())
             return DenyResponse::ERROR;
@@ -371,10 +380,17 @@ int enable_deny() {
         denylist_enforced = true;
 
         if (!MagiskD::Get().zygisk_enabled()) {
-            if (new_daemon_thread(&logcat)) {
+            if (new_daemon_thread(&proc_monitor)) {
                 denylist_enforced = false;
                 return DenyResponse::ERROR;
             }
+        }
+
+        if (sulist_enabled) {
+            // Add SystemUI and Settings to sulist because modules might need to modify it
+            add_hide_set("com.android.systemui", "com.android.systemui");
+            add_hide_set("com.android.settings", "com.android.settings");
+            add_hide_set(JAVA_PACKAGE_NAME, JAVA_PACKAGE_NAME);
         }
 
         // On Android Q+, also kill blastula pool and all app zygotes
@@ -391,7 +407,7 @@ int enable_deny() {
 
 int disable_deny() {
     if (denylist_enforced.exchange(false)) {
-        LOGI("* Disable DenyList\n");
+        LOGI("* Disable MagiskHide\n");
     }
     MagiskD::Get().set_db_setting(DbEntryKey::DenylistConfig, false);
     return DenyResponse::OK;
