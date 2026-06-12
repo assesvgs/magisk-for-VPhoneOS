@@ -119,11 +119,8 @@ int ftruncate64(int fd, off64_t length) {
 [[gnu::weak]]
 void android_set_abort_message(const char *) {}
 
-extern FILE __sF[];
-
-[[gnu::weak]] FILE* stdin = &__sF[0];
-[[gnu::weak]] FILE* stdout = &__sF[1];
-[[gnu::weak]] FILE* stderr = &__sF[2];
+// Note: stdin/stdout/stderr are provided by crt0 (__stdio_fp)
+// Do not define them here to avoid conflicts
 
 #endif // !defined(__LP64__)
 
