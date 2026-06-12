@@ -88,6 +88,7 @@ extern int su_bin_fd;
 extern bool logging_muted;
 void su_mount();
 void mount_mirrors();
+void enable_mount_su();
 
 // MagiskSU
 void exec_root_shell(int client, int pid, SuRequest &req, MntNsMode mode);
