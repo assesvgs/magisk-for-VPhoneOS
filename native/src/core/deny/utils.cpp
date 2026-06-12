@@ -88,8 +88,7 @@ static void update_app_id(int app_id, const string &pkg, bool remove) {
 // Leave /proc fd opened as we're going to read from it repeatedly
 static DIR *procfp;
 
-template<class F>
-static void crawl_procfs(const F &fn) {
+void crawl_procfs(const std::function<bool(int)> &fn) {
     rewinddir(procfp);
     dirent *dp;
     int pid;
@@ -473,7 +472,7 @@ void rescan_apps() {
             while ((entry = xreaddir(dir.get()))) {
                 struct stat st{};
                 // For each package
-                if (xfstatat(dfd, entry->d_name, &st, 0))
+                if (fstatat(dfd, entry->d_name, &st, 0) == 0)
                     continue;
                 int app_id = to_app_id(st.st_uid);
                 if (auto it = pkg_to_procs.find(entry->d_name); it != pkg_to_procs.end()) {

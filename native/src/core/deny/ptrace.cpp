@@ -137,7 +137,7 @@ static bool check_process(int pid, const char *process, const char *context, con
     if (!context) goto check_exe;
     sprintf(path, "/proc/%d/attr/current", pid);
     if (!read_file(path,buf,sizeof(buf)) || 
-        !str_contains(buf, context))
+        !strstr(buf, context))
         return false;
 
     check_exe:
