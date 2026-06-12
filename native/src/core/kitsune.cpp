@@ -3,6 +3,7 @@
 
 #include <sys/mount.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <string>
@@ -29,24 +30,7 @@ int bind_mount_(const char *from, const char *to) {
     return xmount(from, to, nullptr, MS_BIND, nullptr);
 }
 
-// mount_info and parse_mount_info from KitsuneMag-kitsune
-struct mount_info {
-    unsigned int id;
-    unsigned int parent;
-    dev_t device;
-    std::string root;
-    std::string target;
-    std::string vfs_option;
-    struct {
-        unsigned int shared;
-        unsigned int master;
-        unsigned int propagate_from;
-    } optional;
-    std::string type;
-    std::string source;
-    std::string fs_option;
-};
-
+// parse_mount_info from KitsuneMag-kitsune
 std::vector<mount_info> parse_mount_info(const char *pid) {
     char buf[PATH_MAX] = {};
     ssprintf(buf, sizeof(buf), "/proc/%s/mountinfo", pid);

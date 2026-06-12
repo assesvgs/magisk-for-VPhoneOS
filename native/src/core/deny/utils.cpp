@@ -488,6 +488,17 @@ void rescan_apps() {
 // Sulist functionality
 bool sulist_enabled = false;
 
+bool is_uid_on_list(int uid) {
+    auto it = app_id_to_pkgs.find(uid % 100000);
+    if (it == app_id_to_pkgs.end())
+        return false;
+    for (const auto &pkg : it->second) {
+        if (pkg_to_procs.find(pkg)->second.size() > 0)
+            return true;
+    }
+    return false;
+}
+
 bool is_uid_on_sulist(int uid) {
     // Use the same logic as denylist
     return is_uid_on_list(uid);

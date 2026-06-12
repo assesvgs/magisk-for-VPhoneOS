@@ -7,7 +7,6 @@
 #include <core.hpp>
 #include <base.hpp>
 #include <consts.hpp>
-#include <selinux.hpp>
 
 #include <link.h>
 
