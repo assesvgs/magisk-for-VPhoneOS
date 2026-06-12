@@ -17,7 +17,7 @@ extern "C" void exec_companion_entry(int, comp_entry);
 static int clean_ns64 = -1, clean_ns32 = -1;
 
 int remote_request_sulist() {
-    if (int fd = zygisk_request(ZygiskRequest::SulistRootNs); fd >= 0) {
+    if (int fd = zygisk_request(+ZygiskRequest::SulistRootNs); fd >= 0) {
         int res = read_int(fd);
         close(fd);
         return res;
@@ -26,7 +26,7 @@ int remote_request_sulist() {
 }
 
 int remote_request_umount() {
-    if (int fd = zygisk_request(ZygiskRequest::RevertUnmount); fd >= 0) {
+    if (int fd = zygisk_request(+ZygiskRequest::RevertUnmount); fd >= 0) {
         // directly open fd path from magisk proc without recv_fd
         auto ns_path = read_string(fd);
         auto clean_ns = xopen(ns_path.data(), O_RDONLY);

@@ -3,6 +3,11 @@
 
 namespace jni_hook {
 
+template <typename T>
+static inline T align_to(T v, int a) {
+    return (v + a - 1) / a * a;
+}
+
 // We know our minimum alignment is WORD size (size of pointer)
 static constexpr size_t ALIGN = sizeof(long);
 
@@ -17,7 +22,7 @@ static std::atomic<uint8_t *> _curr = nullptr;
 void *memory_block::allocate(size_t sz) {
     if (!_area) {
         // Memory will not actually be allocated because physical pages are mapped in on-demand
-        _area = static_cast<uint8_t *>(xmmap(
+        _area = static_cast<uint8_t *>(mmap(
                 nullptr, CAPACITY, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
         _curr = _area;
     }
