@@ -36,6 +36,7 @@ object Info {
     var isRooted = false
     var noDataExec = false
     var patchBootVbmeta = false
+    var sulist = false
 
     @JvmStatic var env = Env()
         private set
