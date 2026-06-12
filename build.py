@@ -228,7 +228,6 @@ def build_cpp_src(targets: set[str]):
         cmds.append("B_BOOT=1")
 
     if cmds:
-        cmds.append("B_CRT0=1")
         run_ndk_build(cmds)
         collect_ndk_build()
 
@@ -537,7 +536,6 @@ def gen_ide():
             "B_POLICY=1",
             "B_PRELOAD=1",
             "B_PROP=1",
-            "B_CRT0=1",
             "compile_commands.json",
         ]
     )
