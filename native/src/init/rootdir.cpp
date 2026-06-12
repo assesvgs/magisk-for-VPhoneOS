@@ -236,18 +236,18 @@ static void extract_files(bool sbin) {
     const char *stub_xz = sbin ? "/sbin/stub.xz" : "stub.xz";
     const char *init_ld_xz = sbin ? "/sbin/init-ld.xz" : "init-ld.xz";
 
-    LOGI("extract_files: sbin=%d target=%s\n", sbin, magisk_xz);
+    LOGD("extract_files: sbin=%d target=%s\n", sbin, magisk_xz);
 
     if (access(magisk_xz, F_OK) == 0) {
-        LOGI("extract_files: %s found, decompressing\n", magisk_xz);
+        LOGD("extract_files: %s found, decompressing\n", magisk_xz);
         mmap_data magisk(magisk_xz);
-        LOGI("extract_files: mmap ptr=%p sz=%zu\n", magisk.data(), magisk.size());
+        LOGD("extract_files: mmap ptr=%p sz=%zu\n", magisk.data(), magisk.size());
         unlink(magisk_xz);
         int fd = xopen("magisk", O_WRONLY | O_CREAT, 0755);
-        LOGI("extract_files: open magisk fd=%d\n", fd);
+        LOGD("extract_files: open magisk fd=%d\n", fd);
         if (fd >= 0 && magisk.size() > 0) {
             bool ok = unxz(fd, magisk);
-            LOGI("extract_files: unxz=%d\n", ok);
+            LOGD("extract_files: unxz=%d\n", ok);
         } else {
             LOGE("extract_files: skip decompress fd=%d sz=%zu\n", fd, magisk.size());
         }
@@ -257,7 +257,7 @@ static void extract_files(bool sbin) {
     }
 
     if (access(stub_xz, F_OK) == 0) {
-        LOGI("extract_files: %s found\n", stub_xz);
+        LOGD("extract_files: %s found\n", stub_xz);
         mmap_data stub(stub_xz);
         unlink(stub_xz);
         int fd = xopen("stub.apk", O_WRONLY | O_CREAT, 0);
@@ -266,7 +266,7 @@ static void extract_files(bool sbin) {
     }
 
     if (access(init_ld_xz, F_OK) == 0) {
-        LOGI("extract_files: %s found\n", init_ld_xz);
+        LOGD("extract_files: %s found\n", init_ld_xz);
         mmap_data init_ld(init_ld_xz);
         unlink(init_ld_xz);
         int fd = xopen("init-ld", O_WRONLY | O_CREAT, 0);
@@ -276,7 +276,7 @@ static void extract_files(bool sbin) {
 }
 
 void MagiskInit::patch_ro_root() noexcept {
-    LOGI("patch_ro_root: start\n");
+    LOGD("patch_ro_root: start\n");
     mount_list.emplace_back("/data");
     parse_config_file();
 
@@ -290,7 +290,7 @@ void MagiskInit::patch_ro_root() noexcept {
         xmount("/debug_ramdisk", "/data/debug_ramdisk", nullptr, MS_MOVE, nullptr);
     }
 
-    LOGI("patch_ro_root: tmp_dir=%s\n", tmp_dir.data());
+    LOGD("patch_ro_root: tmp_dir=%s\n", tmp_dir.data());
     setup_tmp(tmp_dir.data());
     chdir(tmp_dir.data());
 
@@ -307,12 +307,12 @@ void MagiskInit::patch_ro_root() noexcept {
     }
 
     xrename("overlay.d", ROOTOVL);
-    LOGI("patch_ro_root: overlay.d -> %s\n", ROOTOVL);
+    LOGD("patch_ro_root: overlay.d -> %s\n", ROOTOVL);
 
     extern bool avd_hack;
     // Handle avd hack
     if (avd_hack) {
-        LOGI("patch_ro_root: avd_hack enabled\n");
+        LOGD("patch_ro_root: avd_hack enabled\n");
         int src = xopen("/init", O_RDONLY | O_CLOEXEC);
         mmap_data init("/init");
         // Force disable early mount on original init
@@ -329,7 +329,7 @@ void MagiskInit::patch_ro_root() noexcept {
     load_overlay_rc(ROOTOVL);
     if (access(ROOTOVL "/sbin", F_OK) == 0) {
         // Move files in overlay.d/sbin into tmp_dir
-        LOGI("patch_ro_root: mv_path %s/sbin -> .\n", ROOTOVL);
+        LOGD("patch_ro_root: mv_path %s/sbin -> .\n", ROOTOVL);
         mv_path(ROOTOVL "/sbin", ".");
     } else {
         LOGE("patch_ro_root: %s/sbin NOT FOUND\n", ROOTOVL);
@@ -346,12 +346,12 @@ void MagiskInit::patch_ro_root() noexcept {
     if (p) patch_fissiond(tmp_dir.data());
 
     // Extract overlay archives
-    LOGI("patch_ro_root: before extract_files\n");
+    LOGD("patch_ro_root: before extract_files\n");
     extract_files(false);
-    LOGI("patch_ro_root: after extract_files\n");
+    LOGD("patch_ro_root: after extract_files\n");
 
     handle_sepolicy();
-    LOGI("patch_ro_root: after handle_sepolicy\n");
+    LOGD("patch_ro_root: after handle_sepolicy\n");
     unlink("init-ld");
 
     // Mount rootdir
