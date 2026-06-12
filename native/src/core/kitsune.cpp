@@ -24,6 +24,11 @@ int tmpfs_mount(const char *from, const char *to) {
     return xmount(from, to, "tmpfs", 0, "mode=755");
 }
 
+// bind_mount_ function from KitsuneMag-kitsune
+int bind_mount_(const char *from, const char *to) {
+    return xmount(from, to, nullptr, MS_BIND, nullptr);
+}
+
 // mount_su function from KitsuneMag-kitsune
 // This function mounts MagiskSU binaries into the system
 static int mount_su() {

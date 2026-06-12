@@ -396,7 +396,7 @@ static int check_pid(int pid) {
         // if sulist is enabled
         // the target is the process we want to mount magisk
         // else, the target is the process we want to unmount magisk
-        mount_magisk_to_pid(pid) : revert_daemon(pid);
+        mount_magisk_to_pid(pid) : revert_daemon(pid, -2);
     }
 
 not_target:

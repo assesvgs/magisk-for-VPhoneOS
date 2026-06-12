@@ -7,6 +7,7 @@
 #include <core.hpp>
 
 #define ISOLATED_MAGIC "isolated"
+#define SIGTERMTHRD SIGUSR1
 
 namespace DenyRequest {
 enum : int {

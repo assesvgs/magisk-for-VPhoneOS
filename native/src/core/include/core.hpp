@@ -89,6 +89,8 @@ extern bool logging_muted;
 void su_mount();
 void mount_mirrors();
 void enable_mount_su();
+int tmpfs_mount(const char *from, const char *to);
+int bind_mount_(const char *from, const char *to);
 
 // MagiskSU
 void exec_root_shell(int client, int pid, SuRequest &req, MntNsMode mode);
