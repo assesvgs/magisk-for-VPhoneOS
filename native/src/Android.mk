@@ -57,6 +57,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := magiskinit
 LOCAL_STATIC_LIBRARIES := \
     libbase \
+    libcompat \
     libpolicy \
     libxz \
     libinit-rs
