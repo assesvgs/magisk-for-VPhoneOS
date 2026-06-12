@@ -6,6 +6,16 @@
 
 #undef _FORTIFY_SOURCE
 
+// Fallback definitions for bionic internal macros
+// These are normally provided by bionic's <sys/cdefs.h> but may be missing
+// when using crt0 with -nodefaultlibs
+#ifndef __predict_false
+#define __predict_false(x) __builtin_expect(!!(x), 0)
+#endif
+#ifndef __call_bypassing_fortify
+#define __call_bypassing_fortify(fn) (fn)
+#endif
+
 extern void __vloge(const char* fmt, va_list ap);
 
 static inline __noreturn __printflike(1, 2) void __fortify_fatal(const char* fmt, ...) {
