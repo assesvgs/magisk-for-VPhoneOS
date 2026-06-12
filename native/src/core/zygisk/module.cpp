@@ -8,10 +8,11 @@
 
 #include "zygisk.hpp"
 #include "module.hpp"
+#include "solist.hpp"
 
 using namespace std;
 
-static int zygisk_request(int req) {
+int zygisk_request(int req) {
     int fd = connect_daemon(RequestCode::ZYGISK);
     if (fd < 0) return fd;
     write_int(fd, req);
@@ -393,7 +394,7 @@ void ZygiskContext::run_modules_pre(rust::Vec<int> &fds) {
                 continue;
             void *addr = reinterpret_cast<void *>(info.start);
             size_t size = info.end - info.start;
-            void *copy = xmmap(nullptr, size, PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+            void *copy = mmap(nullptr, size, PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
             if ((info.perms & PROT_READ) == 0) {
                 mprotect(addr, size, PROT_READ);
             }
