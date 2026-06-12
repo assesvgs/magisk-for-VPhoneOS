@@ -29,6 +29,62 @@ int bind_mount_(const char *from, const char *to) {
     return xmount(from, to, nullptr, MS_BIND, nullptr);
 }
 
+// mount_info and parse_mount_info from KitsuneMag-kitsune
+struct mount_info {
+    unsigned int id;
+    unsigned int parent;
+    dev_t device;
+    std::string root;
+    std::string target;
+    std::string vfs_option;
+    struct {
+        unsigned int shared;
+        unsigned int master;
+        unsigned int propagate_from;
+    } optional;
+    std::string type;
+    std::string source;
+    std::string fs_option;
+};
+
+std::vector<mount_info> parse_mount_info(const char *pid) {
+    char buf[PATH_MAX] = {};
+    ssprintf(buf, sizeof(buf), "/proc/%s/mountinfo", pid);
+    std::vector<mount_info> result;
+
+    auto fp = open_file(buf, "re");
+    if (!fp) return result;
+
+    char line[4096];
+    while (fgets(line, sizeof(line), fp.get())) {
+        mount_info info{};
+        int root_start = 0, root_end = 0;
+        int target_start = 0, target_end = 0;
+        int type_start = 0, type_end = 0;
+        int source_start = 0, source_end = 0;
+        int fs_option_start = 0, fs_option_end = 0;
+        unsigned int id, parent, maj, min;
+        sscanf(line,
+               "%u %u %u:%u %n%*s%n %n%*s%n %n%*s%n - %n%*s%n %n%*s%n %n%*s%n",
+               &id, &parent, &maj, &min,
+               &root_start, &root_end,
+               &target_start, &target_end,
+               &type_start, &type_end,
+               &source_start, &source_end,
+               &fs_option_start, &fs_option_end);
+        info.id = id;
+        info.parent = parent;
+        info.device = makedev(maj, min);
+        info.root = std::string(line + root_start, root_end - root_start);
+        info.target = std::string(line + target_start, target_end - target_start);
+        info.type = std::string(line + type_start, type_end - type_start);
+        info.source = std::string(line + source_start, source_end - source_start);
+        info.fs_option = std::string(line + fs_option_start, fs_option_end - fs_option_start);
+        result.push_back(std::move(info));
+    }
+    return result;
+}
+
 // mount_su function from KitsuneMag-kitsune
 // This function mounts MagiskSU binaries into the system
 static int mount_su() {

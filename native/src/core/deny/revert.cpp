@@ -15,6 +15,21 @@
 
 using namespace std;
 
+// reversed utility from KitsuneMag-kitsune
+template<typename T>
+class reversed_container {
+    T &base;
+public:
+    reversed_container(T &base) : base(base) {}
+    auto begin() { return base.rbegin(); }
+    auto end() { return base.rend(); }
+};
+
+template<typename T>
+reversed_container<T> reversed(T &base) {
+    return reversed_container<T>(base);
+}
+
 #include <sys/stat.h>
 #include <unistd.h>
 #include <errno.h>
