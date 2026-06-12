@@ -118,7 +118,7 @@ mode_t __umask_chk(mode_t mode) {
     if (__predict_false((mode & 0777) != mode)) {
         __fortify_fatal("umask: called with invalid mask %o", mode);
     }
-    return __umask_real(mode);
+    return umask(mode);
 }
 
 [[gnu::weak]]
@@ -137,13 +137,13 @@ static inline int force_O_LARGEFILE(int flags) {
 [[gnu::weak]]
 int __open_2(const char* pathname, int flags) {
     if (needs_mode(flags)) __fortify_fatal("open: called with O_CREAT/O_TMPFILE but no mode");
-    return __openat_real(AT_FDCWD, pathname, force_O_LARGEFILE(flags), 0);
+    return openat(AT_FDCWD, pathname, force_O_LARGEFILE(flags), 0);
 }
 
 [[gnu::weak]]
 int __openat_2(int fd, const char* pathname, int flags) {
     if (needs_mode(flags)) __fortify_fatal("open: called with O_CREAT/O_TMPFILE but no mode");
-    return __openat_real(fd, pathname, force_O_LARGEFILE(flags), 0);
+    return openat(fd, pathname, force_O_LARGEFILE(flags), 0);
 }
 
 [[gnu::weak]]
