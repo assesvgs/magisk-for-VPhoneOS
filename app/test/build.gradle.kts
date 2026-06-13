@@ -6,7 +6,7 @@ android {
     namespace = "com.topjohnwu.magisk.test"
 
     defaultConfig {
-        applicationId = "com.topjohnwu.magisk.test"
+        applicationId = "io.github.huskydg.magisk.test"
         versionCode = 1
         versionName = "1.0"
         proguardFile("proguard-rules.pro")
