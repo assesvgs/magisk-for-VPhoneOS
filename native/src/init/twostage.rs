@@ -3,14 +3,14 @@ use base::nix::fcntl::OFlag;
 use base::{LoggedResult, MappedFile, MutBytesExt, ResultExt, cstr, debug, error, info};
 use std::io::Write;
 
-pub(crate) fn hexpatch_init_for_second_stage(writable: bool) {
+pub(crate) fn hexpatch_init_for_second_stage(writable: bool) -> bool {
     info!("[hexpatch] hexpatch_init_for_second_stage(writable={})", writable);
     
     // 检查 /init 文件是否存在
     let init_path = cstr!("/init");
     if !init_path.exists() {
         error!("[hexpatch] /init does not exist!");
-        return;
+        return false;
     }
     
     let init = if writable {
@@ -21,7 +21,7 @@ pub(crate) fn hexpatch_init_for_second_stage(writable: bool) {
 
     let Ok(mut init) = init else {
         error!("[hexpatch] Failed to open /init");
-        return;
+        return false;
     };
     
     debug!("[hexpatch] /init opened, mapped size={}", init.as_ref().len());
@@ -41,6 +41,7 @@ pub(crate) fn hexpatch_init_for_second_stage(writable: bool) {
     // 打印 patch 结果（关键信息，使用 info/error）
     if v.is_empty() {
         error!("[hexpatch] PATCH FAILED! No match for '{}' in /init", from);
+        return false;
     } else {
         info!("[hexpatch] PATCH OK! Found {} match(es)", v.len());
     }
@@ -65,6 +66,8 @@ pub(crate) fn hexpatch_init_for_second_stage(writable: bool) {
             Ok(())
         }();
     }
+    
+    true
 }
 
 impl MagiskInit {

@@ -35,11 +35,17 @@ impl MagiskInit {
         self.prepare_data();
 
         if !cstr!("/sdcard").exists() && !cstr!("/first_stage_ramdisk/sdcard").exists() {
-            self.hijack_init_with_switch_root();
+            // 先尝试 hexpatch（与 27.0 一致，适用于 VPhoneOS 等不支持 SwitchRoot 的环境）
             self.restore_ramdisk_init();
+            let hexpatch_success = hexpatch_init_for_second_stage(true);
+            
+            // 如果 hexpatch 失败，fallback 到 hijack 方法（保留原有功能，用于支持 SwitchRoot 的设备）
+            if !hexpatch_success {
+                info!("hexpatch failed, fallback to hijack_init_with_switch_root");
+                self.hijack_init_with_switch_root();
+            }
         } else {
             self.restore_ramdisk_init();
-            // Fallback to hexpatch if /sdcard exists
             hexpatch_init_for_second_stage(true);
         }
     }
