@@ -1,9 +1,18 @@
 use crate::ffi::MagiskInit;
 use base::nix::fcntl::OFlag;
-use base::{LoggedResult, MappedFile, MutBytesExt, ResultExt, cstr, debug, error};
+use base::{LoggedResult, MappedFile, MutBytesExt, ResultExt, cstr, debug, error, info};
 use std::io::Write;
 
 pub(crate) fn hexpatch_init_for_second_stage(writable: bool) {
+    info!("[hexpatch] hexpatch_init_for_second_stage(writable={})", writable);
+    
+    // 检查 /init 文件是否存在
+    let init_path = cstr!("/init");
+    if !init_path.exists() {
+        error!("[hexpatch] /init does not exist!");
+        return;
+    }
+    
     let init = if writable {
         MappedFile::open_rw(cstr!("/init"))
     } else {
@@ -11,17 +20,34 @@ pub(crate) fn hexpatch_init_for_second_stage(writable: bool) {
     };
 
     let Ok(mut init) = init else {
-        error!("Failed to open /init for hexpatch");
+        error!("[hexpatch] Failed to open /init");
         return;
     };
+    
+    debug!("[hexpatch] /init opened, mapped size={}", init.as_ref().len());
+    
+    // 打印内存内容前64字节（仅 debug 模式）
+    let preview_len = std::cmp::min(64, init.as_ref().len());
+    let preview = &init.as_ref()[..preview_len];
+    debug!("[hexpatch] /init content preview (first {} bytes): {:02x?}", preview_len, preview);
 
     // Redirect original init to magiskinit
     let from = "/system/bin/init";
     let to = "/data/magiskinit";
+    debug!("[hexpatch] Searching for '{}' to replace with '{}'", from, to);
+    
     let v = init.patch(from.as_bytes(), to.as_bytes());
+    
+    // 打印 patch 结果（关键信息，使用 info/error）
+    if v.is_empty() {
+        error!("[hexpatch] PATCH FAILED! No match for '{}' in /init", from);
+    } else {
+        info!("[hexpatch] PATCH OK! Found {} match(es)", v.len());
+    }
+    
     #[allow(unused_variables)]
     for off in &v {
-        debug!("Patch @ {:#010X} [{}] -> [{}]", off, from, to);
+        debug!("[hexpatch] Patch @ {:#010X} [{}] -> [{}]", off, from, to);
     }
 
     if !writable {

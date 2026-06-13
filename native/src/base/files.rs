@@ -1,6 +1,6 @@
 use crate::{
     Directory, FsPathFollow, LibcReturn, LoggedResult, OsError, OsResult, Utf8CStr, Utf8CStrBuf,
-    cstr, errno, error,
+    cstr, debug, errno, error,
 };
 use bytemuck::{Pod, bytes_of, bytes_of_mut};
 use libc::{c_uint, makedev, mode_t};
@@ -804,6 +804,9 @@ pub(crate) fn map_fd(fd: BorrowedFd, sz: usize, rw: bool) -> OsResult<'static, &
     } else {
         libc::MAP_PRIVATE
     };
+    
+    debug!("[mmap] map_fd: fd={}, sz={}, rw={}", fd.as_raw_fd(), sz, rw);
+    
     unsafe {
         let ptr = libc::mmap(
             ptr::null_mut(),
@@ -814,8 +817,13 @@ pub(crate) fn map_fd(fd: BorrowedFd, sz: usize, rw: bool) -> OsResult<'static, &
             0,
         );
         if ptr == libc::MAP_FAILED {
+            let err = std::io::Error::last_os_error();
+            error!("[mmap] mmap FAILED! fd={}, sz={}, errno={}", fd.as_raw_fd(), sz, err.raw_os_error().unwrap_or(-1));
             return Err(OsError::last_os_error("mmap", None, None));
         }
+        
+        debug!("[mmap] mmap OK: ptr={:p}, sz={}", ptr, sz);
+        
         Ok(slice::from_raw_parts_mut(ptr.cast(), sz))
     }
 }
