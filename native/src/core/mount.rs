@@ -132,8 +132,6 @@ pub fn find_preinit_device() -> String {
     } else {
         EncryptType::File
     };
-    debug!("find_preinit_device: encrypt_type={}", encrypt_type as u8);
-
     let mut matched_info = parse_mount_info("self")
         .into_iter()
         .filter_map(|info| {
