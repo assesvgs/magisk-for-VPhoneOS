@@ -19,7 +19,7 @@ use crate::zygisk::ZygiskState;
 use base::const_format::concatcp;
 use base::{
     AtomicArc, BufReadExt, FileAttr, FsPathBuilder, LoggedResult, ReadExt, ResultExt, Utf8CStr,
-    Utf8CStrBuf, WriteExt, cstr, fork_dont_care, info, libc, log_err, set_nice_name,
+    Utf8CStrBuf, WriteExt, cstr, debug, fork_dont_care, info, libc, log_err, set_nice_name,
 };
 use nix::fcntl::OFlag;
 use nix::mount::MsFlags;

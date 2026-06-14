@@ -6,7 +6,7 @@ use crate::socket::{IpcRead, UnixSocketExt};
 use base::libc::STDOUT_FILENO;
 use base::{
     Directory, FsPathBuilder, LoggedResult, ResultExt, Utf8CStr, WriteExt, cstr, fork_dont_care,
-    libc, log_err, raw_cstr, warn,
+    libc, log_err, raw_cstr, warn, debug,
 };
 use nix::fcntl::OFlag;
 use std::fmt::Write;

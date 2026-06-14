@@ -5,7 +5,7 @@ use base::{
     FsPathBuilder, LibcReturn, LoggedResult, MountInfo, ResultExt, Utf8CStr, Utf8CStrBuf, cstr,
     debug, info, libc, parse_mount_info, warn,
 };
-use libc::{c_uint, dev_t, major};
+use libc::{c_uint, dev_t, major, minor};
 use nix::mount::MsFlags;
 use nix::sys::stat::{Mode, SFlag, mknod};
 use num_traits::AsPrimitive;

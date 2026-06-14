@@ -3,7 +3,7 @@ use crate::logging::setup_klog;
 use crate::mount::is_rootfs;
 use crate::twostage::hexpatch_init_for_second_stage;
 use base::libc::{basename, getpid, mount, umask};
-use base::{LibcReturn, LoggedResult, ResultExt, cstr, info, raw_cstr};
+use base::{LibcReturn, LoggedResult, ResultExt, cstr, debug, info, raw_cstr};
 use std::ffi::{CStr, c_char};
 use std::ptr::null;
 
