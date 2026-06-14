@@ -13,9 +13,11 @@
 using namespace std;
 
 int zygisk_request(int req) {
+    ZLOGD("zygisk_request: req=%d\n", req);
     int fd = connect_daemon(RequestCode::ZYGISK);
     if (fd < 0) return fd;
     write_int(fd, req);
+    ZLOGD("zygisk_request: fd=%d\n", fd);
     return fd;
 }
 
@@ -109,9 +111,11 @@ int ZygiskModule::getModuleDir() const {
 void ZygiskModule::setOption(zygisk::Option opt) {
     if (g_ctx == nullptr)
         return;
+    ZLOGD("setOption: opt=%d, ctx_flags=0x%x\n", opt, g_ctx->flags);
     switch (opt) {
         case zygisk::FORCE_DENYLIST_UNMOUNT:
             g_ctx->flags |= DO_REVERT_UNMOUNT;
+            ZLOGD("setOption: FORCE_DENYLIST_UNMOUNT, new flags=0x%x\n", g_ctx->flags);
             break;
         case zygisk::DLCLOSE_MODULE_LIBRARY:
             unload = true;
@@ -431,6 +435,9 @@ void ZygiskContext::app_specialize_pre() {
 
     rust::Vec<int> module_fds;
     owned_fd fd = get_module_info(args.app->uid, module_fds);
+
+    ZLOGD("app_specialize_pre: process=%s, uid=%d, info_flags=0x%x\n",
+        process ? process : "(null)", args.app->uid, info_flags);
 
     // Check for sulist mode
     if (info_flags & +ZygiskStateFlags::AllowlistEnforcing) {

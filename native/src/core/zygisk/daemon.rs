@@ -21,7 +21,9 @@ const UNMOUNT_MASK: u32 =
     ZygiskStateFlags::ProcessOnDenyList.repr | ZygiskStateFlags::DenyListEnforced.repr;
 
 pub fn zygisk_should_load_module(flags: u32) -> bool {
-    flags & UNMOUNT_MASK != UNMOUNT_MASK && flags & ZygiskStateFlags::ProcessIsMagiskApp.repr == 0
+    let result = flags & UNMOUNT_MASK != UNMOUNT_MASK && flags & ZygiskStateFlags::ProcessIsMagiskApp.repr == 0;
+    debug!("zygisk_should_load_module: flags=0x{:x}, result={}", flags, result);
+    result
 }
 
 #[allow(unused_variables)]
@@ -161,6 +163,7 @@ impl MagiskD {
             let code = ZygiskRequest {
                 repr: client.read_decodable()?,
             };
+            debug!("zygisk_handler: request={}", code.repr);
             match code {
                 ZygiskRequest::GetInfo => self.get_process_info(client)?,
                 ZygiskRequest::ConnectCompanion => self
@@ -169,7 +172,9 @@ impl MagiskD {
                     .connect_zygiskd(client, self)
                     .log_with_msg(|w| w.write_str("zygiskd startup error"))?,
                 ZygiskRequest::GetModDir => self.get_mod_dir(client)?,
-                _ => {}
+                _ => {
+                    debug!("zygisk_handler: unhandled request={}", code.repr);
+                }
             }
             Ok(())
         }();
@@ -192,14 +197,17 @@ impl MagiskD {
         let uid: i32 = client.read_decodable()?;
         let process: String = client.read_decodable()?;
         let is_64_bit: bool = client.read_decodable()?;
+        debug!("get_process_info: uid={}, process={}, is_64_bit={}", uid, process, is_64_bit);
         let mut flags: u32 = 0;
         update_deny_flags(uid, &process, &mut flags);
+        debug!("get_process_info: after update_deny_flags, flags=0x{:x}", flags);
         if self.get_manager_uid(to_user_id(uid)) == uid {
             flags |= ZygiskStateFlags::ProcessIsMagiskApp.repr
         }
         if self.uid_granted_root(uid) {
             flags |= ZygiskStateFlags::ProcessGrantedRoot.repr
         }
+        debug!("get_process_info: final flags=0x{:x}", flags);
 
         // First send flags
         client.write_pod(&flags)?;

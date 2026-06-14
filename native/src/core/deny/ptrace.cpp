@@ -392,6 +392,7 @@ static int check_pid(int pid) {
     kill(pid, SIGSTOP);
 
     {
+        LOGD("proc_monitor: sulist_enabled=%d, PID=[%d]\n", sulist_enabled, pid);
         (sulist_enabled) ?
         // if sulist is enabled
         // the target is the process we want to mount magisk

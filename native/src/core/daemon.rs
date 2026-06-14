@@ -118,8 +118,10 @@ impl MagiskD {
     }
 
     fn handle_request_async(&self, mut client: UnixStream, code: RequestCode, cred: UCred) {
+        debug!("handle_request_async: code={:?}", code as i32);
         match code {
             RequestCode::DENYLIST => {
+                debug!("handle_request_async: DENYLIST request");
                 denylist_handler(client.into_raw_fd());
             }
             RequestCode::SUPERUSER => {
@@ -130,6 +132,7 @@ impl MagiskD {
                 self.prune_su_access();
                 scan_deny_apps();
                 if self.zygisk_enabled.load(Ordering::Relaxed) {
+                    debug!("handle_request_async: resetting zygisk");
                     self.zygisk.lock().reset(false);
                 }
             }
@@ -145,6 +148,7 @@ impl MagiskD {
                 }
             }
             RequestCode::ZYGISK => {
+                debug!("handle_request_async: ZYGISK request");
                 self.zygisk_handler(client);
             }
             _ => {}

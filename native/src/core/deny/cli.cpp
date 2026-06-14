@@ -36,11 +36,13 @@ Kitsune Mask specific Actions:
 
 void denylist_handler(int client) {
     if (client < 0) {
+        LOGD("denylist_handler: client<0, reverting unmount\n");
         revert_unmount();
         return;
     }
 
     int req = read_int(client);
+    LOGD("denylist_handler: req=%d\n", req);
     int res = DenyResponse::ERROR;
 
     switch (req) {

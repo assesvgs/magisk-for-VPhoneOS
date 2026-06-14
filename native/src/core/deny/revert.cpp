@@ -126,6 +126,8 @@ int mount_sbin() {
 static void lazy_unmount(const char* mountpoint) {
     if (umount2(mountpoint, MNT_DETACH) != -1)
         LOGD("denylist: Unmounted (%s)\n", mountpoint);
+    else
+        LOGW("denylist: Failed to unmount (%s)\n", mountpoint);
 }
 
 void su_mount();
@@ -229,6 +231,7 @@ void revert_daemon(int pid, int client) {
 }
 
 void revert_unmount(int pid) {
+    LOGD("revert_unmount: start, pid=%d\n", pid);
     if (pid > 0) {
         if (switch_mnt_ns(pid))
             return;
@@ -244,6 +247,7 @@ void revert_unmount(int pid) {
         if (info.source == "magisk")
             targets.insert(info.target);
     }
+    LOGD("revert_unmount: magisk tmpfs targets=%zu\n", targets.size());
     for (auto &s : reversed(targets))
         lazy_unmount(s.data());
     targets.clear();
@@ -253,6 +257,7 @@ void revert_unmount(int pid) {
         if (info.source == "worker")
             targets.insert(info.target);
     }
+    LOGD("revert_unmount: worker tmpfs targets=%zu\n", targets.size());
     for (auto &s : reversed(targets))
         lazy_unmount(s.data());
     targets.clear();
@@ -263,6 +268,7 @@ void revert_unmount(int pid) {
             info.target.starts_with("/data/adb/modules"))
             targets.insert(info.target);
     }
+    LOGD("revert_unmount: module targets=%zu\n", targets.size());
     for (auto &s : reversed(targets))
         lazy_unmount(s.data());
     targets.clear();
@@ -273,4 +279,5 @@ void revert_unmount(int pid) {
             lazy_unmount(info.target.data());
         }
     }
+    LOGD("revert_unmount: done\n");
 }

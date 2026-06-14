@@ -395,14 +395,19 @@ void mmap_data::swap(mmap_data &o) {
 
 string resolve_preinit_dir(const char *base_dir) {
     string dir = base_dir;
+    LOGD("resolve_preinit_dir: base_dir=%s\n", base_dir);
     if (access((dir + "/unencrypted").data(), F_OK) == 0) {
         dir += "/unencrypted/magisk";
+        LOGD("resolve_preinit_dir: found /unencrypted, result=%s\n", dir.c_str());
     } else if (access((dir + "/adb").data(), F_OK) == 0) {
         dir += "/adb";
+        LOGD("resolve_preinit_dir: found /adb, result=%s\n", dir.c_str());
     } else if (access((dir + "/watchdog").data(), F_OK) == 0) {
         dir += "/watchdog/magisk";
+        LOGD("resolve_preinit_dir: found /watchdog, result=%s\n", dir.c_str());
     } else {
         dir += "/magisk";
+        LOGD("resolve_preinit_dir: fallback, result=%s\n", dir.c_str());
     }
     return dir;
 }

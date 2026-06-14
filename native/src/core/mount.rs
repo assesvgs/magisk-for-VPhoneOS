@@ -19,11 +19,13 @@ const DYNAMIC_MAJOR_MAX: u32 = 254;
 
 pub fn setup_preinit_dir() {
     let magisk_tmp = get_magisk_tmp();
+    debug!("setup_preinit_dir: start, magisk_tmp={}", magisk_tmp);
 
     // Mount preinit directory
     let dev_path = cstr::buf::new::<64>()
         .join_path(magisk_tmp)
         .join_path(PREINITDEV);
+    debug!("setup_preinit_dir: checking dev_path={}", dev_path);
     if let Ok(attr) = dev_path.get_attr()
         && attr.st.st_mode & libc::S_IFMT as c_uint == libc::S_IFBLK.as_()
     {
@@ -33,6 +35,7 @@ pub fn setup_preinit_dir() {
         // What we do instead is to scan through the current mountinfo and find a pre-existing
         // mount point mounting our desired partition, and then bind mount the target folder.
         let preinit_dev = attr.st.st_rdev;
+        debug!("setup_preinit_dir: preinit_dev rdev={}", preinit_dev);
         let mnt_path = cstr::buf::default()
             .join_path(magisk_tmp)
             .join_path(PREINITMIRR);
@@ -46,6 +49,7 @@ pub fn setup_preinit_dir() {
                 let target = Utf8CStr::from_string(&mut target);
                 let mut preinit_dir = resolve_preinit_dir(target);
                 let preinit_dir = Utf8CStr::from_string(&mut preinit_dir);
+                debug!("setup_preinit_dir: trying preinit_dir={}", preinit_dir);
                 let r = || -> LoggedResult<()> {
                     preinit_dir.mkdir(0o700)?;
                     mnt_path.mkdirs(0o755)?;
@@ -59,6 +63,8 @@ pub fn setup_preinit_dir() {
                 }
             }
         }
+    } else {
+        debug!("setup_preinit_dir: dev_path not found or not block device");
     }
 
     warn!("mount: preinit dir not found");
@@ -126,25 +132,36 @@ pub fn find_preinit_device() -> String {
     } else {
         EncryptType::File
     };
+    debug!("find_preinit_device: encrypt_type={:?}", encrypt_type);
 
     let mut matched_info = parse_mount_info("self")
         .into_iter()
         .filter_map(|info| {
+            debug!("find_preinit_device: check target={}, source={}, fs_type={}, device={}:{}",
+                info.target, info.source, info.fs_type,
+                major(info.device as dev_t), minor(info.device as dev_t));
             if info.root != "/" || !info.source.starts_with('/') || info.source.contains("/dm-") {
+                debug!("find_preinit_device: skip (root/source/dm-): target={}", info.target);
                 return None;
             }
             match info.fs_type.as_str() {
                 "ext4" | "f2fs" => (),
-                _ => return None,
+                _ => {
+                    debug!("find_preinit_device: skip (fs_type={}): target={}", info.fs_type, info.target);
+                    return None;
+                },
             }
             if !info.fs_option.split(',').any(|s| s == "rw") {
+                debug!("find_preinit_device: skip (not rw): target={}", info.target);
                 return None;
             }
             if let Some(path) = Path::new(&info.source).parent() {
                 if !path.ends_with("by-name") && !path.ends_with("block") {
+                    debug!("find_preinit_device: skip (path={}): target={}", path.display(), info.target);
                     return None;
                 }
             } else {
+                debug!("find_preinit_device: skip (no parent): target={}", info.target);
                 return None;
             }
             // use device major number to filter out device-mapper
@@ -153,11 +170,12 @@ pub fn find_preinit_device() -> String {
                 && !info.source.contains("/vd")
                 && !info.source.contains("/by-name/")
             {
+                debug!("find_preinit_device: skip (device-mapper maj={}): target={}", maj, info.target);
                 return None;
             }
             // take data iff it's not encrypted or file-based encrypted without metadata
             // other partitions are always taken
-            match info.target.as_str() {
+            let result = match info.target.as_str() {
                 "/persist" | "/mnt/vendor/persist" => Some((PartId::Persist, info)),
                 "/metadata" => Some((PartId::Metadata, info)),
                 "/klogdump" => Some((PartId::Klogdump, info)),
@@ -165,11 +183,17 @@ pub fn find_preinit_device() -> String {
                 "/data" => Some((PartId::Data, info))
                     .take_if(|_| matches!(encrypt_type, EncryptType::None | EncryptType::File)),
                 _ => None,
+            };
+            if result.is_some() {
+                debug!("find_preinit_device: matched target={}", info.target);
             }
+            result
         })
         .collect::<Vec<_>>();
 
+    debug!("find_preinit_device: matched_info count={}", matched_info.len());
     if matched_info.is_empty() {
+        warn!("find_preinit_device: no partition found");
         return String::new();
     }
 
@@ -191,12 +215,15 @@ pub fn find_preinit_device() -> String {
         },
     );
     let info = &preinit_info.1;
+    debug!("find_preinit_device: selected target={}, source={}, fs_type={}", info.target, info.source, info.fs_type);
     let mut target = info.target.clone();
     let mut preinit_dir = resolve_preinit_dir(Utf8CStr::from_string(&mut target));
+    debug!("find_preinit_device: preinit_dir={}", preinit_dir);
     if unsafe { libc::getuid() } == 0
         && let Ok(tmp) = std::env::var("MAGISKTMP")
         && !tmp.is_empty()
     {
+        debug!("find_preinit_device: MAGISKTMP={}", tmp);
         let mut buf = cstr::buf::default();
         let mirror_dir = buf.append_path(&tmp).append_path(PREINITMIRR);
         let preinit_dir = Utf8CStr::from_string(&mut preinit_dir);
@@ -221,11 +248,13 @@ pub fn find_preinit_device() -> String {
             .log_ok();
         }
     }
-    Path::new(&info.source)
+    let result = Path::new(&info.source)
         .file_name()
         .and_then(OsStr::to_str)
         .unwrap_or_default()
-        .to_string()
+        .to_string();
+    info!("find_preinit_device: result={}", result);
+    result
 }
 
 // revert_unmount is now implemented in C++ (deny/revert.cpp)

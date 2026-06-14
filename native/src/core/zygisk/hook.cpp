@@ -145,6 +145,7 @@ ret new_##func(__VA_ARGS__)
 
 DCL_HOOK_FUNC(static char *, strdup, const char * str) {
     if (strcmp(kZygoteInit, str) == 0) {
+        ZLOGD("strdup: ZygoteInit detected, installing JNI hooks\n");
         g_hook->hook_zygote_jni();
     }
     return old_strdup(str);
@@ -159,11 +160,13 @@ DCL_HOOK_FUNC(int, fork) {
 DCL_HOOK_FUNC(static int, unshare, int flags) {
     int res = old_unshare(flags);
     if (g_ctx && (flags & CLONE_NEWNS) != 0 && res == 0) {
+        ZLOGD("unshare: CLONE_NEWNS, ctx_flags=0x%x\n", g_ctx->flags);
         int ret = (g_ctx->flags & DO_ALLOW)?
                 remote_request_sulist() :
         (g_ctx->flags & DO_REVERT_UNMOUNT)?
                 remote_request_umount() : 0 /* do nothing */;
         if (ret == -1) ZLOGE("remote request failed\n");
+        ZLOGD("unshare: ret=%d\n", ret);
         // clean up mount id hole by unshare mount namespace twice
         old_unshare(CLONE_NEWNS);
         // Restore errno back to 0
@@ -243,6 +246,7 @@ ZygiskContext::ZygiskContext(JNIEnv *env, void *args) :
     allowed_fds(get_fd_max()), hook_info_lock(PTHREAD_MUTEX_INITIALIZER) { g_ctx = this; }
 
 ZygiskContext::~ZygiskContext() {
+    ZLOGD("~ZygiskContext: is_child=%d\n", is_child());
     // This global pointer points to a variable on the stack.
     // Set this to nullptr to prevent leaking local variable.
     // This also disables most plt hooked functions.
@@ -541,6 +545,7 @@ void HookContext::hook_jni_methods(JNIEnv *env, const char *clz, JNIMethods meth
 }
 
 void HookContext::hook_zygote_jni() {
+    ZLOGD("hook_zygote_jni: start\n");
     using method_sig = jint(*)(JavaVM **, jsize, jsize *);
     auto get_created_vms = reinterpret_cast<method_sig>(
             dlsym(RTLD_DEFAULT, "JNI_GetCreatedJavaVMs"));
@@ -627,8 +632,10 @@ void HookContext::restore_zygote_hook(JNIEnv *env) {
 // -----------------------------------------------------------------
 
 void hook_entry() {
+    ZLOGD("hook_entry: initializing\n");
     default_new(g_hook);
     g_hook->hook_plt();
+    ZLOGD("hook_entry: done\n");
 }
 
 void hookJniNativeMethods(JNIEnv *env, const char *clz, JNINativeMethod *methods, int numMethods) {

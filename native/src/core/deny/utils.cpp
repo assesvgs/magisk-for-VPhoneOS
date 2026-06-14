@@ -413,10 +413,12 @@ int disable_deny() {
 }
 
 void initialize_denylist() {
+    LOGD("initialize_denylist: start\n");
     if (!denylist_enforced) {
         if (MagiskD::Get().get_db_setting(DbEntryKey::DenylistConfig))
             enable_deny();
     }
+    LOGD("initialize_denylist: done, enforced=%d\n", (bool)denylist_enforced);
 }
 
 bool is_deny_target(int uid, string_view process, int max_len) {
@@ -448,12 +450,16 @@ bool is_deny_target(int uid, string_view process, int max_len) {
 }
 
 void update_deny_flags(int uid, rust::Str process, uint32_t &flags) {
+    LOGD("update_deny_flags: uid=%d, process=%.*s\n", uid, (int)process.length(), process.begin());
     if (is_deny_target(uid, { process.begin(), process.end() })) {
         flags |= +ZygiskStateFlags::ProcessOnDenyList;
+        LOGD("update_deny_flags: ProcessOnDenyList set\n");
     }
     if (denylist_enforced) {
         flags |= +ZygiskStateFlags::DenyListEnforced;
+        LOGD("update_deny_flags: DenyListEnforced set\n");
     }
+    LOGD("update_deny_flags: result flags=0x%x\n", flags);
 }
 
 void rescan_apps() {

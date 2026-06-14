@@ -17,25 +17,30 @@ extern "C" void exec_companion_entry(int, comp_entry);
 static int clean_ns64 = -1, clean_ns32 = -1;
 
 int remote_request_sulist() {
+    LOGD("remote_request_sulist: start\n");
     if (int fd = zygisk_request(+ZygiskRequest::SulistRootNs); fd >= 0) {
         int res = read_int(fd);
+        LOGD("remote_request_sulist: fd=%d, res=%d\n", fd, res);
         close(fd);
         return res;
     }
+    LOGD("remote_request_sulist: failed\n");
     return -1;
 }
 
 int remote_request_umount() {
+    LOGD("remote_request_umount: start\n");
     if (int fd = zygisk_request(+ZygiskRequest::RevertUnmount); fd >= 0) {
         // directly open fd path from magisk proc without recv_fd
         auto ns_path = read_string(fd);
         auto clean_ns = xopen(ns_path.data(), O_RDONLY);
-        LOGD("denylist: set to clean ns [%s] fd=[%d]\n", ns_path.data(), clean_ns);
+        LOGD("remote_request_umount: ns_path=[%s], clean_ns=%d\n", ns_path.data(), clean_ns);
         if (clean_ns > 0) xsetns(clean_ns, CLONE_NEWNS);
         close(clean_ns);
         close(fd);
         return 0;
     }
+    LOGD("remote_request_umount: failed\n");
     return -1;
 }
 
