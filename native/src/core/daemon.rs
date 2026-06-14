@@ -118,7 +118,7 @@ impl MagiskD {
     }
 
     fn handle_request_async(&self, mut client: UnixStream, code: RequestCode, cred: UCred) {
-        debug!("handle_request_async: code={:?}", code as i32);
+        debug!("handle_request_async: code={}", code.repr);
         match code {
             RequestCode::DENYLIST => {
                 debug!("handle_request_async: DENYLIST request");
