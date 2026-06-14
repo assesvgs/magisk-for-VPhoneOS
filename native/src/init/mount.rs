@@ -63,6 +63,29 @@ pub(crate) fn is_device_mounted(dev: u64, target: Pin<&mut CxxString>) -> bool {
     false
 }
 
+/// 从 mountinfo 检测 /data 分区的设备号
+/// 用于 fallback：当 preinit_dev 为空时，在 init namespace 中直接检测
+/// 参考 27.0 的思路：先找已挂载分区，bind mount 避免直接挂载块设备
+pub(crate) fn detect_data_device() -> u64 {
+    debug!("detect_data_device: scanning /proc/self/mountinfo for /data partition");
+    for info in parse_mount_info("self") {
+        if info.target == "/data"
+            && info.source.starts_with('/')
+            && !info.source.contains("/dm-")
+            && (info.fs_type == "ext4" || info.fs_type == "f2fs")
+            && info.fs_option.split(',').any(|s| s == "rw")
+        {
+            debug!(
+                "detect_data_device: found /data on {} (fs_type={}, device={})",
+                info.source, info.fs_type, info.device
+            );
+            return info.device;
+        }
+    }
+    debug!("detect_data_device: /data partition not found");
+    0
+}
+
 const RAMFS_MAGIC: u32 = 0x858458f6;
 
 pub(crate) fn is_rootfs() -> bool {

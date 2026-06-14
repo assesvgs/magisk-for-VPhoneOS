@@ -1,6 +1,8 @@
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/resource.h>
+#include <unistd.h>
+#include <cstring>
 #include <dlfcn.h>
 #include <unwind.h>
 #include <span>
@@ -161,14 +163,55 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
     int res = old_unshare(flags);
     if (g_ctx && (flags & CLONE_NEWNS) != 0 && res == 0) {
         ZLOGD("unshare: CLONE_NEWNS, ctx_flags=0x%x\n", g_ctx->flags);
+
+        // [诊断] 记录第一次 unshare 后的 mount namespace ID
+        char ns_before[128] = {};
+        if (ssize_t len = readlink("/proc/self/ns/mnt", ns_before, sizeof(ns_before)-1); len > 0) {
+            ns_before[len] = '\0';
+            ZLOGD("unshare: ns_before=[%s]\n", ns_before);
+        }
+
+        // [诊断] 记录 /sdcard 和 /storage/self/primary 状态
+        ZLOGD("unshare: /sdcard exists=%d\n", access("/sdcard", F_OK) == 0);
+        ZLOGD("unshare: /storage/self/primary exists=%d\n", access("/storage/self/primary", F_OK) == 0);
+
+        // [诊断] 记录分支决策
+        ZLOGD("unshare: branch decision: flags=0x%x (DO_ALLOW=%d, DO_REVERT=%d)\n",
+            g_ctx->flags,
+            !!(g_ctx->flags & DO_ALLOW),
+            !!(g_ctx->flags & DO_REVERT_UNMOUNT));
+
         int ret = (g_ctx->flags & DO_ALLOW)?
                 remote_request_sulist() :
         (g_ctx->flags & DO_REVERT_UNMOUNT)?
                 remote_request_umount() : 0 /* do nothing */;
         if (ret == -1) ZLOGE("remote request failed\n");
         ZLOGD("unshare: ret=%d\n", ret);
+
+        // [诊断] 记录 remote_request 后的状态
+        ZLOGD("unshare: /sdcard exists_after_remote=%d\n", access("/sdcard", F_OK) == 0);
+        ZLOGD("unshare: /storage/self/primary exists_after_remote=%d\n", access("/storage/self/primary", F_OK) == 0);
+
         // clean up mount id hole by unshare mount namespace twice
-        old_unshare(CLONE_NEWNS);
+        int unshare2_ret = old_unshare(CLONE_NEWNS);
+        ZLOGD("unshare: 2nd old_unshare ret=%d, errno=%d\n", unshare2_ret, errno);
+
+        // [诊断] 记录第二次 unshare 后的状态
+        char ns_after[128] = {};
+        if (ssize_t len = readlink("/proc/self/ns/mnt", ns_after, sizeof(ns_after)-1); len > 0) {
+            ns_after[len] = '\0';
+            ZLOGD("unshare: ns_after=[%s]\n", ns_after);
+        }
+        ZLOGD("unshare: /sdcard exists_after_2nd_unshare=%d\n", access("/sdcard", F_OK) == 0);
+        ZLOGD("unshare: /storage/self/primary exists_after_2nd_unshare=%d\n", access("/storage/self/primary", F_OK) == 0);
+
+        // [诊断] 检查 namespace 是否变化
+        if (ns_before[0] && ns_after[0] && strcmp(ns_before, ns_after) != 0) {
+            ZLOGD("unshare: WARNING namespace changed! [%s] -> [%s]\n", ns_before, ns_after);
+        } else if (ns_before[0] && ns_after[0]) {
+            ZLOGD("unshare: namespace unchanged [%s]\n", ns_before);
+        }
+
         // Restore errno back to 0
         errno = 0;
     }

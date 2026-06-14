@@ -1,5 +1,7 @@
 #include <sys/mount.h>
 #include <android/dlext.h>
+#include <unistd.h>
+#include <cstring>
 #include <dlfcn.h>
 #include <poll.h>
 
@@ -33,14 +35,53 @@ int remote_request_umount() {
     if (int fd = zygisk_request(+ZygiskRequest::RevertUnmount); fd >= 0) {
         // directly open fd path from magisk proc without recv_fd
         auto ns_path = read_string(fd);
+        LOGD("remote_request_umount: ns_path=[%s]\n", ns_path.data());
+
+        // [诊断] 检查 ns_path 是否为空（daemon 未响应时为空）
+        if (ns_path.empty()) {
+            LOGE("remote_request_umount: ns_path is empty! daemon did not respond\n");
+            close(fd);
+            return -1;
+        }
+
         auto clean_ns = xopen(ns_path.data(), O_RDONLY);
-        LOGD("remote_request_umount: ns_path=[%s], clean_ns=%d\n", ns_path.data(), clean_ns);
-        if (clean_ns > 0) xsetns(clean_ns, CLONE_NEWNS);
+        LOGD("remote_request_umount: clean_ns_fd=%d\n", clean_ns);
+
+        if (clean_ns > 0) {
+            // [诊断] 记录 setns 前的 namespace
+            char ns_before[128] = {};
+            if (ssize_t len = readlink("/proc/self/ns/mnt", ns_before, sizeof(ns_before)-1); len > 0) {
+                ns_before[len] = '\0';
+                LOGD("remote_request_umount: ns_before_setns=[%s]\n", ns_before);
+            }
+
+            int setns_ret = xsetns(clean_ns, CLONE_NEWNS);
+            LOGD("remote_request_umount: setns ret=%d, errno=%d(%s)\n",
+                 setns_ret, errno, strerror(errno));
+
+            // [诊断] 记录 setns 后的 namespace
+            char ns_after[128] = {};
+            if (ssize_t len = readlink("/proc/self/ns/mnt", ns_after, sizeof(ns_after)-1); len > 0) {
+                ns_after[len] = '\0';
+                LOGD("remote_request_umount: ns_after_setns=[%s]\n", ns_after);
+            }
+
+            // [诊断] 检查 namespace 是否变化
+            if (ns_before[0] && ns_after[0] && strcmp(ns_before, ns_after) != 0) {
+                LOGD("remote_request_umount: namespace CHANGED [%s] -> [%s]\n", ns_before, ns_after);
+            } else if (ns_before[0] && ns_after[0]) {
+                LOGD("remote_request_umount: namespace unchanged [%s]\n", ns_before);
+            }
+        } else {
+            LOGE("remote_request_umount: failed to open ns_path, errno=%d(%s)\n",
+                 errno, strerror(errno));
+        }
+
         close(clean_ns);
         close(fd);
         return 0;
     }
-    LOGD("remote_request_umount: failed\n");
+    LOGD("remote_request_umount: zygisk_request failed\n");
     return -1;
 }
 

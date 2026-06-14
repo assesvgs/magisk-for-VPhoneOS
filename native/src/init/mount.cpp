@@ -115,6 +115,7 @@ void MagiskInit::mount_preinit_dir() noexcept {
         return;
     }
     xmknod(PREINITDEV, S_IFBLK | 0600, dev);
+    LOGD("mount_preinit_dir: mknod %s dev=%lu\n", PREINITDEV, (unsigned long)dev);
     xmkdir(MIRRDIR, 0);
     bool mounted = false;
     // First, find if it is already mounted
@@ -129,8 +130,21 @@ void MagiskInit::mount_preinit_dir() noexcept {
     // Since we are mounting the block device directly, make sure to ONLY mount the partitions
     // as read-only, or else the kernel might crash due to crappy drivers.
     // After the device boots up, magiskd will properly symlink the correct path at PREINITMIRR as writable.
-    if (mounted || mount(PREINITDEV, MIRRDIR, "ext4", MS_RDONLY, nullptr) == 0 ||
-        mount(PREINITDEV, MIRRDIR, "f2fs", MS_RDONLY, nullptr) == 0) {
+    if (!mounted) {
+        if (mount(PREINITDEV, MIRRDIR, "ext4", MS_RDONLY, nullptr) == 0) {
+            LOGD("mount_preinit_dir: mounted as ext4\n");
+            mounted = true;
+        } else {
+            LOGD("mount_preinit_dir: ext4 mount failed, errno=%d\n", errno);
+            if (mount(PREINITDEV, MIRRDIR, "f2fs", MS_RDONLY, nullptr) == 0) {
+                LOGD("mount_preinit_dir: mounted as f2fs\n");
+                mounted = true;
+            } else {
+                LOGD("mount_preinit_dir: f2fs mount also failed, errno=%d\n", errno);
+            }
+        }
+    }
+    if (mounted) {
         string preinit_dir = resolve_preinit_dir(MIRRDIR);
         LOGD("mount_preinit_dir: preinit_dir=%s\n", preinit_dir.c_str());
         // Create bind mount

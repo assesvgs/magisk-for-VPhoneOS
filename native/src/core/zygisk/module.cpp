@@ -446,17 +446,23 @@ void ZygiskContext::app_specialize_pre() {
             // Process is on allowlist - mount Magisk for it
             ZLOGI("[%s] is on the sulist (allow)\n", process);
             flags |= DO_ALLOW;
+            ZLOGD("app_specialize_pre: set DO_ALLOW, new flags=0x%x\n", flags);
         } else {
             // Process is NOT on allowlist - unmount Magisk
             ZLOGI("[%s] is NOT on the sulist (revert)\n", process);
             flags |= DO_REVERT_UNMOUNT;
+            ZLOGD("app_specialize_pre: set DO_REVERT_UNMOUNT (sulist), new flags=0x%x\n", flags);
         }
     } else if ((info_flags & UNMOUNT_MASK) == UNMOUNT_MASK) {
         // Normal denylist mode
         ZLOGI("[%s] is on the denylist\n", process);
         flags |= DO_REVERT_UNMOUNT;
+        ZLOGD("app_specialize_pre: set DO_REVERT_UNMOUNT (denylist), new flags=0x%x\n", flags);
     } else if (fd >= 0) {
         run_modules_pre(module_fds);
+        ZLOGD("app_specialize_pre: modules loaded, fd=%d\n", fd);
+    } else {
+        ZLOGD("app_specialize_pre: no special action, fd=%d, info_flags=0x%x\n", fd, info_flags);
     }
 }
 

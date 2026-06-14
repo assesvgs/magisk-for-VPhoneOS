@@ -172,6 +172,13 @@ impl MagiskD {
                     .connect_zygiskd(client, self)
                     .log_with_msg(|w| w.write_str("zygiskd startup error"))?,
                 ZygiskRequest::GetModDir => self.get_mod_dir(client)?,
+                // [诊断] 明确记录未处理的请求，使用 error 级别确保在 release 构建中也可见
+                ZygiskRequest::SulistRootNs => {
+                    error!("zygisk_handler: UNHANDLED SulistRootNs request! client will block");
+                }
+                ZygiskRequest::RevertUnmount => {
+                    error!("zygisk_handler: UNHANDLED RevertUnmount request! client will block");
+                }
                 _ => {
                     debug!("zygisk_handler: unhandled request={}", code.repr);
                 }
