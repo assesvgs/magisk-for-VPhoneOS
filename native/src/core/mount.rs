@@ -115,6 +115,7 @@ enum PartId {
     Persist,
 }
 
+#[derive(Copy, Clone)]
 enum EncryptType {
     None,
     Block,
@@ -132,6 +133,7 @@ pub fn find_preinit_device() -> String {
     } else {
         EncryptType::File
     };
+    debug!("find_preinit_device: encrypt_type={}", encrypt_type as u8);
     let mut matched_info = parse_mount_info("self")
         .into_iter()
         .filter_map(|info| {
@@ -182,6 +184,9 @@ pub fn find_preinit_device() -> String {
                     .take_if(|_| matches!(encrypt_type, EncryptType::None | EncryptType::File)),
                 _ => None,
             };
+            if let Some((_, ref matched_info)) = result {
+                debug!("find_preinit_device: matched target={}", matched_info.target);
+            }
             result
         })
         .collect::<Vec<_>>();
