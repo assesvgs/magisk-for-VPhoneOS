@@ -1,5 +1,5 @@
 use crate::consts::{MODULEMNT, MODULEROOT, PREINITDEV, PREINITMIRR, WORKERDIR};
-use crate::ffi::{get_magisk_tmp, resolve_preinit_dir, switch_mnt_ns};
+use crate::ffi::{get_magisk_tmp, resolve_preinit_dir};
 use crate::resetprop::get_prop;
 use base::{
     FsPathBuilder, LibcReturn, LoggedResult, MountInfo, ResultExt, Utf8CStr, Utf8CStrBuf, cstr,
@@ -182,9 +182,6 @@ pub fn find_preinit_device() -> String {
                     .take_if(|_| matches!(encrypt_type, EncryptType::None | EncryptType::File)),
                 _ => None,
             };
-            if result.is_some() {
-                debug!("find_preinit_device: matched target={}", info.target);
-            }
             result
         })
         .collect::<Vec<_>>();
