@@ -68,7 +68,6 @@ pub mod ffi {
         fn inject_magisk_rc(fd: i32, tmp_dir: Utf8CStrRef);
         fn switch_root(path: Utf8CStrRef);
         fn is_device_mounted(dev: u64, target: Pin<&mut CxxString>) -> bool;
-        fn detect_data_device() -> u64;
     }
 
     // BootConfig
