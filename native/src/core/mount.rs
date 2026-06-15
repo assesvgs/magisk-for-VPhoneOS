@@ -1,17 +1,24 @@
-use crate::consts::{MODULEMNT, MODULEROOT, PREINITDEV, PREINITMIRR, WORKERDIR};
-use crate::ffi::{get_magisk_tmp, resolve_preinit_dir};
-use crate::resetprop::get_prop;
+// 标准库
+use std::cmp::Ordering::{Greater, Less};
+use std::ffi::OsStr;
+use std::path::Path;
+
+// 外部 crate
 use base::{
     FsPathBuilder, LibcReturn, LoggedResult, MountInfo, ResultExt, Utf8CStr, Utf8CStrBuf, cstr,
     debug, info, libc, parse_mount_info, warn,
 };
-use libc::{c_uint, dev_t, major, minor};
+use libc::{c_uint, dev_t, major};
+#[cfg(debug_assertions)]
+use libc::minor;
 use nix::mount::MsFlags;
 use nix::sys::stat::{Mode, SFlag, mknod};
 use num_traits::AsPrimitive;
-use std::cmp::Ordering::{Greater, Less};
-use std::ffi::OsStr;
-use std::path::Path;
+
+// 内部模块
+use crate::consts::{MODULEMNT, MODULEROOT, PREINITDEV, PREINITMIRR, WORKERDIR};
+use crate::ffi::{get_magisk_tmp, resolve_preinit_dir};
+use crate::resetprop::get_prop;
 
 // Linux allocated devices: 240-254 are reserved for LOCAL/EXPERIMENTAL use.
 const DYNAMIC_MAJOR_MIN: u32 = 240;
@@ -19,7 +26,7 @@ const DYNAMIC_MAJOR_MAX: u32 = 254;
 
 pub fn setup_preinit_dir() {
     let magisk_tmp = get_magisk_tmp();
-    debug!("setup_preinit_dir: start, magisk_tmp={}", magisk_tmp);
+    info!("setup_preinit_dir: start, magisk_tmp={}", magisk_tmp);
 
     // Mount preinit directory
     let dev_path = cstr::buf::new::<64>()
@@ -29,6 +36,7 @@ pub fn setup_preinit_dir() {
     if let Ok(attr) = dev_path.get_attr()
         && attr.st.st_mode & libc::S_IFMT as c_uint == libc::S_IFBLK.as_()
     {
+        debug!("setup_preinit_dir: dev_path is block device");
         // DO NOT mount the block device directly, as we do not know the flags and configs
         // to properly mount the partition; mounting block devices directly as rw could cause
         // crashes if the filesystem driver is crap (e.g. some broken F2FS drivers).
@@ -39,9 +47,14 @@ pub fn setup_preinit_dir() {
         let mnt_path = cstr::buf::default()
             .join_path(magisk_tmp)
             .join_path(PREINITMIRR);
+        debug!("setup_preinit_dir: mnt_path={}", mnt_path);
         for info in parse_mount_info("self") {
+            debug!("setup_preinit_dir: checking target={}, device={}, root={}, options={}", 
+                info.target, info.device, info.root, info.fs_option);
             if info.root == "/" && info.device == preinit_dev {
+                debug!("setup_preinit_dir: found matching device at {}", info.target);
                 if !info.fs_option.split(',').any(|s| s == "rw") {
+                    debug!("setup_preinit_dir: skip (not rw): {}", info.target);
                     // Only care about rw mounts
                     continue;
                 }
@@ -58,7 +71,7 @@ pub fn setup_preinit_dir() {
                     Ok(())
                 }();
                 if r.is_ok() {
-                    info!("* Found preinit dir: {}", preinit_dir);
+                    info!("setup_preinit_dir: found preinit dir: {}", preinit_dir);
                     return;
                 }
             }
@@ -124,6 +137,8 @@ enum EncryptType {
 }
 
 pub fn find_preinit_device() -> String {
+    debug!("find_preinit_device: start");
+
     let encrypt_type = if get_prop(cstr!("ro.crypto.state")) != "encrypted" {
         EncryptType::None
     } else if get_prop(cstr!("ro.crypto.type")) == "block" {
@@ -134,6 +149,8 @@ pub fn find_preinit_device() -> String {
         EncryptType::File
     };
     debug!("find_preinit_device: encrypt_type={}", encrypt_type as u8);
+
+    debug!("find_preinit_device: parsing /proc/self/mountinfo");
     let mut matched_info = parse_mount_info("self")
         .into_iter()
         .filter_map(|info| {
@@ -184,8 +201,8 @@ pub fn find_preinit_device() -> String {
                     .take_if(|_| matches!(encrypt_type, EncryptType::None | EncryptType::File)),
                 _ => None,
             };
-            if let Some((_, ref matched_info)) = result {
-                debug!("find_preinit_device: matched target={}", matched_info.target);
+            if let Some((_, ref _matched_info)) = result {
+                debug!("find_preinit_device: matched target={}", _matched_info.target);
             }
             result
         })
@@ -253,7 +270,7 @@ pub fn find_preinit_device() -> String {
         .and_then(OsStr::to_str)
         .unwrap_or_default()
         .to_string();
-    info!("find_preinit_device: result={}", result);
+    debug!("find_preinit_device: result='{}'", result);
     result
 }
 

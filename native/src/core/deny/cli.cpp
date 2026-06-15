@@ -100,7 +100,7 @@ int denylist_cli(rust::Vec<rust::String> &args) {
     // End with nullptr
     argv.push_back(nullptr);
 
-    int req;
+    int req = 0;
     if (argv[0] == "enable"sv)
         req = DenyRequest::ENFORCE;
     else if (argv[0] == "disable"sv)

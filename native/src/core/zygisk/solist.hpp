@@ -56,7 +56,7 @@ namespace SoList
         return addr == nullptr ? nullptr : *addr;
     }
 
-    static void NullifySoName(const char* target_name) {
+    static void __attribute__((unused)) NullifySoName(const char* target_name) {
         for (auto *iter = solist; iter; iter = iter->get_next()) {
             if (iter->get_name() && iter->get_path() && strstr(iter->get_path(), target_name)) {
                 ZLOGD("solist_nullify: [%s] [%s]\n", iter->get_name(), iter->get_path());
@@ -66,7 +66,7 @@ namespace SoList
         }
     }
 
-    static bool Initialize() {
+    static bool __attribute__((unused)) Initialize() {
         #if defined(__LP64__)
             void* dl_linker = xdl_open("/system/bin/linker64", XDL_TRY_FORCE_LOAD);
         #else

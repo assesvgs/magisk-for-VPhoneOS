@@ -260,39 +260,48 @@ static void extract_files(bool sbin) {
 }
 
 void MagiskInit::patch_ro_root() noexcept {
+    LOGI("patch_ro_root: start\n");
+
     mount_list.emplace_back("/data");
+    LOGD("patch_ro_root: calling parse_config_file()\n");
     parse_config_file();
+    LOGD("patch_ro_root: parse_config_file done, preinit_dev='%s'\n", preinit_dev.c_str());
 
     string tmp_dir;
 
     if (access("/sbin", F_OK) == 0) {
         tmp_dir = "/sbin";
+        LOGD("patch_ro_root: tmp_dir=/sbin\n");
     } else {
         tmp_dir = "/debug_ramdisk";
+        LOGD("patch_ro_root: tmp_dir=/debug_ramdisk\n");
         xmkdir("/data/debug_ramdisk", 0);
         xmount("/debug_ramdisk", "/data/debug_ramdisk", nullptr, MS_MOVE, nullptr);
     }
 
+    LOGD("patch_ro_root: calling setup_tmp(%s)\n", tmp_dir.data());
     setup_tmp(tmp_dir.data());
+    LOGD("patch_ro_root: setup_tmp done\n");
     chdir(tmp_dir.data());
 
     if (tmp_dir == "/sbin") {
-        // Recreate original sbin structure
+        LOGD("patch_ro_root: recreating original sbin structure\n");
         xmkdir(MIRRDIR, 0755);
         xmount("/", MIRRDIR, nullptr, MS_BIND, nullptr);
         recreate_sbin(MIRRDIR "/sbin", true);
         xumount2(MIRRDIR, MNT_DETACH);
     } else {
-        // Restore debug_ramdisk
+        LOGD("patch_ro_root: restoring debug_ramdisk\n");
         xmount("/data/debug_ramdisk", "/debug_ramdisk", nullptr, MS_MOVE, nullptr);
         rmdir("/data/debug_ramdisk");
     }
 
     xrename("overlay.d", ROOTOVL);
+    LOGD("patch_ro_root: renamed overlay.d to %s\n", ROOTOVL);
 
     extern bool avd_hack;
-    // Handle avd hack
     if (avd_hack) {
+        LOGD("patch_ro_root: applying avd hack\n");
         int src = xopen("/init", O_RDONLY | O_CLOEXEC);
         mmap_data init("/init");
         // Force disable early mount on original init
@@ -306,32 +315,42 @@ void MagiskInit::patch_ro_root() noexcept {
         close(dest);
     }
 
+    LOGD("patch_ro_root: calling load_overlay_rc\n");
     load_overlay_rc(ROOTOVL);
+
     if (access(ROOTOVL "/sbin", F_OK) == 0) {
-        // Move files in overlay.d/sbin into tmp_dir
+        LOGD("patch_ro_root: moving overlay.d/sbin to tmp_dir\n");
         mv_path(ROOTOVL "/sbin", ".");
     }
 
-    // Patch init.rc
+    LOGD("patch_ro_root: patching init.rc\n");
     bool p;
     if (access(NEW_INITRC_DIR "/" INIT_RC, F_OK) == 0) {
-        // Android 11's new init.rc
+        LOGD("patch_ro_root: using new init.rc path\n");
         p = patch_rc_scripts(NEW_INITRC_DIR, tmp_dir.data(), false);
     } else {
+        LOGD("patch_ro_root: using legacy init.rc path\n");
         p = patch_rc_scripts("/", tmp_dir.data(), false);
     }
-    if (p) patch_fissiond(tmp_dir.data());
+    if (p) {
+        LOGD("patch_ro_root: calling patch_fissiond\n");
+        patch_fissiond(tmp_dir.data());
+    }
 
-    // Extract overlay archives
+    LOGD("patch_ro_root: extracting overlay archives\n");
     extract_files(false);
 
+    LOGD("patch_ro_root: calling handle_sepolicy\n");
     handle_sepolicy();
+    LOGD("patch_ro_root: handle_sepolicy done\n");
     unlink("init-ld");
 
-    // Mount rootdir
+    LOGD("patch_ro_root: calling mount_overlay(/)\n");
     mount_overlay("/");
+    LOGD("patch_ro_root: mount_overlay done\n");
 
     chdir("/");
+    LOGI("patch_ro_root: done\n");
 }
 
 #define PRE_TMPSRC "/magisk"

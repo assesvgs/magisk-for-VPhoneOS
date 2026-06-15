@@ -1,6 +1,6 @@
 use crate::ffi::MagiskInit;
 use base::{
-    Directory, FsPathBuilder, LibcReturn, LoggedResult, ResultExt, Utf8CStr, cstr, debug, libc,
+    Directory, FsPathBuilder, LibcReturn, LoggedResult, ResultExt, Utf8CStr, cstr, debug, info, libc,
     nix, parse_mount_info, raw_cstr,
 };
 use cxx::CxxString;
@@ -93,12 +93,14 @@ impl MagiskInit {
     }
 
     pub(crate) fn exec_init(&mut self) {
+        info!("exec_init: start");
         for path in self.mount_list.iter_mut().rev() {
             let path = Utf8CStr::from_string(path);
             if path.unmount().log().is_ok() {
-                debug!("Unmount [{}]", path);
+                debug!("exec_init: Unmount [{}]", path);
             }
         }
+        info!("exec_init: executing /init");
         unsafe {
             libc::execve(raw_cstr!("/init"), self.argv.cast(), environ.cast())
                 .check_err()

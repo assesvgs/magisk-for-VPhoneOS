@@ -72,10 +72,17 @@ void MagiskInit::collect_devices() const noexcept {
 }
 
 uint64_t MagiskInit::find_block(const char *partname) const noexcept {
-    if (dev_list.empty())
+    LOGD("find_block: start, partname='%s'\n", partname);
+
+    if (dev_list.empty()) {
+        LOGD("find_block: dev_list empty, calling collect_devices()\n");
         collect_devices();
+    }
+    LOGD("find_block: dev_list.size=%zu\n", dev_list.size());
 
     for (int tries = 0; tries < 3; ++tries) {
+        LOGD("find_block: try %d/3\n", tries + 1);
+
         for (auto &dev : dev_list) {
             const char *name;
             if (strcasecmp(dev.partname, partname) == 0)
@@ -89,40 +96,49 @@ uint64_t MagiskInit::find_block(const char *partname) const noexcept {
             else
                 continue;
 
-            LOGD("Found %s: [%s] (%d, %d)\n", name, dev.devname, dev.major, dev.minor);
+            LOGD("find_block: Found %s: [%s] (%d, %d)\n", name, dev.devname, dev.major, dev.minor);
             return makedev(dev.major, dev.minor);
         }
+
         // Wait 10ms and try again
+        LOGD("find_block: not found, waiting 10ms\n");
         usleep(10000);
         dev_list.clear();
         collect_devices();
     }
 
-    // The requested partname does not exist
+    LOGD("find_block: partname '%s' not found after 3 tries\n", partname);
     return 0;
 }
 
 void MagiskInit::mount_preinit_dir() noexcept {
-    LOGD("mount_preinit_dir: preinit_dev=%s\n", preinit_dev.c_str());
+    LOGI("mount_preinit_dir: start, preinit_dev='%s'\n", preinit_dev.c_str());
+
     if (preinit_dev.empty()) {
-        LOGD("mount_preinit_dir: preinit_dev is empty, returning\n");
+        LOGW("mount_preinit_dir: preinit_dev is empty, returning\n");
         return;
     }
+
+    LOGD("mount_preinit_dir: calling find_block('%s')\n", preinit_dev.c_str());
     auto dev = find_block(preinit_dev.c_str());
     LOGD("mount_preinit_dir: find_block result=%lu\n", (unsigned long)dev);
+
     if (dev == 0) {
-        LOGE("Cannot find preinit %s, abort!\n", preinit_dev.c_str());
+        LOGE("mount_preinit_dir: find_block failed for '%s'\n", preinit_dev.c_str());
         return;
     }
+
+    LOGD("mount_preinit_dir: creating block device %s with dev=%lu\n",
+         PREINITDEV, (unsigned long)dev);
     xmknod(PREINITDEV, S_IFBLK | 0600, dev);
-    LOGD("mount_preinit_dir: mknod %s dev=%lu\n", PREINITDEV, (unsigned long)dev);
+
     xmkdir(MIRRDIR, 0);
     bool mounted = false;
+
     // First, find if it is already mounted
     std::string mnt_point;
     if (rust::is_device_mounted(dev, mnt_point)) {
-        // Already mounted, just bind mount
-        LOGD("mount_preinit_dir: already mounted at %s\n", mnt_point.c_str());
+        LOGD("mount_preinit_dir: device already mounted at %s\n", mnt_point.c_str());
         xmount(mnt_point.data(), MIRRDIR, nullptr, MS_BIND, nullptr);
         mounted = true;
     }
@@ -131,37 +147,43 @@ void MagiskInit::mount_preinit_dir() noexcept {
     // as read-only, or else the kernel might crash due to crappy drivers.
     // After the device boots up, magiskd will properly symlink the correct path at PREINITMIRR as writable.
     if (!mounted) {
+        LOGD("mount_preinit_dir: trying ext4 mount\n");
         if (mount(PREINITDEV, MIRRDIR, "ext4", MS_RDONLY, nullptr) == 0) {
-            LOGD("mount_preinit_dir: mounted as ext4\n");
+            LOGD("mount_preinit_dir: ext4 mount success\n");
             mounted = true;
         } else {
-            LOGD("mount_preinit_dir: ext4 mount failed, errno=%d\n", errno);
+            LOGD("mount_preinit_dir: ext4 mount failed, errno=%d (%s)\n",
+                 errno, strerror(errno));
+            LOGD("mount_preinit_dir: trying f2fs mount\n");
             if (mount(PREINITDEV, MIRRDIR, "f2fs", MS_RDONLY, nullptr) == 0) {
-                LOGD("mount_preinit_dir: mounted as f2fs\n");
+                LOGD("mount_preinit_dir: f2fs mount success\n");
                 mounted = true;
             } else {
-                LOGD("mount_preinit_dir: f2fs mount also failed, errno=%d\n", errno);
+                LOGD("mount_preinit_dir: f2fs mount failed, errno=%d (%s)\n",
+                     errno, strerror(errno));
             }
         }
     }
+
     if (mounted) {
         string preinit_dir = resolve_preinit_dir(MIRRDIR);
-        LOGD("mount_preinit_dir: preinit_dir=%s\n", preinit_dir.c_str());
-        // Create bind mount
+        LOGI("mount_preinit_dir: preinit_dir=%s\n", preinit_dir.c_str());
+
         xmkdirs(PREINITMIRR, 0);
         if (access(preinit_dir.data(), F_OK)) {
-            LOGW("empty preinit: %s\n", preinit_dir.data());
+            LOGW("mount_preinit_dir: empty preinit: %s\n", preinit_dir.data());
         } else {
-            LOGD("preinit: %s\n", preinit_dir.data());
+            LOGD("mount_preinit_dir: bind mount %s -> %s\n",
+                 preinit_dir.data(), PREINITMIRR);
             xmount(preinit_dir.data(), PREINITMIRR, nullptr, MS_BIND, nullptr);
         }
         xumount2(MIRRDIR, MNT_DETACH);
     } else {
-        PLOGE("Mount preinit %s", preinit_dev.c_str());
-        // Do NOT delete the block device. Even though we cannot mount it here,
-        // it might get formatted later in the boot process.
+        LOGE("mount_preinit_dir: all mount attempts failed for %s\n",
+             preinit_dev.c_str());
     }
-    LOGD("mount_preinit_dir: done\n");
+
+    LOGI("mount_preinit_dir: done\n");
 }
 
 bool MagiskInit::mount_system_root() noexcept {

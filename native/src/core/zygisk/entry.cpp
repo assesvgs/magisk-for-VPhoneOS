@@ -16,7 +16,7 @@ using comp_entry = void(*)(int);
 extern "C" void exec_companion_entry(int, comp_entry);
 
 // Sulist support functions
-static int clean_ns64 = -1, clean_ns32 = -1;
+static int clean_ns64 = -1, clean_ns32 __attribute__((unused)) = -1;
 
 int remote_request_sulist() {
     LOGD("remote_request_sulist: start\n");

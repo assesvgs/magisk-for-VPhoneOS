@@ -1,14 +1,19 @@
-use crate::consts::{ROOTMNT, ROOTOVL};
-use crate::ffi::MagiskInit;
-use base::nix::fcntl::OFlag;
-use base::{
-    BufReadExt, Directory, FsPathBuilder, LoggedResult, ResultExt, Utf8CStr, Utf8CString,
-    clone_attr, cstr, debug,
-};
+// 标准库
 use std::fs::File;
 use std::io::{BufReader, Write};
 use std::mem;
 use std::os::fd::{FromRawFd, RawFd};
+
+// 外部 crate
+use base::nix::fcntl::OFlag;
+use base::{
+    BufReadExt, Directory, FsPathBuilder, LoggedResult, ResultExt, Utf8CStr, Utf8CString,
+    clone_attr, cstr, debug, info, warn,
+};
+
+// 内部模块
+use crate::consts::{ROOTMNT, ROOTOVL};
+use crate::ffi::MagiskInit;
 
 pub fn inject_magisk_rc(fd: RawFd, tmp_dir: &Utf8CStr) {
     debug!("Injecting magisk rc");
@@ -45,22 +50,24 @@ pub struct OverlayAttr(Utf8CString, Utf8CString);
 
 impl MagiskInit {
     pub(crate) fn parse_config_file(&mut self) {
+        info!("parse_config_file: start");
         debug!("parse_config_file: reading /data/.backup/.magisk");
         if let Ok(fd) = cstr!("/data/.backup/.magisk").open(OFlag::O_RDONLY) {
-            debug!("parse_config_file: file opened");
+            debug!("parse_config_file: file opened successfully");
             let mut reader = BufReader::new(fd);
             reader.for_each_prop(|key, val| {
+                debug!("parse_config_file: {}={}", key, val);
                 if key == "PREINITDEVICE" {
-                    debug!("parse_config_file: PREINITDEVICE={}", val);
+                    info!("parse_config_file: PREINITDEVICE={}", val);
                     self.preinit_dev = val.to_string();
                     return false;
                 }
                 true
             })
         } else {
-            debug!("parse_config_file: failed to open /data/.backup/.magisk");
+            warn!("parse_config_file: failed to open /data/.backup/.magisk");
         }
-        debug!("parse_config_file: done, preinit_dev={}", self.preinit_dev);
+        info!("parse_config_file: done, preinit_dev='{}'", self.preinit_dev);
     }
 
     fn mount_impl(

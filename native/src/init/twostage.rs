@@ -1,7 +1,12 @@
-use crate::ffi::MagiskInit;
+// 标准库
+use std::io::Write;
+
+// 外部 crate
 use base::nix::fcntl::OFlag;
 use base::{LoggedResult, MappedFile, MutBytesExt, ResultExt, cstr, debug, error, info};
-use std::io::Write;
+
+// 内部模块
+use crate::ffi::MagiskInit;
 
 pub(crate) fn hexpatch_init_for_second_stage(writable: bool) -> bool {
     info!("[hexpatch] hexpatch_init_for_second_stage(writable={})", writable);
@@ -12,10 +17,13 @@ pub(crate) fn hexpatch_init_for_second_stage(writable: bool) -> bool {
         error!("[hexpatch] /init does not exist!");
         return false;
     }
+    debug!("[hexpatch] /init exists");
     
     let init = if writable {
+        debug!("[hexpatch] opening /init as read-write");
         MappedFile::open_rw(cstr!("/init"))
     } else {
+        debug!("[hexpatch] opening /init as read-only");
         MappedFile::open(cstr!("/init"))
     };
 
@@ -27,9 +35,12 @@ pub(crate) fn hexpatch_init_for_second_stage(writable: bool) -> bool {
     debug!("[hexpatch] /init opened, mapped size={}", init.as_ref().len());
     
     // 打印内存内容前64字节（仅 debug 模式）
-    let preview_len = std::cmp::min(64, init.as_ref().len());
-    let preview = &init.as_ref()[..preview_len];
-    debug!("[hexpatch] /init content preview (first {} bytes): {:02x?}", preview_len, preview);
+    #[cfg(debug_assertions)]
+    {
+        let preview_len = std::cmp::min(64, init.as_ref().len());
+        let preview = &init.as_ref()[..preview_len];
+        debug!("[hexpatch] /init content preview (first {} bytes): {:02x?}", preview_len, preview);
+    }
 
     // Redirect original init to magiskinit
     let from = "/system/bin/init";
@@ -52,6 +63,7 @@ pub(crate) fn hexpatch_init_for_second_stage(writable: bool) -> bool {
     }
 
     if !writable {
+        debug!("[hexpatch] writable=false, creating bind mount");
         // If we cannot directly modify /init, we need to bind mount a replacement on top of it
         let src = cstr!("/init");
         let dest = cstr!("/data/init");
@@ -63,6 +75,7 @@ pub(crate) fn hexpatch_init_for_second_stage(writable: bool) -> bool {
             let attr = src.follow_link().get_attr()?;
             dest.set_attr(&attr)?;
             dest.bind_mount_to(src, false)?;
+            debug!("[hexpatch] bind mount /data/init -> /init done");
             Ok(())
         }();
     }

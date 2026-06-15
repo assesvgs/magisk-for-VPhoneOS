@@ -1,19 +1,24 @@
-use crate::consts::MODULEROOT;
-use crate::daemon::{MagiskD, to_user_id};
-use crate::ffi::{ZygiskRequest, ZygiskStateFlags, get_magisk_tmp, update_deny_flags};
-use crate::resetprop::{get_prop, set_prop};
-use crate::socket::{IpcRead, UnixSocketExt};
+// 标准库
+use std::fmt::Write;
+use std::os::fd::{AsRawFd, RawFd};
+use std::os::unix::net::UnixStream;
+use std::ptr;
+use std::sync::atomic::Ordering;
+
+// 外部 crate
 use base::libc::STDOUT_FILENO;
 use base::{
     Directory, FsPathBuilder, LoggedResult, ResultExt, Utf8CStr, WriteExt, cstr, fork_dont_care,
     libc, log_err, raw_cstr, warn, debug, error,
 };
 use nix::fcntl::OFlag;
-use std::fmt::Write;
-use std::os::fd::{AsRawFd, RawFd};
-use std::os::unix::net::UnixStream;
-use std::ptr;
-use std::sync::atomic::Ordering;
+
+// 内部模块
+use crate::consts::MODULEROOT;
+use crate::daemon::{MagiskD, to_user_id};
+use crate::ffi::{ZygiskRequest, ZygiskStateFlags, get_magisk_tmp, update_deny_flags};
+use crate::resetprop::{get_prop, set_prop};
+use crate::socket::{IpcRead, UnixSocketExt};
 
 const NBPROP: &Utf8CStr = cstr!("ro.dalvik.vm.native.bridge");
 const ZYGISKLDR: &str = "libzygisk.so";
@@ -21,8 +26,12 @@ const UNMOUNT_MASK: u32 =
     ZygiskStateFlags::ProcessOnDenyList.repr | ZygiskStateFlags::DenyListEnforced.repr;
 
 pub fn zygisk_should_load_module(flags: u32) -> bool {
+    debug!("zygisk_should_load_module: flags=0x{:x}", flags);
+    
     let result = flags & UNMOUNT_MASK != UNMOUNT_MASK && flags & ZygiskStateFlags::ProcessIsMagiskApp.repr == 0;
-    debug!("zygisk_should_load_module: flags=0x{:x}, result={}", flags, result);
+    
+    debug!("zygisk_should_load_module: UNMOUNT_MASK=0x{:x}, result={}", UNMOUNT_MASK, result);
+    
     result
 }
 
@@ -69,7 +78,10 @@ pub struct ZygiskState {
 
 impl ZygiskState {
     fn connect_zygiskd(&mut self, mut client: UnixStream, daemon: &MagiskD) -> LoggedResult<()> {
+        debug!("ZygiskState::connect_zygiskd: start");
+        
         let is_64_bit: bool = client.read_decodable()?;
+        debug!("ZygiskState::connect_zygiskd: is_64_bit={}", is_64_bit);
         let socket = if is_64_bit {
             &mut self.sockets.1
         } else {
@@ -106,6 +118,7 @@ impl ZygiskState {
             local.send_fds(&[client.as_raw_fd()])?;
             *socket = Some(local);
         }
+        debug!("ZygiskState::connect_zygiskd: done");
         Ok(())
     }
 

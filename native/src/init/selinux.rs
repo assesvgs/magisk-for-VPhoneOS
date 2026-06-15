@@ -1,5 +1,10 @@
-use crate::consts::{PREINITMIRR, SELINUXMOCK};
-use crate::ffi::{MagiskInit, preload_ack, preload_lib, preload_policy, split_plat_cil};
+// 标准库
+use std::io::{Read, Write};
+use std::ptr;
+use std::thread::sleep;
+use std::time::Duration;
+
+// 外部 crate
 use base::const_format::concatcp;
 use base::nix::fcntl::OFlag;
 use base::{
@@ -7,10 +12,10 @@ use base::{
     libc, raw_cstr,
 };
 use magiskpolicy::ffi::SePolicy;
-use std::io::{Read, Write};
-use std::ptr;
-use std::thread::sleep;
-use std::time::Duration;
+
+// 内部模块
+use crate::consts::{PREINITMIRR, SELINUXMOCK};
+use crate::ffi::{MagiskInit, preload_ack, preload_lib, preload_policy, split_plat_cil};
 
 const MOCK_VERSION: &Utf8CStr = cstr!(concatcp!(SELINUXMOCK, "/version"));
 const MOCK_LOAD: &Utf8CStr = cstr!(concatcp!(SELINUXMOCK, "/load"));
@@ -61,7 +66,9 @@ fn mock_file(target: &Utf8CStr, mock: &Utf8CStr) -> LoggedResult<()> {
 
 impl MagiskInit {
     pub(crate) fn handle_sepolicy(&mut self) {
+        info!("handle_sepolicy: start");
         self.handle_sepolicy_impl().ok();
+        info!("handle_sepolicy: done");
     }
 
     fn cleanup_and_load(&self, rules: &str) {
@@ -87,16 +94,20 @@ impl MagiskInit {
     }
 
     fn handle_sepolicy_impl(&mut self) -> LoggedResult<()> {
+        debug!("handle_sepolicy: creating SELINUXMOCK directory");
         cstr!(SELINUXMOCK).mkdir(0o711)?;
 
         let mut rules = String::new();
         let mut policy_ver = cstr!("/selinux_version");
         let rule_file = cstr!(concatcp!("/data/", PREINITMIRR, "/sepolicy.rule"));
         if rule_file.exists() {
-            debug!("Loading custom sepolicy patch: [{}]", rule_file);
+            info!("handle_sepolicy: loading custom sepolicy patch: [{}]", rule_file);
             rule_file
                 .open(OFlag::O_RDONLY)?
                 .read_to_string(&mut rules)?;
+            debug!("handle_sepolicy: rules length={}", rules.len());
+        } else {
+            debug!("handle_sepolicy: no custom sepolicy rules found");
         }
 
         // Step 0: determine strategy

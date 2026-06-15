@@ -15,9 +15,16 @@ using namespace std;
 int zygisk_request(int req) {
     ZLOGD("zygisk_request: req=%d\n", req);
     int fd = connect_daemon(RequestCode::ZYGISK);
-    if (fd < 0) return fd;
+    ZLOGD("zygisk_request: connect_daemon result fd=%d\n", fd);
+    
+    if (fd < 0) {
+        ZLOGD("zygisk_request: connect_daemon failed\n");
+        return fd;
+    }
+    
     write_int(fd, req);
-    ZLOGD("zygisk_request: fd=%d\n", fd);
+    ZLOGD("zygisk_request: wrote req=%d to fd=%d\n", req, fd);
+    
     return fd;
 }
 
@@ -72,17 +79,28 @@ bool ZygiskModule::RegisterModuleImpl(ApiTable *api, long *module) {
 }
 
 bool ZygiskModule::valid() const {
-    if (mod.api_version == nullptr)
+    ZLOGD("ZygiskModule::valid: checking module id=%d\n", id);
+    
+    if (mod.api_version == nullptr) {
+        ZLOGD("ZygiskModule::valid: api_version is null, return false\n");
         return false;
+    }
+    
+    ZLOGD("ZygiskModule::valid: api_version=%ld\n", *mod.api_version);
+    
     switch (*mod.api_version) {
         case 5:
         case 4:
         case 3:
         case 2:
-        case 1:
-            return mod.v1->impl && mod.v1->preAppSpecialize && mod.v1->postAppSpecialize &&
+        case 1: {
+            bool result = mod.v1->impl && mod.v1->preAppSpecialize && mod.v1->postAppSpecialize &&
                    mod.v1->preServerSpecialize && mod.v1->postServerSpecialize;
+            ZLOGD("ZygiskModule::valid: result=%d\n", result);
+            return result;
+        }
         default:
+            ZLOGD("ZygiskModule::valid: unsupported api_version, return false\n");
             return false;
     }
 }
@@ -460,9 +478,9 @@ void ZygiskContext::app_specialize_pre() {
         ZLOGD("app_specialize_pre: set DO_REVERT_UNMOUNT (denylist), new flags=0x%x\n", flags);
     } else if (fd >= 0) {
         run_modules_pre(module_fds);
-        ZLOGD("app_specialize_pre: modules loaded, fd=%d\n", fd);
+        ZLOGD("app_specialize_pre: modules loaded, fd=%d\n", (int)fd);
     } else {
-        ZLOGD("app_specialize_pre: no special action, fd=%d, info_flags=0x%x\n", fd, info_flags);
+        ZLOGD("app_specialize_pre: no special action, fd=%d, info_flags=0x%x\n", (int)fd, info_flags);
     }
 }
 

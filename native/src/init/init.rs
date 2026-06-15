@@ -1,11 +1,16 @@
+// 标准库
+use std::ffi::{CStr, c_char};
+use std::ptr::null;
+
+// 外部 crate
+use base::libc::{basename, getpid, mount, umask};
+use base::{LibcReturn, LoggedResult, ResultExt, cstr, debug, info, raw_cstr};
+
+// 内部模块
 use crate::ffi::{BootConfig, MagiskInit, backup_init, magisk_proxy_main};
 use crate::logging::setup_klog;
 use crate::mount::is_rootfs;
 use crate::twostage::hexpatch_init_for_second_stage;
-use base::libc::{basename, getpid, mount, umask};
-use base::{LibcReturn, LoggedResult, ResultExt, cstr, debug, info, raw_cstr};
-use std::ffi::{CStr, c_char};
-use std::ptr::null;
 
 impl MagiskInit {
     fn new(argv: *mut *mut c_char) -> Self {
@@ -32,22 +37,27 @@ impl MagiskInit {
 
     fn first_stage(&self) {
         info!("First Stage Init");
+        
+        // 添加系统环境探测（仅 debug 构建生效）
+        #[cfg(debug_assertions)]
+        crate::env_detect::detect_system_environment();
+        
         self.prepare_data();
 
         let sdcard_exists = cstr!("/sdcard").exists();
         let first_stage_sdcard_exists = cstr!("/first_stage_ramdisk/sdcard").exists();
-        debug!("first_stage: /sdcard exists={}, /first_stage_ramdisk/sdcard exists={}", sdcard_exists, first_stage_sdcard_exists);
+        info!("first_stage: /sdcard exists={}, /first_stage_ramdisk/sdcard exists={}", sdcard_exists, first_stage_sdcard_exists);
 
         if !sdcard_exists && !first_stage_sdcard_exists {
             // 先尝试 hexpatch（与 27.0 一致，适用于 VPhoneOS 等不支持 SwitchRoot 的环境）
             self.restore_ramdisk_init();
-            debug!("first_stage: calling hexpatch_init_for_second_stage");
+            info!("first_stage: calling hexpatch_init_for_second_stage(true)");
             let hexpatch_success = hexpatch_init_for_second_stage(true);
-            debug!("first_stage: hexpatch_success={}", hexpatch_success);
+            info!("first_stage: hexpatch_init_for_second_stage result={}", hexpatch_success);
             
-            // 如果 hexpatch 失败，fallback 到 hijack 方法（保留原有功能，用于支持 SwitchRoot 的设备）
+            // 如果 hexpatch 失败，fallback 到 hijack 方法
             if !hexpatch_success {
-                info!("hexpatch failed, fallback to hijack_init_with_switch_root");
+                info!("first_stage: hexpatch failed, fallback to hijack_init_with_switch_root");
                 self.hijack_init_with_switch_root();
             }
         } else {
@@ -57,20 +67,25 @@ impl MagiskInit {
     }
 
     fn second_stage(&mut self) {
-        info!("Second Stage Init");
+        info!("Second Stage Init start");
 
+        debug!("second_stage: unmounting /init");
         cstr!("/init").unmount().ok();
-        cstr!("/system/bin/init").unmount().ok(); // just in case
+        debug!("second_stage: unmounting /system/bin/init");
+        cstr!("/system/bin/init").unmount().ok();
+        debug!("second_stage: removing /data/init");
         cstr!("/data/init").remove().ok();
 
         unsafe {
-            // Make sure init dmesg logs won't get messed up
+            debug!("second_stage: setting argv[0] = /system/bin/init");
             *self.argv = raw_cstr!("/system/bin/init") as *mut _;
         }
 
-        // Some weird devices like meizu, uses 2SI but still have legacy rootfs
-        if is_rootfs() {
-            // We are still on rootfs, so make sure we will execute the init of the 2nd stage
+        let is_rootfs = is_rootfs();
+        debug!("second_stage: is_rootfs={}", is_rootfs);
+
+        if is_rootfs {
+            info!("second_stage: still on rootfs, using patch_rw_root");
             let init_path = cstr!("/init");
             init_path.remove().ok();
             init_path
@@ -78,8 +93,11 @@ impl MagiskInit {
                 .log_ok();
             self.patch_rw_root();
         } else {
+            info!("second_stage: using patch_ro_root");
             self.patch_ro_root();
         }
+
+        info!("second_stage: done");
     }
 
     fn legacy_system_as_root(&mut self) {
@@ -124,7 +142,11 @@ impl MagiskInit {
     }
 
     fn start(&mut self) -> LoggedResult<()> {
+        info!("MagiskInit::start() begin");
+        
+        // 挂载 /proc
         if !cstr!("/proc/cmdline").exists() {
+            debug!("start: mounting /proc");
             cstr!("/proc").mkdir(0o755)?;
             unsafe {
                 mount(
@@ -137,8 +159,12 @@ impl MagiskInit {
             }
             .check_err()?;
             self.mount_list.push("/proc".to_string());
+            debug!("start: /proc mounted");
         }
+        
+        // 挂载 /sys
         if !cstr!("/sys/block").exists() {
+            debug!("start: mounting /sys");
             cstr!("/sys").mkdir(0o755)?;
             unsafe {
                 mount(
@@ -151,33 +177,46 @@ impl MagiskInit {
             }
             .check_err()?;
             self.mount_list.push("/sys".to_string());
+            debug!("start: /sys mounted");
         }
-
+        
+        debug!("start: calling setup_klog()");
         setup_klog();
-
+        
+        debug!("start: calling config.init()");
         self.config.init();
-
+        debug!("start: config.init() done");
+        
         let argv1 = unsafe { *self.argv.offset(1) };
-        if !argv1.is_null() && unsafe { CStr::from_ptr(argv1) == c"selinux_setup" } {
+        let is_selinux_setup = !argv1.is_null() && unsafe { CStr::from_ptr(argv1) == c"selinux_setup" };
+        debug!("start: is_selinux_setup={}", is_selinux_setup);
+        
+        if is_selinux_setup {
+            info!("start: calling second_stage()");
             self.second_stage();
         } else if self.config.skip_initramfs {
+            info!("start: calling legacy_system_as_root()");
             self.legacy_system_as_root();
         } else if self.config.force_normal_boot {
+            info!("start: calling first_stage() [force_normal_boot=true]");
             self.first_stage();
         } else if cstr!("/sbin/recovery").exists()
             || cstr!("/system/bin/recovery").exists()
             || unsafe { CStr::from_ptr(self.config.boot_mode.as_ptr()) } == c"charger"
         {
+            info!("start: calling recovery_or_charger()");
             self.recovery_or_charger();
         } else if self.check_two_stage() {
+            info!("start: calling first_stage() [check_two_stage=true]");
             self.first_stage();
         } else {
+            info!("start: calling rootfs()");
             self.rootfs();
         }
-
-        // Finally execute the original init
+        
+        info!("start: calling exec_init()");
         self.exec_init();
-
+        
         Ok(())
     }
 }

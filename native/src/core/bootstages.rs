@@ -1,3 +1,10 @@
+// 外部 crate
+use base::const_format::concatcp;
+use base::{BufReadExt, FsPathBuilder, ResultExt, cstr, debug, error, info};
+use bitflags::bitflags;
+use nix::fcntl::OFlag;
+
+// 内部模块
 use crate::consts::{APP_PACKAGE_NAME, BBPATH, DATABIN, MODULEROOT, SECURE_DIR};
 use crate::daemon::MagiskD;
 use crate::ffi::{
@@ -9,10 +16,6 @@ use crate::module::disable_modules;
 use crate::mount::{clean_mounts, setup_preinit_dir};
 use crate::resetprop::get_prop;
 use crate::selinux::restorecon;
-use base::const_format::concatcp;
-use base::{BufReadExt, FsPathBuilder, ResultExt, cstr, error, info};
-use bitflags::bitflags;
-use nix::fcntl::OFlag;
 use std::io::BufReader;
 use std::os::unix::net::UnixStream;
 use std::process::{Command, Stdio};
@@ -113,6 +116,7 @@ impl MagiskD {
         self.preserve_stub_apk();
 
         // Check secure dir
+        debug!("post_fs_data: checking secure dir");
         let secure_dir = cstr!(SECURE_DIR);
         if !secure_dir.exists() {
             if self.sdk_int < 24 {
@@ -125,12 +129,15 @@ impl MagiskD {
 
         self.prune_su_access();
 
+        info!("post_fs_data: setting up Magisk environment");
         if !self.setup_magisk_env() {
             error!("* Magisk environment incomplete, abort");
             return true;
         }
+        info!("post_fs_data: setup_magisk_env done");
 
         // Check safe mode
+        info!("post_fs_data: checking safe mode");
         let boot_cnt = self.get_db_setting(DbEntryKey::BootloopCount);
         self.set_db_setting(DbEntryKey::BootloopCount, boot_cnt + 1)
             .log()
@@ -139,6 +146,7 @@ impl MagiskD {
             || get_prop(cstr!("persist.sys.safemode")) == "1"
             || get_prop(cstr!("ro.sys.safemode")) == "1"
             || check_key_combo();
+        info!("post_fs_data: safe_mode={}", safe_mode);
 
         if safe_mode {
             info!("* Safe mode triggered");
@@ -148,14 +156,20 @@ impl MagiskD {
             return true;
         }
 
+        info!("post_fs_data: executing post-fs-data scripts");
         exec_common_scripts(cstr!("post-fs-data"));
+        info!("post_fs_data: post-fs-data scripts done");
         self.zygisk_enabled.store(
             self.get_db_setting(DbEntryKey::ZygiskConfig) != 0,
             Ordering::Release,
         );
         initialize_denylist();
+        info!("post_fs_data: handling modules");
         self.handle_modules();
+        info!("post_fs_data: handle_modules done");
+        info!("post_fs_data: clean_mounts");
         clean_mounts();
+        info!("post_fs_data: done");
 
         false
     }
@@ -164,10 +178,13 @@ impl MagiskD {
         setup_logfile();
         info!("** late_start service mode running");
 
+        debug!("late_start: executing common scripts");
         exec_common_scripts(cstr!("service"));
         if let Some(module_list) = self.module_list.get() {
+            info!("late_start: executing module scripts");
             exec_module_scripts(cstr!("service"), module_list);
         }
+        info!("late_start: done");
     }
 
     fn boot_complete(&self) {
@@ -175,22 +192,30 @@ impl MagiskD {
         info!("** boot-complete triggered");
 
         // Reset the bootloop counter once we have boot-complete
+        debug!("boot_complete: resetting bootloop counter");
         self.set_db_setting(DbEntryKey::BootloopCount, 0).log_ok();
 
         // Mount MagiskSU (Kitsune Mask feature)
+        info!("boot_complete: enabling mount su");
         enable_mount_su();
 
         // At this point it's safe to create the folder
+        info!("boot_complete: ensuring secure dir");
         let secure_dir = cstr!(SECURE_DIR);
         if !secure_dir.exists() {
             secure_dir.mkdir(0o700).log_ok();
         }
 
+        info!("boot_complete: calling setup_preinit_dir()");
         setup_preinit_dir();
+        info!("boot_complete: setup_preinit_dir done");
+        info!("boot_complete: ensuring manager");
         self.ensure_manager();
         if self.zygisk_enabled.load(Ordering::Relaxed) {
+            info!("boot_complete: resetting zygisk");
             self.zygisk.lock().reset(true);
         }
+        info!("boot_complete: done");
     }
 
     pub fn boot_stage_handler(&self, client: UnixStream, code: RequestCode) {
@@ -199,26 +224,35 @@ impl MagiskD {
 
         match code {
             RequestCode::POST_FS_DATA => {
+                info!("boot_stage_handler: POST_FS_DATA");
                 if check_data() && !state.contains(BootState::PostFsDataDone) {
+                    info!("boot_stage_handler: calling post_fs_data()");
                     if self.post_fs_data() {
                         state.insert(BootState::SafeMode);
                     }
                     state.insert(BootState::PostFsDataDone);
+                    info!("boot_stage_handler: post_fs_data done");
                 }
             }
             RequestCode::LATE_START => {
+                info!("boot_stage_handler: LATE_START");
                 drop(client);
                 if state.contains(BootState::PostFsDataDone) && !state.contains(BootState::SafeMode)
                 {
+                    info!("boot_stage_handler: calling late_start()");
                     self.late_start();
                     state.insert(BootState::LateStartDone);
+                    info!("boot_stage_handler: late_start done");
                 }
             }
             RequestCode::BOOT_COMPLETE => {
+                info!("boot_stage_handler: BOOT_COMPLETE");
                 drop(client);
                 if state.contains(BootState::PostFsDataDone) {
                     state.insert(BootState::BootComplete);
-                    self.boot_complete()
+                    info!("boot_stage_handler: calling boot_complete()");
+                    self.boot_complete();
+                    info!("boot_stage_handler: boot_complete done");
                 }
             }
             _ => {}

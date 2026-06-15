@@ -15,6 +15,8 @@ mod mount;
 mod rootdir;
 mod selinux;
 mod twostage;
+#[cfg(debug_assertions)]
+mod env_detect;
 
 #[cxx::bridge]
 pub mod ffi {

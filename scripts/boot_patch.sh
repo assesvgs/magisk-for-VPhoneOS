@@ -50,6 +50,12 @@ getdir() {
 # Initialization
 #################
 
+ui_print "=========================================="
+ui_print "  Magisk Boot Patcher Start"
+ui_print "=========================================="
+ui_print "- Script version: $MAGISK_VER ($MAGISK_VER_CODE)"
+ui_print "- Arguments: $@"
+
 if [ -z $SOURCEDMODE ]; then
   # Switch to the location of the script file
   cd "$(getdir "${BASH_SOURCE:-$0}")"
@@ -57,9 +63,13 @@ if [ -z $SOURCEDMODE ]; then
   . ./util_functions.sh
   # Check if 64-bit
   api_level_arch_detect
+  ui_print "- API level: $API"
+  ui_print "- Architecture: $ARCH"
+  ui_print "- Is 64-bit: $IS64BIT"
 fi
 
 BOOTIMAGE="$1"
+ui_print "- BOOTIMAGE=$BOOTIMAGE"
 [ -e "$BOOTIMAGE" ] || abort "$BOOTIMAGE does not exist!"
 
 # Dump image for MTD/NAND character device boot partitions
@@ -88,10 +98,15 @@ chmod -R 755 .
 CHROMEOS=false
 VENDORBOOT=false
 
+ui_print "- Boot image: $BOOTIMAGE"
+ui_print "- Boot image size: $(ls -l $BOOTIMAGE | awk '{print $5}') bytes"
+
 ui_print "- Unpacking boot image"
 ./magiskboot unpack "$BOOTIMAGE"
+UNPACK_RESULT=$?
+ui_print "- Unpack result: $UNPACK_RESULT"
 
-case $? in
+case $UNPACK_RESULT in
   0 ) ;;
   2 )
     ui_print "- ChromeOS boot image detected"
@@ -118,6 +133,8 @@ for path in ramdisk.cpio vendor_ramdisk/init_boot.cpio vendor_ramdisk/ramdisk.cp
   fi
 done
 
+ui_print "- RAMDISK=$RAMDISK"
+
 ui_print "- Checking ramdisk status"
 if [ -n "$RAMDISK" ]; then
   ./magiskboot cpio $RAMDISK test
@@ -130,6 +147,8 @@ else
   STATUS=0
   SKIP_BACKUP="#"
 fi
+
+ui_print "- Ramdisk STATUS=$STATUS"
 
 case $STATUS in
   0 )
@@ -156,12 +175,14 @@ case $STATUS in
 esac
 
 if [ -f config.orig ]; then
+  ui_print "- Found config.orig"
   # Read existing configs
   chmod 0644 config.orig
   SHA1=$(grep_prop SHA1 config.orig)
   if ! $BOOTMODE; then
     # Do not inherit config if not in recovery
     PREINITDEVICE=$(grep_prop PREINITDEVICE config.orig)
+    ui_print "- Inherited PREINITDEVICE=$PREINITDEVICE"
   fi
   rm config.orig
 fi
@@ -172,13 +193,18 @@ fi
 
 ui_print "- Patching ramdisk"
 
-$BOOTMODE && [ -z "$PREINITDEVICE" ] && PREINITDEVICE=$(./magisk --preinit-device)
+$BOOTMODE && [ -z "$PREINITDEVICE" ] && {
+  ui_print "- Calling magisk --preinit-device..."
+  PREINITDEVICE=$(./magisk --preinit-device)
+  ui_print "- PREINITDEVICE detection result: '$PREINITDEVICE'"
+}
 
 # Compress to save precious ramdisk space
 ./magiskboot compress=xz magisk magisk.xz
 ./magiskboot compress=xz stub.apk stub.xz
 ./magiskboot compress=xz init-ld init-ld.xz
 
+ui_print "- Writing config file"
 echo "KEEPVERITY=$KEEPVERITY" > config
 echo "KEEPFORCEENCRYPT=$KEEPFORCEENCRYPT" >> config
 echo "RECOVERYMODE=$RECOVERYMODE" >> config
@@ -186,8 +212,13 @@ echo "VENDORBOOT=$VENDORBOOT" >> config
 if [ -n "$PREINITDEVICE" ]; then
   ui_print "- Pre-init storage partition: $PREINITDEVICE"
   echo "PREINITDEVICE=$PREINITDEVICE" >> config
+else
+  ui_print "- WARNING: PREINITDEVICE is empty!"
 fi
 [ -n "$SHA1" ] && echo "SHA1=$SHA1" >> config
+
+ui_print "- Config content:"
+cat config
 
 ./magiskboot cpio $RAMDISK \
 "add 0750 init magiskinit" \
@@ -256,8 +287,15 @@ fi
 # Repack & Flash
 #################
 
+ui_print "- Flashing new boot image"
 ui_print "- Repacking boot image"
-./magiskboot repack "$BOOTIMAGE" || abort "! Unable to repack boot image"
+./magiskboot repack "$BOOTIMAGE"
+FLASH_RESULT=$?
+if [ $FLASH_RESULT -ne 0 ]; then
+    abort "! Unable to repack boot image"
+fi
+ui_print "- Flash result: $FLASH_RESULT"
+ui_print "- Repack done"
 
 # Sign chromeos boot
 $CHROMEOS && sign_chromeos
@@ -267,3 +305,7 @@ $CHROMEOS && sign_chromeos
 
 # Reset any error code
 true
+
+ui_print "=========================================="
+ui_print "  Magisk Boot Patcher Done"
+ui_print "=========================================="
