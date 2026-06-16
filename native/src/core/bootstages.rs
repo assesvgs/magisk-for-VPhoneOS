@@ -1,6 +1,6 @@
 // 外部 crate
 use base::const_format::concatcp;
-use base::{BufReadExt, FsPathBuilder, ResultExt, cstr, debug, error, info};
+use base::{BufReadExt, FsPathBuilder, ResultExt, cstr, debug, error, info, parse_mount_info};
 use bitflags::bitflags;
 use nix::fcntl::OFlag;
 
@@ -169,6 +169,27 @@ impl MagiskD {
         info!("post_fs_data: handle_modules done");
         info!("post_fs_data: clean_mounts");
         clean_mounts();
+        
+        // [诊断] 检查 sdcard 状态
+        // 注意：使用 debug!() 而不是 info!()，因为 info!() 输出到 stdout，
+        // 会被 boot_patch.sh 的 $(./magisk --preinit-device) 捕获，污染 PREINITDEVICE 变量
+        debug!("post_fs_data: /sdcard exists={}", cstr!("/sdcard").exists());
+        debug!("post_fs_data: /storage/self/primary exists={}", cstr!("/storage/self/primary").exists());
+        debug!("post_fs_data: init.svc.vold={}", get_prop(cstr!("init.svc.vold")));
+
+        // 检查 sdcardfs 挂载
+        let sdcardfs_mounts: Vec<_> = parse_mount_info("self")
+            .into_iter()
+            .filter(|info| info.fs_type == "sdcardfs")
+            .collect();
+        if sdcardfs_mounts.is_empty() {
+            debug!("post_fs_data: sdcardfs NOT found in mountinfo");
+        } else {
+            for info in &sdcardfs_mounts {
+                debug!("post_fs_data: sdcardfs mounted at {}", info.target);
+            }
+        }
+        
         info!("post_fs_data: done");
 
         false
@@ -184,6 +205,27 @@ impl MagiskD {
             info!("late_start: executing module scripts");
             exec_module_scripts(cstr!("service"), module_list);
         }
+        
+        // [诊断] 检查 sdcard 状态
+        // 注意：使用 debug!() 而不是 info!()，因为 info!() 输出到 stdout，
+        // 会被 boot_patch.sh 的 $(./magisk --preinit-device) 捕获，污染 PREINITDEVICE 变量
+        debug!("late_start: /sdcard exists={}", cstr!("/sdcard").exists());
+        debug!("late_start: /storage/self/primary exists={}", cstr!("/storage/self/primary").exists());
+        debug!("late_start: init.svc.vold={}", get_prop(cstr!("init.svc.vold")));
+
+        // 检查 sdcardfs 挂载
+        let sdcardfs_mounts: Vec<_> = parse_mount_info("self")
+            .into_iter()
+            .filter(|info| info.fs_type == "sdcardfs")
+            .collect();
+        if sdcardfs_mounts.is_empty() {
+            debug!("late_start: sdcardfs NOT found in mountinfo");
+        } else {
+            for info in &sdcardfs_mounts {
+                debug!("late_start: sdcardfs mounted at {}", info.target);
+            }
+        }
+        
         info!("late_start: done");
     }
 

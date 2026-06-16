@@ -148,8 +148,8 @@ fn find_preinit_device_sysfs() -> String {
     let preinit_targets = ["data", "metadata", "cache", "persist"];
 
     let mut candidates: Vec<String> = Vec::new();
-    let mut scanned_count: u32 = 0;
-    let mut no_partname_count: u32 = 0;
+    let mut _scanned_count: u32 = 0;
+    let mut _no_partname_count: u32 = 0;
 
     let Ok(entries) = fs::read_dir("/sys/dev/block") else {
         debug!("find_preinit_device_sysfs: cannot read /sys/dev/block");
@@ -157,7 +157,7 @@ fn find_preinit_device_sysfs() -> String {
     };
 
     for entry in entries.flatten() {
-        scanned_count += 1;
+        _scanned_count += 1;
         let devname = entry.file_name().to_string_lossy().to_string();
 
         // 读取 uevent 获取 PARTNAME
@@ -186,7 +186,7 @@ fn find_preinit_device_sysfs() -> String {
         }
 
         if partname.is_empty() {
-            no_partname_count += 1;
+            _no_partname_count += 1;
             debug!(
                 "find_preinit_device_sysfs: skip (no partname): dev={}",
                 devname
@@ -222,7 +222,7 @@ fn find_preinit_device_sysfs() -> String {
 
     debug!(
         "find_preinit_device_sysfs: scanned={}, no_partname={}, candidates={:?}",
-        scanned_count, no_partname_count, candidates
+        _scanned_count, _no_partname_count, candidates
     );
 
     if candidates.is_empty() {

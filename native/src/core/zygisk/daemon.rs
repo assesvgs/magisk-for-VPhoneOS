@@ -143,21 +143,26 @@ impl ZygiskState {
 
     pub fn set_prop(&mut self) {
         if !self.lib_name.is_empty() {
+            debug!("ZygiskState::set_prop: already set, lib_name={}", self.lib_name);
             return;
         }
         let orig = get_prop(NBPROP);
+        debug!("ZygiskState::set_prop: original NBPROP='{}'", orig);
         self.lib_name = if orig.is_empty() || orig == "0" {
             ZYGISKLDR.to_string()
         } else {
             ZYGISKLDR.to_string() + &orig
         };
+        debug!("ZygiskState::set_prop: setting NBPROP='{}'", self.lib_name);
         set_prop(NBPROP, Utf8CStr::from_string(&mut self.lib_name));
         // Whether Huawei's Maple compiler is enabled.
         // If so, system server will be created by a special Zygote which ignores the native bridge
         // and make system server out of our control. Avoid it by disabling.
         if get_prop(cstr!("ro.maple.enable")) == "1" {
+            debug!("ZygiskState::set_prop: disabling Maple compiler");
             set_prop(cstr!("ro.maple.enable"), cstr!("0"));
         }
+        debug!("ZygiskState::set_prop: done");
     }
 
     pub fn restore_prop(&mut self) {

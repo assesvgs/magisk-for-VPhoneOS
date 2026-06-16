@@ -192,6 +192,18 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
         ZLOGD("unshare: /sdcard exists_after_remote=%d\n", access("/sdcard", F_OK) == 0);
         ZLOGD("unshare: /storage/self/primary exists_after_remote=%d\n", access("/storage/self/primary", F_OK) == 0);
 
+        // [诊断] 检查 sdcardfs 挂载状态
+        bool sdcardfs_mounted = false;
+        for (auto &info : parse_mount_info("self")) {
+            if (info.type == "sdcardfs") {
+                ZLOGD("unshare: sdcardfs mounted at %s\n", info.target.c_str());
+                sdcardfs_mounted = true;
+            }
+        }
+        if (!sdcardfs_mounted) {
+            ZLOGD("unshare: sdcardfs NOT mounted\n");
+        }
+
         // clean up mount id hole by unshare mount namespace twice
         int unshare2_ret = old_unshare(CLONE_NEWNS);
         ZLOGD("unshare: 2nd old_unshare ret=%d, errno=%d\n", unshare2_ret, errno);
@@ -399,8 +411,70 @@ static const NativeBridgeRuntimeCallbacks* find_runtime_callbacks(struct _Unwind
     return nullptr;
 }
 
+// [诊断] 记录 sdcard 相关状态（vold/sdcard 进程、sdcardfs 挂载、/sdcard 状态）
+static void log_sdcard_diagnostics(const char *stage) {
+    // 进程信息
+    ZLOGD("%s: pid=%d, ppid=%d, uid=%d\n", stage, getpid(), getppid(), getuid());
+    
+    // native bridge 属性
+    char nb_prop[256] = {};
+    __system_property_get("ro.dalvik.vm.native.bridge", nb_prop);
+    ZLOGD("%s: ro.dalvik.vm.native.bridge=%s\n", stage, nb_prop);
+    
+    // mount namespace ID
+    char mnt_ns[128] = {};
+    if (ssize_t len = readlink("/proc/self/ns/mnt", mnt_ns, sizeof(mnt_ns)-1); len > 0) {
+        mnt_ns[len] = '\0';
+        ZLOGD("%s: mount_namespace=%s\n", stage, mnt_ns);
+    }
+    
+    // vold 进程状态
+    char vold_pid[256] = {};
+    FILE *pid_file = popen("pidof vold 2>/dev/null", "r");
+    if (pid_file) {
+        if (fgets(vold_pid, sizeof(vold_pid), pid_file) == NULL) {
+            strcpy(vold_pid, "unknown");
+        }
+        pclose(pid_file);
+    }
+    ZLOGD("%s: vold_pid='%s'\n", stage, vold_pid);
+    
+    // sdcard 进程状态
+    char sdcard_pid[256] = {};
+    pid_file = popen("pidof sdcard 2>/dev/null", "r");
+    if (pid_file) {
+        if (fgets(sdcard_pid, sizeof(sdcard_pid), pid_file) == NULL) {
+            strcpy(sdcard_pid, "unknown");
+        }
+        pclose(pid_file);
+    }
+    ZLOGD("%s: sdcard_pid='%s'\n", stage, sdcard_pid);
+    
+    // sdcardfs 挂载状态
+    bool sdcardfs_mounted = false;
+    for (auto &info : parse_mount_info("self")) {
+        if (info.type == "sdcardfs") {
+            ZLOGD("%s: sdcardfs mounted at %s\n", stage, info.target.c_str());
+            sdcardfs_mounted = true;
+        }
+    }
+    if (!sdcardfs_mounted) {
+        ZLOGD("%s: sdcardfs NOT mounted\n", stage);
+    }
+    
+    // /sdcard 状态
+    ZLOGD("%s: /sdcard exists=%d\n", stage, access("/sdcard", F_OK) == 0);
+    ZLOGD("%s: /storage/self/primary exists=%d\n", stage, access("/storage/self/primary", F_OK) == 0);
+}
+
+// -----------------------------------------------------------------
+
 void HookContext::post_native_bridge_load(void *handle) {
     self_handle = handle;
+    ZLOGD("post_native_bridge_load: handle=%p\n", handle);  // handle 是此函数独有的参数，保留
+    log_sdcard_diagnostics("post_native_bridge_load");
+
+    // 原有的 native bridge 重载逻辑（保留不变）
     using method_sig = const bool (*)(const char *, const NativeBridgeRuntimeCallbacks *);
     struct trace_arg {
         method_sig load_native_bridge;
@@ -676,6 +750,7 @@ void HookContext::restore_zygote_hook(JNIEnv *env) {
 
 void hook_entry() {
     ZLOGD("hook_entry: initializing\n");
+    log_sdcard_diagnostics("hook_entry");
     default_new(g_hook);
     g_hook->hook_plt();
     ZLOGD("hook_entry: done\n");
