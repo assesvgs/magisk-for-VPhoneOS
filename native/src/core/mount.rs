@@ -1,6 +1,7 @@
 // 标准库
 use std::cmp::Ordering::{Greater, Less};
 use std::ffi::OsStr;
+use std::fs;
 use std::path::Path;
 
 // 外部 crate
@@ -136,7 +137,117 @@ enum EncryptType {
     Metadata,
 }
 
+/// 通过 /sys/dev/block 扫描块设备，查找已知 preinit 分区（回退方案）。
+/// 适用于 VPhoneOS 等容器化环境中 shell namespace 无法看到 /data 挂载的场景。
+fn find_preinit_device_sysfs() -> String {
+    // 被 find_preinit_device() 调用，后者通过 $(./magisk --preinit-device) 捕获 stdout。
+    // 禁止 info!()（输出到 stdout），否则会被 $(...) 捕获，污染变量。
+    debug!("find_preinit_device_sysfs: start");
+
+    // 已知 preinit 候选分区名（按优先级排列，与 27.0 一致）
+    let preinit_targets = ["data", "metadata", "cache", "persist"];
+
+    let mut candidates: Vec<String> = Vec::new();
+    let mut scanned_count: u32 = 0;
+    let mut no_partname_count: u32 = 0;
+
+    let Ok(entries) = fs::read_dir("/sys/dev/block") else {
+        debug!("find_preinit_device_sysfs: cannot read /sys/dev/block");
+        return String::new();
+    };
+
+    for entry in entries.flatten() {
+        scanned_count += 1;
+        let devname = entry.file_name().to_string_lossy().to_string();
+
+        // 读取 uevent 获取 PARTNAME
+        let uevent_path = format!("/sys/dev/block/{}/uevent", devname);
+        let mut partname = String::new();
+        if let Ok(content) = fs::read_to_string(&uevent_path) {
+            for line in content.lines() {
+                if let Some(val) = line.strip_prefix("PARTNAME=") {
+                    partname = val.to_string();
+                    break;
+                }
+            }
+        } else {
+            debug!(
+                "find_preinit_device_sysfs: cannot read uevent for {}",
+                devname
+            );
+        }
+
+        // 如果 uevent 中没有 PARTNAME，尝试从 dm/name 读取
+        if partname.is_empty() {
+            let dm_path = format!("/sys/dev/block/{}/dm/name", devname);
+            if let Ok(content) = fs::read_to_string(&dm_path) {
+                partname = content.trim().to_string();
+            }
+        }
+
+        if partname.is_empty() {
+            no_partname_count += 1;
+            debug!(
+                "find_preinit_device_sysfs: skip (no partname): dev={}",
+                devname
+            );
+            continue;
+        }
+
+        debug!(
+            "find_preinit_device_sysfs: dev={}, partname={}",
+            devname, partname
+        );
+
+        // 检查是否匹配已知 preinit 候选
+        let mut matched = false;
+        for target in &preinit_targets {
+            if partname.eq_ignore_ascii_case(target) {
+                debug!(
+                    "find_preinit_device_sysfs: found candidate '{}' on device {}",
+                    partname, devname
+                );
+                candidates.push(partname.clone());
+                matched = true;
+                break;
+            }
+        }
+        if !matched {
+            debug!(
+                "find_preinit_device_sysfs: skip (not preinit target): dev={}, partname={}",
+                devname, partname
+            );
+        }
+    }
+
+    debug!(
+        "find_preinit_device_sysfs: scanned={}, no_partname={}, candidates={:?}",
+        scanned_count, no_partname_count, candidates
+    );
+
+    if candidates.is_empty() {
+        debug!("find_preinit_device_sysfs: no preinit partition found in sysfs");
+        return String::new();
+    }
+
+    // 优先选择 data 分区（与 27.0 优先级一致）
+    let selected = candidates
+        .iter()
+        .find(|name| name.eq_ignore_ascii_case("data"))
+        .unwrap_or(&candidates[0]);
+
+    debug!(
+        "find_preinit_device_sysfs: selected partition '{}' from candidates {:?}",
+        selected, candidates
+    );
+
+    selected.clone()
+}
+
 pub fn find_preinit_device() -> String {
+    // 此函数被 boot_patch.sh 通过 $(./magisk --preinit-device) 调用，
+    // 禁止使用 info!()（输出到 stdout），否则日志会被 $(...) 捕获，
+    // 污染 PREINITDEVICE 变量。应使用 debug!()（输出到 stderr）。
     debug!("find_preinit_device: start");
 
     let encrypt_type = if get_prop(cstr!("ro.crypto.state")) != "encrypted" {
@@ -210,8 +321,12 @@ pub fn find_preinit_device() -> String {
 
     debug!("find_preinit_device: matched_info count={}", matched_info.len());
     if matched_info.is_empty() {
-        warn!("find_preinit_device: no partition found");
-        return String::new();
+        debug!("find_preinit_device: mountinfo found nothing, trying sysfs fallback");
+        let sysfs_result = find_preinit_device_sysfs();
+        if sysfs_result.is_empty() {
+            warn!("find_preinit_device: no partition found (mountinfo + sysfs both failed)");
+        }
+        return sysfs_result;
     }
 
     let (_, preinit_info, _) = matched_info.select_nth_unstable_by(
