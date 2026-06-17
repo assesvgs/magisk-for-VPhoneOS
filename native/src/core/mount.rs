@@ -17,8 +17,8 @@ use nix::sys::stat::{Mode, SFlag, mknod};
 use num_traits::AsPrimitive;
 
 // 内部模块
-use crate::consts::{MODULEMNT, MODULEROOT, PREINITDEV, PREINITMIRR, WORKERDIR};
-use crate::ffi::{get_magisk_tmp, resolve_preinit_dir};
+use crate::consts::{EARLYMNTNAME, MODULEMNT, MODULEROOT, PREINITDEV, PREINITMIRR, WORKERDIR};
+use crate::ffi::{get_magisk_tmp, resolve_preinit_dir, switch_mnt_ns};
 use crate::resetprop::get_prop;
 
 // Linux allocated devices: 240-254 are reserved for LOCAL/EXPERIMENTAL use.
@@ -389,5 +389,86 @@ pub fn find_preinit_device() -> String {
     result
 }
 
-// revert_unmount is now implemented in C++ (deny/revert.cpp)
-// for more complete unmounting support from Kitsune Mask
+// Kitsune Mask: revert_unmount
+// 4 次独立 parse_mount_info 调用是必须的（不可合并）：
+// - MNT_DETACH 卸载后内核立即摘除 mountinfo 记录，需分批读取有效路径
+// - 父挂载卸载后子挂载传播才刷新，需逐层处理避免 EBUSY
+// - targets.clear() 隔离错误，防止失败污染后续操作
+// - 前 3 次收集后批量卸载，第 4 次 EARLYMNTNAME 立即卸载
+pub fn revert_unmount(pid: i32) {
+    if pid > 0 {
+        if switch_mnt_ns(pid) != 0 {
+            return;
+        }
+        debug!("denylist: handling PID=[{}]", pid);
+    }
+
+    let mut targets = Vec::new();
+
+    // 1. Unmount magisk tmpfs
+    for info in parse_mount_info("self") {
+        if info.source == "magisk" {
+            targets.push(info.target.clone());
+        }
+    }
+    debug!("revert_unmount: magisk tmpfs targets={}", targets.len());
+    for target in targets.iter().rev() {
+        let mut target = target.clone();
+        let target = Utf8CStr::from_string(&mut target);
+        match target.unmount() {
+            Ok(_) => { debug!("denylist: Unmounted ({})", target); }
+            Err(e) => { warn!("denylist: Failed to unmount magisk ({}): {}", target, e); }
+        }
+    }
+    targets.clear();
+
+    // 2. Unmount worker tmpfs
+    for info in parse_mount_info("self") {
+        if info.source == "worker" {
+            targets.push(info.target.clone());
+        }
+    }
+    debug!("revert_unmount: worker tmpfs targets={}", targets.len());
+    for target in targets.iter().rev() {
+        let mut target = target.clone();
+        let target = Utf8CStr::from_string(&mut target);
+        match target.unmount() {
+            Ok(_) => { debug!("denylist: Unmounted ({})", target); }
+            Err(e) => { warn!("denylist: Failed to unmount worker ({}): {}", target, e); }
+        }
+    }
+    targets.clear();
+
+    // 3. Unmount module bind mount
+    for info in parse_mount_info("self") {
+        if info.root.starts_with("/adb/modules")
+            || info.target.starts_with("/data/adb/modules")
+        {
+            targets.push(info.target.clone());
+        }
+    }
+    debug!("revert_unmount: module targets={}", targets.len());
+    for target in targets.iter().rev() {
+        let mut target = target.clone();
+        let target = Utf8CStr::from_string(&mut target);
+        match target.unmount() {
+            Ok(_) => { debug!("denylist: Unmounted ({})", target); }
+            Err(e) => { warn!("denylist: Failed to unmount module ({}): {}", target, e); }
+        }
+    }
+    targets.clear();
+
+    // 4. Unmount early-mount.d files
+    for info in parse_mount_info("self") {
+        if info.source == EARLYMNTNAME {
+            let mut target = info.target.clone();
+            let target = Utf8CStr::from_string(&mut target);
+            match target.unmount() {
+                Ok(_) => { debug!("denylist: Unmounted ({})", target); }
+                Err(e) => { warn!("denylist: Failed to unmount early-mount ({}): {}", target, e); }
+            }
+        }
+    }
+
+    debug!("revert_unmount: done");
+}

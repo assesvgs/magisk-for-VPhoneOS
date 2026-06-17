@@ -4,9 +4,9 @@
 
 | 文件 | 说明 |
 |------|------|
-| `core/kitsune.cpp` | Kitsune Mask 全局变量（magisktmpfs_fd、su_bin_fd、HAVE_32、logging_muted）和函数（enable_mount_su、su_mount、mount_mirrors、tmpfs_mount、bind_mount_、parse_mount_info） |
+| `core/kitsune.cpp` | Kitsune Mask 全局变量（magisktmpfs_fd、su_bin_fd、HAVE_32、logging_muted）和函数（enable_mount_su、su_mount、mount_mirrors、tmpfs_mount、bind_mount_） |
 | `core/deny/ptrace.cpp` | ptrace 进程监控实现，替代原版的 logcat.cpp |
-| `core/deny/revert.cpp` | 完整的 revert_unmount 实现，包含 /sbin 挂载/卸载、SoList 隐藏 |
+| `core/deny/revert.cpp` | /sbin 挂载/卸载、SoList 隐藏、revert_daemon（revert_unmount 已移至 Rust） |
 | `zygisk/solist.hpp` | SoList 隐藏功能，从 linker 链表中抹掉 Zygisk 模块路径 |
 | `zygisk/memory.cpp` | JNI hook 内存分配器实现（mmap 单调分配器） |
 | `zygisk/memory.hpp` | JNI hook 内存分配器头文件 |
@@ -24,13 +24,13 @@
 | `native/src/Android.mk` | 构建列表：logcat.cpp → ptrace.cpp + revert.cpp + kitsune.cpp + memory.cpp；添加 libphmap、libxdl 依赖 |
 | `native/src/external/Android.mk` | 添加 libphmap 和 libxdl 构建规则 |
 | `native/src/Application.mk` | 添加 APP_ABI（四架构）、APP_SUPPORT_FLEXIBLE_PAGE_SIZES（16KB 页面）、B_BB（Busybox） |
-| `core/include/core.hpp` | 添加 Kitsune Mask 声明（revert_unmount、magisktmpfs_fd、su_bin_fd、logging_muted、su_mount、mount_mirrors、enable_mount_su、tmpfs_mount、bind_mount_、mount_info、parse_mount_info） |
+| `core/include/core.hpp` | 添加 Kitsune Mask 声明（revert_unmount、magisktmpfs_fd、su_bin_fd、logging_muted、su_mount、mount_mirrors、enable_mount_su、tmpfs_mount、bind_mount_）；mount_info 和 parse_mount_info 已移至 Rust |
 | `core/deny/deny.hpp` | 添加 SIGTERMTHRD 宏、sulist 枚举、crawl_procfs/is_uid_on_list/rescan_apps/revert_daemon/mount_magisk_to_pid/do_mount_magisk 声明 |
 | `core/deny/cli.cpp` | 命令从 --denylist 改为 --hide，添加 sulist、--do-unmount、--mount-sbin、--setup-sbin |
 | `core/deny/utils.cpp` | 添加 sulist 功能、rescan_apps、is_uid_on_list、is_deny_target 三参数版本、proc_monitor 线程启动 |
-| `core/lib.rs` | 添加 ZygiskRequest（SulistRootNs、RevertUnmount）、ZygiskStateFlags（ProcessOnAllowList、AllowlistEnforcing、DoRevertUnmount、DoAllow）、enable_mount_su/revert_unmount FFI 声明 |
+| `core/lib.rs` | 添加 ZygiskRequest（SulistRootNs、RevertUnmount）、ZygiskStateFlags（ProcessOnAllowList、AllowlistEnforcing、DoRevertUnmount、DoAllow）、enable_mount_su FFI 声明；revert_unmount 改为 Rust 导出 |
 | `core/magisk.rs` | --denylist 改为 --hide |
-| `core/mount.rs` | 删除 Rust 版本 revert_unmount（移至 C++） |
+| `core/mount.rs` | 添加 Rust 版本 revert_unmount（支持 4 种卸载类型）、find_preinit_device_sysfs、诊断日志 |
 | `core/bootstages.rs` | 添加 enable_mount_su() 导入和调用 |
 | `zygisk/entry.cpp` | 添加 remote_request_sulist() 和 remote_request_umount() |
 | `zygisk/hook.cpp` | 添加 sulist 逻辑、SoList 隐藏调用、内存释放调用 |

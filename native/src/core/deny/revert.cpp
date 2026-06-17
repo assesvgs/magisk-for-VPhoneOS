@@ -230,54 +230,5 @@ void revert_daemon(int pid, int client) {
     }
 }
 
-void revert_unmount(int pid) {
-    LOGD("revert_unmount: start, pid=%d\n", pid);
-    if (pid > 0) {
-        if (switch_mnt_ns(pid))
-            return;
-        LOGD("denylist: handling PID=[%d]\n", pid);
-    }
-    set<string> targets;
-
-    // Unmount dummy skeletons and MAGISKTMP
-    // since mirror nodes are always mounted under skeleton, we don't have to specifically unmount
-
-    // magisk tmpfs
-    for (auto &info: parse_mount_info("self")) {
-        if (info.source == "magisk")
-            targets.insert(info.target);
-    }
-    LOGD("revert_unmount: magisk tmpfs targets=%zu\n", targets.size());
-    for (auto &s : reversed(targets))
-        lazy_unmount(s.data());
-    targets.clear();
-
-    // tmpfs mount
-    for (auto &info: parse_mount_info("self")) {
-        if (info.source == "worker")
-            targets.insert(info.target);
-    }
-    LOGD("revert_unmount: worker tmpfs targets=%zu\n", targets.size());
-    for (auto &s : reversed(targets))
-        lazy_unmount(s.data());
-    targets.clear();
-
-    // module bind mount
-    for (auto &info: parse_mount_info("self")) {
-        if (info.root.starts_with("/adb/modules") ||
-            info.target.starts_with("/data/adb/modules"))
-            targets.insert(info.target);
-    }
-    LOGD("revert_unmount: module targets=%zu\n", targets.size());
-    for (auto &s : reversed(targets))
-        lazy_unmount(s.data());
-    targets.clear();
-
-    // Unmount early-mount.d files
-    for (auto &info: parse_mount_info("self")) {
-        if (info.source == EARLYMNTNAME) { // bind mount from early-mount
-            lazy_unmount(info.target.data());
-        }
-    }
-    LOGD("revert_unmount: done\n");
-}
+// revert_unmount 已迁移至 Rust (core/mount.rs)
+// 支持 4 种卸载类型（Kitsune Mask 特性）

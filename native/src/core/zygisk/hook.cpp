@@ -192,18 +192,6 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
         ZLOGD("unshare: /sdcard exists_after_remote=%d\n", access("/sdcard", F_OK) == 0);
         ZLOGD("unshare: /storage/self/primary exists_after_remote=%d\n", access("/storage/self/primary", F_OK) == 0);
 
-        // [诊断] 检查 sdcardfs 挂载状态
-        bool sdcardfs_mounted = false;
-        for (auto &info : parse_mount_info("self")) {
-            if (info.type == "sdcardfs") {
-                ZLOGD("unshare: sdcardfs mounted at %s\n", info.target.c_str());
-                sdcardfs_mounted = true;
-            }
-        }
-        if (!sdcardfs_mounted) {
-            ZLOGD("unshare: sdcardfs NOT mounted\n");
-        }
-
         // clean up mount id hole by unshare mount namespace twice
         int unshare2_ret = old_unshare(CLONE_NEWNS);
         ZLOGD("unshare: 2nd old_unshare ret=%d, errno=%d\n", unshare2_ret, errno);
@@ -449,18 +437,6 @@ static void log_sdcard_diagnostics(const char *stage) {
         pclose(pid_file);
     }
     ZLOGD("%s: sdcard_pid='%s'\n", stage, sdcard_pid);
-    
-    // sdcardfs 挂载状态
-    bool sdcardfs_mounted = false;
-    for (auto &info : parse_mount_info("self")) {
-        if (info.type == "sdcardfs") {
-            ZLOGD("%s: sdcardfs mounted at %s\n", stage, info.target.c_str());
-            sdcardfs_mounted = true;
-        }
-    }
-    if (!sdcardfs_mounted) {
-        ZLOGD("%s: sdcardfs NOT mounted\n", stage);
-    }
     
     // /sdcard 状态
     ZLOGD("%s: /sdcard exists=%d\n", stage, access("/sdcard", F_OK) == 0);

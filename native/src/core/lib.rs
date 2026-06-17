@@ -23,6 +23,7 @@ use std::ops::DerefMut;
 use std::os::fd::FromRawFd;
 use su::{get_pty_num, pump_tty};
 use zygisk::zygisk_should_load_module;
+use mount::revert_unmount;
 
 mod bootstages;
 #[path = "../include/consts.rs"]
@@ -159,7 +160,6 @@ pub mod ffi {
 
         // Kitsune Mask specific
         fn enable_mount_su();
-        fn revert_unmount(pid: i32);
         fn initialize_denylist();
         fn switch_mnt_ns(pid: i32) -> i32;
         fn exec_root_shell(client: i32, pid: i32, req: &mut SuRequest, mode: MntNsMode);
@@ -197,6 +197,7 @@ pub mod ffi {
         fn zygisk_logging();
         fn zygisk_close_logd();
         fn zygisk_get_logd() -> i32;
+        fn revert_unmount(pid: i32);
         fn zygisk_should_load_module(flags: u32) -> bool;
         fn send_fd(socket: i32, fd: i32) -> bool;
         fn recv_fd(socket: i32) -> i32;

@@ -80,7 +80,7 @@ void initialize_denylist();
 void scan_deny_apps();
 bool is_deny_target(int uid, std::string_view process, int max_len = 0);
 void update_deny_flags(int uid, rust::Str process, uint32_t &flags);
-void revert_unmount(int pid = -1);
+void revert_unmount(int pid = -1) noexcept;
 
 // Kitsune Mask specific
 extern int magisktmpfs_fd;
@@ -93,23 +93,7 @@ void enable_mount_su();
 int tmpfs_mount(const char *from, const char *to);
 int bind_mount_(const char *from, const char *to);
 
-struct mount_info {
-    unsigned int id;
-    unsigned int parent;
-    dev_t device;
-    std::string root;
-    std::string target;
-    std::string vfs_option;
-    struct {
-        unsigned int shared;
-        unsigned int master;
-        unsigned int propagate_from;
-    } optional;
-    std::string type;
-    std::string source;
-    std::string fs_option;
-};
-std::vector<mount_info> parse_mount_info(const char *pid);
+// mount_info 和 parse_mount_info 已迁移至 Rust (base/files.rs)
 
 // MagiskSU
 void exec_root_shell(int client, int pid, SuRequest &req, MntNsMode mode);
