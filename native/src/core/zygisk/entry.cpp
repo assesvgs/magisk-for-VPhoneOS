@@ -48,17 +48,25 @@ int remote_request_umount() {
         LOGD("remote_request_umount: clean_ns_fd=%d\n", clean_ns);
 
         if (clean_ns > 0) {
+#ifdef MAGISK_DEBUG
             // [诊断] 记录 setns 前的 namespace
             char ns_before[128] = {};
             if (ssize_t len = readlink("/proc/self/ns/mnt", ns_before, sizeof(ns_before)-1); len > 0) {
                 ns_before[len] = '\0';
                 LOGD("remote_request_umount: ns_before_setns=[%s]\n", ns_before);
             }
+#endif
 
             int setns_ret = xsetns(clean_ns, CLONE_NEWNS);
-            LOGD("remote_request_umount: setns ret=%d, errno=%d(%s)\n",
-                 setns_ret, errno, strerror(errno));
 
+            if (setns_ret != 0) {
+                LOGE("remote_request_umount: xsetns failed: %s\n", strerror(errno));
+                close(clean_ns);
+                close(fd);
+                return -1;
+            }
+
+#ifdef MAGISK_DEBUG
             // [诊断] 记录 setns 后的 namespace
             char ns_after[128] = {};
             if (ssize_t len = readlink("/proc/self/ns/mnt", ns_after, sizeof(ns_after)-1); len > 0) {
@@ -72,6 +80,7 @@ int remote_request_umount() {
             } else if (ns_before[0] && ns_after[0]) {
                 LOGD("remote_request_umount: namespace unchanged [%s]\n", ns_before);
             }
+#endif
         } else {
             LOGE("remote_request_umount: failed to open ns_path, errno=%d(%s)\n",
                  errno, strerror(errno));

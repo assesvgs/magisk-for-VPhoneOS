@@ -81,4 +81,20 @@ impl Utf8CStr {
         )
         .check_os_err("set_mount_private", Some(self), None)
     }
+
+    pub fn set_mount_shared(&self, rec: bool) -> OsResult<'_, ()> {
+        let flag = if rec {
+            MsFlags::MS_REC
+        } else {
+            MsFlags::empty()
+        };
+        mount(
+            None::<&Utf8CStr>,
+            self,
+            None::<&Utf8CStr>,
+            flag | MsFlags::MS_SHARED,
+            None::<&Utf8CStr>,
+        )
+        .check_os_err("set_mount_shared", Some(self), None)
+    }
 }

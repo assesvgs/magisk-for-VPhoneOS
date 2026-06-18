@@ -219,6 +219,10 @@ enum : uint32_t {
     DO_REVERT_UNMOUNT = (1u << 4),
     SKIP_CLOSE_LOG_PIPE = (1u << 5),
     DO_ALLOW = (1u << 6),
+    // Kitsune Mask 特性
+    ALLOWLIST_ENFORCED = (1u << 7),      // 标记处于 allowlist 模式
+    RESTORE_MOUNT_EXTERNAL_NONE = (1u << 8),  // 标记需要恢复 mount_external=0
+    DO_FUTILE_HIDE = (1u << 9),          // 标记需要隐藏 Zygisk 模块
 };
 
 #define DCL_PRE_POST(name) \

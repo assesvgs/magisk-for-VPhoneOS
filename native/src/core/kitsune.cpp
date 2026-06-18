@@ -20,6 +20,10 @@ bool HAVE_32 = false;
 int su_bin_fd = -1;
 bool logging_muted = false;
 
+// FFI wrapper functions (CXX doesn't support static variable access)
+int get_su_bin_fd() { return su_bin_fd; }
+int get_magisktmpfs_fd() { return magisktmpfs_fd; }
+
 // tmpfs_mount function from KitsuneMag-kitsune
 int tmpfs_mount(const char *from, const char *to) {
     return xmount(from, to, "tmpfs", 0, "mode=755");

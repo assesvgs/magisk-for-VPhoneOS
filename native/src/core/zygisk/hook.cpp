@@ -162,6 +162,7 @@ DCL_HOOK_FUNC(int, fork) {
 DCL_HOOK_FUNC(static int, unshare, int flags) {
     int res = old_unshare(flags);
     if (g_ctx && (flags & CLONE_NEWNS) != 0 && res == 0) {
+#ifdef MAGISK_DEBUG
         ZLOGD("unshare: CLONE_NEWNS, ctx_flags=0x%x\n", g_ctx->flags);
 
         // [诊断] 记录第一次 unshare 后的 mount namespace ID
@@ -176,26 +177,37 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
         ZLOGD("unshare: /storage/self/primary exists=%d\n", access("/storage/self/primary", F_OK) == 0);
 
         // [诊断] 记录分支决策
-        ZLOGD("unshare: branch decision: flags=0x%x (DO_ALLOW=%d, DO_REVERT=%d)\n",
+        ZLOGD("unshare: branch decision: flags=0x%x (DO_ALLOW=%d, ALLOWLIST_ENFORCED=%d, DO_REVERT=%d)\n",
             g_ctx->flags,
             !!(g_ctx->flags & DO_ALLOW),
+            !!(g_ctx->flags & ALLOWLIST_ENFORCED),
             !!(g_ctx->flags & DO_REVERT_UNMOUNT));
+#endif
 
+        // 核心逻辑：根据标志决定操作
         int ret = (g_ctx->flags & DO_ALLOW)?
                 remote_request_sulist() :
-        (g_ctx->flags & DO_REVERT_UNMOUNT)?
+        // 关键：检查 ALLOWLIST_ENFORCED 标志
+        (!(g_ctx->flags & ALLOWLIST_ENFORCED) && (g_ctx->flags & DO_REVERT_UNMOUNT))?
                 remote_request_umount() : 0 /* do nothing */;
         if (ret == -1) ZLOGE("remote request failed\n");
-        ZLOGD("unshare: ret=%d\n", ret);
 
+        // 与 kokoro 一致：仅在 sulist 模式下设置 logging_muted
+        if (g_ctx->flags & DO_ALLOW) {
+            logging_muted = true;
+        }
+
+#ifdef MAGISK_DEBUG
+        ZLOGD("unshare: ret=%d\n", ret);
         // [诊断] 记录 remote_request 后的状态
         ZLOGD("unshare: /sdcard exists_after_remote=%d\n", access("/sdcard", F_OK) == 0);
         ZLOGD("unshare: /storage/self/primary exists_after_remote=%d\n", access("/storage/self/primary", F_OK) == 0);
+#endif
 
         // clean up mount id hole by unshare mount namespace twice
-        int unshare2_ret = old_unshare(CLONE_NEWNS);
-        ZLOGD("unshare: 2nd old_unshare ret=%d, errno=%d\n", unshare2_ret, errno);
+        old_unshare(CLONE_NEWNS);
 
+#ifdef MAGISK_DEBUG
         // [诊断] 记录第二次 unshare 后的状态
         char ns_after[128] = {};
         if (ssize_t len = readlink("/proc/self/ns/mnt", ns_after, sizeof(ns_after)-1); len > 0) {
@@ -210,6 +222,48 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
             ZLOGD("unshare: WARNING namespace changed! [%s] -> [%s]\n", ns_before, ns_after);
         } else if (ns_before[0] && ns_after[0]) {
             ZLOGD("unshare: namespace unchanged [%s]\n", ns_before);
+        }
+#endif
+
+        // 恢复 mount_external 状态
+        if (g_ctx->flags & RESTORE_MOUNT_EXTERNAL_NONE) {
+            g_ctx->args.app->mount_external = 0;
+            ZLOGD("unshare: restored mount_external to 0\n");
+        }
+
+        // VPhoneOS 健壮恢复逻辑（如果 /sdcard 仍然不存在）
+        if (access("/sdcard", F_OK) != 0) {
+            if (access("/share", F_OK) == 0) {  // 检测 VPhoneOS
+                ZLOGD("unshare: VPhoneOS detected, attempting robust restore\n");
+
+                // 清理符号链接（无论是否损坏，强制删除）
+                struct stat st;
+                if (lstat("/sdcard", &st) == 0 && S_ISLNK(st.st_mode)) {
+                    unlink("/sdcard");
+                    ZLOGD("unshare: removed symlink /sdcard (forced)\n");
+                }
+
+                // 选择可靠的挂载源（优先 /data/media/0）
+                const char* src = nullptr;
+                if (access("/data/media/0", F_OK) == 0) {
+                    src = "/data/media/0";
+                } else if (access("/storage/emulated/0", F_OK) == 0) {
+                    src = "/storage/emulated/0";
+                } else if (access("/storage/self/primary", F_OK) == 0) {
+                    src = "/storage/self/primary";
+                }
+
+                if (src) {
+                    if (mkdir("/sdcard", 0755) == 0 || errno == EEXIST) {
+                        if (mount(src, "/sdcard", nullptr, MS_BIND, nullptr) == 0) {
+                            ZLOGD("unshare: bind mount %s -> /sdcard success\n", src);
+                            if (mount(nullptr, "/sdcard", nullptr, MS_SHARED, nullptr) != 0) {
+                                ZLOGE("unshare: set MS_SHARED failed: %s\n", strerror(errno));
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Restore errno back to 0
@@ -399,6 +453,35 @@ static const NativeBridgeRuntimeCallbacks* find_runtime_callbacks(struct _Unwind
     return nullptr;
 }
 
+#ifdef MAGISK_DEBUG
+// [诊断] 通过 /proc 扫描获取进程 PID（安全替代 popen）
+static int get_pid_by_name_safe(const char *name) {
+    DIR *dir = opendir("/proc");
+    if (!dir) return -1;
+    
+    struct dirent *entry;
+    while ((entry = readdir(dir))) {
+        if (entry->d_type != DT_DIR) continue;
+        int pid = atoi(entry->d_name);
+        if (pid <= 0) continue;
+        
+        char path[64];
+        snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
+        int fd = open(path, O_RDONLY | O_CLOEXEC);
+        if (fd >= 0) {
+            char cmd[256] = {};
+            ssize_t n = read(fd, cmd, sizeof(cmd) - 1);
+            close(fd);
+            if (n > 0 && strstr(cmd, name)) {
+                closedir(dir);
+                return pid;
+            }
+        }
+    }
+    closedir(dir);
+    return -1;
+}
+
 // [诊断] 记录 sdcard 相关状态（vold/sdcard 进程、sdcardfs 挂载、/sdcard 状态）
 static void log_sdcard_diagnostics(const char *stage) {
     // 进程信息
@@ -416,39 +499,28 @@ static void log_sdcard_diagnostics(const char *stage) {
         ZLOGD("%s: mount_namespace=%s\n", stage, mnt_ns);
     }
     
-    // vold 进程状态
-    char vold_pid[256] = {};
-    FILE *pid_file = popen("pidof vold 2>/dev/null", "r");
-    if (pid_file) {
-        if (fgets(vold_pid, sizeof(vold_pid), pid_file) == NULL) {
-            strcpy(vold_pid, "unknown");
-        }
-        pclose(pid_file);
-    }
-    ZLOGD("%s: vold_pid='%s'\n", stage, vold_pid);
+    // vold 进程状态（使用安全的 /proc 扫描）
+    int vold_pid = get_pid_by_name_safe("vold");
+    ZLOGD("%s: vold_pid=%d\n", stage, vold_pid);
     
-    // sdcard 进程状态
-    char sdcard_pid[256] = {};
-    pid_file = popen("pidof sdcard 2>/dev/null", "r");
-    if (pid_file) {
-        if (fgets(sdcard_pid, sizeof(sdcard_pid), pid_file) == NULL) {
-            strcpy(sdcard_pid, "unknown");
-        }
-        pclose(pid_file);
-    }
-    ZLOGD("%s: sdcard_pid='%s'\n", stage, sdcard_pid);
+    // sdcard 进程状态（使用安全的 /proc 扫描）
+    int sdcard_pid = get_pid_by_name_safe("sdcard");
+    ZLOGD("%s: sdcard_pid=%d\n", stage, sdcard_pid);
     
     // /sdcard 状态
     ZLOGD("%s: /sdcard exists=%d\n", stage, access("/sdcard", F_OK) == 0);
     ZLOGD("%s: /storage/self/primary exists=%d\n", stage, access("/storage/self/primary", F_OK) == 0);
 }
+#endif
 
 // -----------------------------------------------------------------
 
 void HookContext::post_native_bridge_load(void *handle) {
     self_handle = handle;
-    ZLOGD("post_native_bridge_load: handle=%p\n", handle);  // handle 是此函数独有的参数，保留
+#ifdef MAGISK_DEBUG
+    ZLOGD("post_native_bridge_load: handle=%p\n", handle);
     log_sdcard_diagnostics("post_native_bridge_load");
+#endif
 
     // 原有的 native bridge 重载逻辑（保留不变）
     using method_sig = const bool (*)(const char *, const NativeBridgeRuntimeCallbacks *);
@@ -726,7 +798,9 @@ void HookContext::restore_zygote_hook(JNIEnv *env) {
 
 void hook_entry() {
     ZLOGD("hook_entry: initializing\n");
+#ifdef MAGISK_DEBUG
     log_sdcard_diagnostics("hook_entry");
+#endif
     default_new(g_hook);
     g_hook->hook_plt();
     ZLOGD("hook_entry: done\n");

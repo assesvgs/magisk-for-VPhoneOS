@@ -169,7 +169,52 @@ impl MagiskD {
         info!("post_fs_data: handle_modules done");
         info!("post_fs_data: clean_mounts");
         clean_mounts();
-        
+
+        // VPhoneOS sdcard 修复
+        let is_vphoneos = get_prop(cstr!("ro.vphone.os")) == "1"
+            || cstr!("/share").exists();
+
+        if is_vphoneos {
+            let sdcard_path = cstr!("/sdcard");
+
+            // 清理符号链接（无论是否损坏，强制删除）
+            if let Ok(meta) = std::fs::symlink_metadata("/sdcard") {
+                if meta.file_type().is_symlink() {
+                    let _ = std::fs::remove_file("/sdcard");
+                    debug!("post_fs_data: removed symlink /sdcard (forced)");
+                }
+            }
+
+            // 确保 /sdcard 是目录
+            if !sdcard_path.exists() {
+                let _ = std::fs::create_dir("/sdcard");
+            }
+
+            // 确定可靠的源路径
+            let src = if cstr!("/data/media/0").exists() {
+                cstr!("/data/media/0")
+            } else if cstr!("/storage/emulated/0").exists() {
+                cstr!("/storage/emulated/0")
+            } else {
+                cstr!("/storage/self/primary")
+            };
+
+            if src.exists() {
+                // bind mount
+                if let Err(e) = src.bind_mount_to(cstr!("/sdcard"), false) {
+                    debug!("post_fs_data: bind_mount {} -> /sdcard failed: {}", src, e);
+                } else {
+                    debug!("post_fs_data: bind_mount {} -> /sdcard success", src);
+                    // 设置为 shared（递归传播）
+                    if let Err(e) = cstr!("/sdcard").set_mount_shared(true) {
+                        debug!("post_fs_data: set_mount_shared /sdcard failed: {}", e);
+                    } else {
+                        debug!("post_fs_data: set_mount_shared /sdcard success");
+                    }
+                }
+            }
+        }
+
         // [诊断] 检查 sdcard 状态
         // 注意：使用 debug!() 而不是 info!()，因为 info!() 输出到 stdout，
         // 会被 boot_patch.sh 的 $(./magisk --preinit-device) 捕获，污染 PREINITDEVICE 变量

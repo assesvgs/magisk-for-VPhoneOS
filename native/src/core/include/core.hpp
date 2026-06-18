@@ -92,6 +92,9 @@ void mount_mirrors();
 void enable_mount_su();
 int tmpfs_mount(const char *from, const char *to);
 int bind_mount_(const char *from, const char *to);
+void do_mount_magisk(int pid);
+int get_su_bin_fd();
+int get_magisktmpfs_fd();
 
 // mount_info 和 parse_mount_info 已迁移至 Rust (base/files.rs)
 

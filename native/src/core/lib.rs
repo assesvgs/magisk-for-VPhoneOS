@@ -162,7 +162,10 @@ pub mod ffi {
         fn enable_mount_su();
         fn initialize_denylist();
         fn switch_mnt_ns(pid: i32) -> i32;
+        fn do_mount_magisk(pid: i32);
         fn exec_root_shell(client: i32, pid: i32, req: &mut SuRequest, mode: MntNsMode);
+        fn get_su_bin_fd() -> i32;
+        fn get_magisktmpfs_fd() -> i32;
 
         // Scripting
         fn exec_script(script: Utf8CStrRef);

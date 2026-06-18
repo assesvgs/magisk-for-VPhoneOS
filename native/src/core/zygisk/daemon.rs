@@ -16,7 +16,8 @@ use nix::fcntl::OFlag;
 // 内部模块
 use crate::consts::MODULEROOT;
 use crate::daemon::{MagiskD, to_user_id};
-use crate::ffi::{ZygiskRequest, ZygiskStateFlags, get_magisk_tmp, update_deny_flags};
+use crate::ffi::{ZygiskRequest, ZygiskStateFlags, get_magisk_tmp, update_deny_flags, switch_mnt_ns, do_mount_magisk};
+use crate::mount::revert_unmount;
 use crate::resetprop::{get_prop, set_prop};
 use crate::socket::{IpcRead, UnixSocketExt};
 
@@ -74,6 +75,9 @@ pub struct ZygiskState {
     pub lib_name: String,
     sockets: (Option<UnixStream>, Option<UnixStream>),
     start_count: u32 = 1,
+    // clean namespace 缓存（与 kokoro 一致）
+    clean_ns64: i32 = -1,
+    clean_ns32: i32 = -1,
 }
 
 impl ZygiskState {
@@ -128,6 +132,9 @@ impl ZygiskState {
         } else {
             self.sockets = (None, None);
             self.start_count += 1;
+            // 清理 clean_ns 缓存（与 kokoro 一致）
+            self.clean_ns64 = -1;
+            self.clean_ns32 = -1;
             if self.start_count > 3 {
                 warn!("zygote crashed too many times, rolling-back");
                 restore = true;
@@ -190,12 +197,41 @@ impl MagiskD {
                     .connect_zygiskd(client, self)
                     .log_with_msg(|w| w.write_str("zygiskd startup error"))?,
                 ZygiskRequest::GetModDir => self.get_mod_dir(client)?,
-                // [诊断] 明确记录未处理的请求，使用 error 级别确保在 release 构建中也可见
                 ZygiskRequest::SulistRootNs => {
-                    error!("zygisk_handler: UNHANDLED SulistRootNs request! client will block");
+                    debug!("zygisk_handler: handling SulistRootNs request");
+                    // 从 socket 凭据获取 pid（与 kokoro 一致）
+                    let pid = client.peer_cred()
+                        .ok()
+                        .and_then(|c| c.pid)
+                        .unwrap_or(-1);
+                    debug!("zygisk_handler: SulistRootNs pid={}", pid);
+                    let result = self.mount_magisk_to_remote(pid);
+                    debug!("zygisk_handler: SulistRootNs result={}", result);
+                    client.write_pod(&result)?;
                 }
                 ZygiskRequest::RevertUnmount => {
-                    error!("zygisk_handler: UNHANDLED RevertUnmount request! client will block");
+                    debug!("zygisk_handler: handling RevertUnmount request");
+                    // 从 socket 凭据获取 pid（与 kokoro 一致）
+                    let pid = client.peer_cred()
+                        .ok()
+                        .and_then(|c| c.pid)
+                        .unwrap_or(-1);
+                    debug!("zygisk_handler: RevertUnmount pid={}", pid);
+                    
+                    // 与 kokoro 一致：只有 su_bin_fd >= 0 时才创建 clean namespace
+                    // 并缓存结果（每个架构只创建一次）
+                    let clean_ns_path = if self.get_su_bin_fd() >= 0 {
+                        let ns = self.get_or_create_clean_ns(pid);
+                        format!("/proc/{}/fd/{}", std::process::id(), ns)
+                    } else {
+                        String::new()
+                    };
+                    
+                    debug!("zygisk_handler: RevertUnmount clean_ns_path={}", clean_ns_path);
+                    // 写入字符串：先写长度，再写数据
+                    let len = clean_ns_path.len() as i32;
+                    client.write_pod(&len)?;
+                    std::io::Write::write_all(&mut client, clean_ns_path.as_bytes())?;
                 }
                 _ => {
                     debug!("zygisk_handler: unhandled request={}", code.repr);
@@ -288,11 +324,163 @@ impl MagiskD {
         client.send_fds(&[fd.as_raw_fd()])?;
         Ok(())
     }
+
+    fn mount_magisk_to_remote(&self, pid: i32) -> i32 {
+        unsafe {
+            let child = libc::fork();
+            if child == 0 {
+                // 子进程：执行 Magisk 挂载
+                do_mount_magisk(pid);
+                libc::_exit(0);
+            } else if child > 0 {
+                // 父进程：等待子进程完成
+                libc::waitpid(child, std::ptr::null_mut(), 0);
+                0 // 成功
+            } else {
+                -1 // 失败
+            }
+        }
+    }
+
+    fn get_clean_ns_path(&self, pid: i32) -> String {
+        unsafe {
+            let mut pipe_fd = [0i32; 2];
+            libc::pipe(pipe_fd.as_mut_ptr());
+
+            let child = libc::fork();
+            if child == 0 {
+                // 子进程
+                switch_mnt_ns(pid);
+                libc::unshare(libc::CLONE_NEWNS);
+                revert_unmount(-1);
+                // 通知父进程已完成
+                let mut buf = 0i32;
+                libc::write(pipe_fd[1], &mut buf as *mut i32 as *const libc::c_void, 4);
+                // 等待父进程读取
+                libc::read(pipe_fd[0], &mut buf as *mut i32 as *mut libc::c_void, 4);
+                libc::_exit(0);
+            } else {
+                // 父进程
+                let mut buf = 0i32;
+                // 等待子进程完成
+                libc::read(pipe_fd[0], &mut buf as *mut i32 as *mut libc::c_void, 4);
+
+                // 获取子进程的 namespace fd
+                let ns_path = format!("/proc/{}/ns/mnt\0", child);
+                let clean_ns = libc::open(ns_path.as_ptr() as *const libc::c_char, libc::O_RDONLY);
+
+                // 通知子进程可以退出
+                libc::write(pipe_fd[1], &mut buf as *mut i32 as *const libc::c_void, 4);
+                libc::close(pipe_fd[0]);
+                libc::close(pipe_fd[1]);
+
+                // 等待子进程退出
+                libc::waitpid(child, std::ptr::null_mut(), 0);
+
+                // 返回 namespace 路径
+                if clean_ns >= 0 {
+                    let result = format!("/proc/{}/fd/{}", std::process::id(), clean_ns);
+                    // 不关闭 clean_ns，因为客户端需要使用它
+                    result
+                } else {
+                    String::new()
+                }
+            }
+        }
+    }
 }
 
 // FFI to C++
 impl MagiskD {
     pub fn zygisk_enabled(&self) -> bool {
         self.zygisk_enabled.load(Ordering::Acquire)
+    }
+
+    // 获取 su_bin_fd（与 kokoro 一致）
+    fn get_su_bin_fd(&self) -> i32 {
+        crate::ffi::get_su_bin_fd()
+    }
+
+    // 判断进程是否为 64 位（与 kokoro 的 get_exe + str_ends(buf, "64") 一致）
+    fn is_64_bit_process(pid: i32) -> bool {
+        let exe_path = format!("/proc/{}/exe\0", pid);
+        let mut buf = [0u8; 256];
+        unsafe {
+            let len = libc::readlink(
+                exe_path.as_ptr() as *const libc::c_char,
+                buf.as_mut_ptr() as *mut libc::c_char,
+                buf.len() - 1,
+            );
+            if len > 0 {
+                let exe = std::str::from_utf8_unchecked(&buf[..len as usize]);
+                exe.ends_with("64")
+            } else {
+                true // 默认假设 64 位
+            }
+        }
+    }
+
+    // 获取或创建 clean namespace（带缓存，与 kokoro 一致）
+    fn get_or_create_clean_ns(&self, pid: i32) -> i32 {
+        let mut zygisk = self.zygisk.lock();
+        let is_64_bit = Self::is_64_bit_process(pid);
+        
+        let cached_ns = if is_64_bit {
+            &mut zygisk.clean_ns64
+        } else {
+            &mut zygisk.clean_ns32
+        };
+
+        if *cached_ns < 0 {
+            *cached_ns = self.create_clean_ns(pid);
+        }
+        *cached_ns
+    }
+
+    // 创建 clean namespace（与 kokoro 的 get_clean_ns 逻辑一致）
+    fn create_clean_ns(&self, pid: i32) -> i32 {
+        unsafe {
+            let mut pipe_fd = [0i32; 2];
+            libc::pipe(pipe_fd.as_mut_ptr());
+
+            let child = libc::fork();
+            if child == 0 {
+                // 子进程
+                switch_mnt_ns(pid);
+                libc::unshare(libc::CLONE_NEWNS);
+                revert_unmount(-1);
+                // 通知父进程已完成
+                let mut buf = 0i32;
+                libc::write(pipe_fd[1], &mut buf as *mut i32 as *const libc::c_void, 4);
+                // 等待父进程读取
+                libc::read(pipe_fd[0], &mut buf as *mut i32 as *mut libc::c_void, 4);
+                libc::_exit(0);
+            } else if child > 0 {
+                // 父进程：fork 成功
+                let mut buf = 0i32;
+                // 等待子进程完成
+                libc::read(pipe_fd[0], &mut buf as *mut i32 as *mut libc::c_void, 4);
+
+                // 获取子进程的 namespace fd
+                let ns_path = format!("/proc/{}/ns/mnt\0", child);
+                let clean_ns = libc::open(ns_path.as_ptr() as *const libc::c_char, libc::O_RDONLY);
+
+                // 通知子进程可以退出
+                libc::write(pipe_fd[1], &mut buf as *mut i32 as *const libc::c_void, 4);
+                libc::close(pipe_fd[0]);
+                libc::close(pipe_fd[1]);
+
+                // 等待子进程退出
+                libc::waitpid(child, std::ptr::null_mut(), 0);
+
+                clean_ns
+            } else {
+                // fork 失败
+                error!("create_clean_ns: fork failed, errno={}", *libc::__errno());
+                libc::close(pipe_fd[0]);
+                libc::close(pipe_fd[1]);
+                -1
+            }
+        }
     }
 }

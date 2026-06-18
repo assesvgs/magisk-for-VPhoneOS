@@ -439,12 +439,10 @@ void ZygiskContext::run_modules_post() {
     }
 
     // SoList hiding - hide Zygisk modules from detection
-    // Only for non-system apps (UID >= 10000)
-    if ((flags & APP_SPECIALIZE) && (args.app->uid % 100000) >= 10000) {
-        if (SoList::Initialize()) {
-            SoList::NullifySoName("/memfd:jit-zygisk-cache");
-            SoList::NullifySoName("/modules/");
-        }
+    // 只对 DO_FUTILE_HIDE 标志的应用隐藏（按需隐藏）
+    if ((flags & DO_FUTILE_HIDE) && SoList::Initialize()) {
+        SoList::NullifySoName("/memfd:jit-zygisk-cache");
+        SoList::NullifySoName("/modules/");
     }
 }
 
@@ -460,22 +458,51 @@ void ZygiskContext::app_specialize_pre() {
     // Check for sulist mode
     if (info_flags & +ZygiskStateFlags::AllowlistEnforcing) {
         // Sulist mode
-        if (info_flags & +ZygiskStateFlags::ProcessOnAllowList) {
+        flags |= ALLOWLIST_ENFORCED;  // 标记处于 allowlist 模式
+        
+        if ((info_flags & +ZygiskStateFlags::ProcessOnAllowList) ||
+            (info_flags & +ZygiskStateFlags::ProcessIsMagiskApp)) {
             // Process is on allowlist - mount Magisk for it
             ZLOGI("[%s] is on the sulist (allow)\n", process);
             flags |= DO_ALLOW;
             ZLOGD("app_specialize_pre: set DO_ALLOW, new flags=0x%x\n", flags);
+            
+            // 确保 namespace 隔离，allowlist 处理 isolated process（Android 11 之前）
+            if (args.app->mount_external == 0 /* MOUNT_EXTERNAL_NONE */) {
+                args.app->mount_external = 1 /* MOUNT_EXTERNAL_DEFAULT */;
+                flags |= RESTORE_MOUNT_EXTERNAL_NONE;
+                ZLOGD("app_specialize_pre: set RESTORE_MOUNT_EXTERNAL_NONE\n");
+            }
         } else {
             // Process is NOT on allowlist - unmount Magisk
             ZLOGI("[%s] is NOT on the sulist (revert)\n", process);
             flags |= DO_REVERT_UNMOUNT;
+            // 标记需要隐藏 Zygisk 模块（仅非系统应用）
+            if ((args.app->uid % 100000) >= 10000) {
+                flags |= DO_FUTILE_HIDE;
+            }
             ZLOGD("app_specialize_pre: set DO_REVERT_UNMOUNT (sulist), new flags=0x%x\n", flags);
         }
     } else if ((info_flags & UNMOUNT_MASK) == UNMOUNT_MASK) {
         // Normal denylist mode
         ZLOGI("[%s] is on the denylist\n", process);
         flags |= DO_REVERT_UNMOUNT;
+        // 标记需要隐藏 Zygisk 模块（仅非系统应用）
+        if ((args.app->uid % 100000) >= 10000) {
+            flags |= DO_FUTILE_HIDE;
+        }
         ZLOGD("app_specialize_pre: set DO_REVERT_UNMOUNT (denylist), new flags=0x%x\n", flags);
+        
+        // 确保 namespace 隔离（Android 11 之前）
+        if (args.app->mount_external == 0 /* MOUNT_EXTERNAL_NONE */) {
+            // 仅在 Android 11 之前应用此修复，因为在更高版本中可能导致未定义行为
+            char sdk_ver_str[92]; // PROPERTY_VALUE_MAX
+            if (__system_property_get("ro.build.version.sdk", sdk_ver_str) && atoi(sdk_ver_str) < 30) {
+                args.app->mount_external = 1 /* MOUNT_EXTERNAL_DEFAULT */;
+                flags |= RESTORE_MOUNT_EXTERNAL_NONE;
+                ZLOGD("app_specialize_pre: set RESTORE_MOUNT_EXTERNAL_NONE (denylist)\n");
+            }
+        }
     } else if (fd >= 0) {
         run_modules_pre(module_fds);
         ZLOGD("app_specialize_pre: modules loaded, fd=%d\n", (int)fd);
