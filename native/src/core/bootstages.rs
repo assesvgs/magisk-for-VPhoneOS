@@ -31,6 +31,67 @@ bitflags! {
     }
 }
 
+/// VPhoneOS sdcard 绑定逻辑（公共函数）
+/// 在 late_start 和 boot_complete 阶段调用，确保 /sdcard 绑定到 /data/media/0
+fn bind_sdcard_in_vphoneos(stage: &str) {
+    let is_vphoneos = std::path::Path::new("/share").exists();
+    debug!("{}: is_vphoneos={}", stage, is_vphoneos);
+
+    if !is_vphoneos {
+        return;
+    }
+
+    let sdcard_path = cstr!("/sdcard");
+
+    // 清理符号链接
+    if let Ok(meta) = std::fs::symlink_metadata("/sdcard") {
+        if meta.file_type().is_symlink() {
+            if let Err(e) = std::fs::remove_file("/sdcard") {
+                error!("{}: unlink /sdcard failed: {}", stage, e);
+            } else {
+                debug!("{}: removed symlink /sdcard (forced)", stage);
+            }
+        }
+    }
+
+    // 确保 /sdcard 是目录
+    if !sdcard_path.exists() {
+        if let Err(e) = std::fs::create_dir("/sdcard") {
+            error!("{}: mkdir /sdcard failed: {}", stage, e);
+        }
+    }
+
+    // 选择源路径（优先 /data/media/0，真实存储）
+    let src = if cstr!("/data/media/0").follow_link().exists() {
+        debug!("{}: /data/media/0 exists=true", stage);
+        cstr!("/data/media/0")
+    } else if cstr!("/storage/emulated/0").follow_link().exists() {
+        debug!("{}: /storage/emulated/0 exists=true", stage);
+        cstr!("/storage/emulated/0")
+    } else if cstr!("/storage/self/primary").follow_link().exists() {
+        debug!("{}: /storage/self/primary exists=true", stage);
+        cstr!("/storage/self/primary")
+    } else {
+        error!("{}: NO SOURCE PATH FOUND!", stage);
+        cstr!("/data/media/0") // fallback
+    };
+
+    debug!("{}: using source: {}", stage, src);
+
+    if src.follow_link().exists() {
+        if let Err(e) = src.bind_mount_to(cstr!("/sdcard"), false) {
+            error!("{}: bind_mount {} -> /sdcard failed: {}", stage, src, e);
+        } else {
+            debug!("{}: bind_mount {} -> /sdcard success", stage, src);
+            if let Err(e) = cstr!("/sdcard").set_mount_shared(true) {
+                error!("{}: set_mount_shared /sdcard failed: {}", stage, e);
+            } else {
+                debug!("{}: set_mount_shared /sdcard success", stage);
+            }
+        }
+    }
+}
+
 impl MagiskD {
     fn setup_magisk_env(&self) -> bool {
         info!("* Initializing Magisk environment");
@@ -171,8 +232,7 @@ impl MagiskD {
         clean_mounts();
 
         // VPhoneOS sdcard 修复
-        let is_vphoneos = get_prop(cstr!("ro.vphone.os")) == "1"
-            || cstr!("/share").exists();
+        let is_vphoneos = cstr!("/share").exists();
 
         if is_vphoneos {
             let sdcard_path = cstr!("/sdcard");
@@ -180,8 +240,11 @@ impl MagiskD {
             // 清理符号链接（无论是否损坏，强制删除）
             if let Ok(meta) = std::fs::symlink_metadata("/sdcard") {
                 if meta.file_type().is_symlink() {
-                    let _ = std::fs::remove_file("/sdcard");
-                    debug!("post_fs_data: removed symlink /sdcard (forced)");
+                    if let Err(e) = std::fs::remove_file("/sdcard") {
+                        error!("post_fs_data: unlink /sdcard failed: {}", e);
+                    } else {
+                        debug!("post_fs_data: removed symlink /sdcard (forced)");
+                    }
                 }
             }
 
@@ -190,16 +253,16 @@ impl MagiskD {
                 let _ = std::fs::create_dir("/sdcard");
             }
 
-            // 确定可靠的源路径
-            let src = if cstr!("/data/media/0").exists() {
+            // 确定可靠的源路径（VPhoneOS 中 /data/media/0 是真实存储，优先使用）
+            let src = if cstr!("/data/media/0").follow_link().exists() {
                 cstr!("/data/media/0")
-            } else if cstr!("/storage/emulated/0").exists() {
+            } else if cstr!("/storage/emulated/0").follow_link().exists() {
                 cstr!("/storage/emulated/0")
             } else {
                 cstr!("/storage/self/primary")
             };
 
-            if src.exists() {
+            if src.follow_link().exists() {
                 // bind mount
                 if let Err(e) = src.bind_mount_to(cstr!("/sdcard"), false) {
                     debug!("post_fs_data: bind_mount {} -> /sdcard failed: {}", src, e);
@@ -270,6 +333,9 @@ impl MagiskD {
                 debug!("late_start: sdcardfs mounted at {}", info.target);
             }
         }
+
+        // VPhoneOS sdcard 修复（延迟到 late_start，此时 /data 应已完全挂载）
+        bind_sdcard_in_vphoneos("late_start");
         
         info!("late_start: done");
     }
@@ -302,6 +368,9 @@ impl MagiskD {
             info!("boot_complete: resetting zygisk");
             self.zygisk.lock().reset(true);
         }
+        // VPhoneOS sdcard 修复（boot_complete 阶段，/data 一定已挂载）
+        bind_sdcard_in_vphoneos("boot_complete");
+
         info!("boot_complete: done");
     }
 

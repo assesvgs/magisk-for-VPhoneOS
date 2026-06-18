@@ -173,8 +173,8 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
         }
 
         // [诊断] 记录 /sdcard 和 /storage/self/primary 状态
-        ZLOGD("unshare: /sdcard exists=%d\n", access("/sdcard", F_OK) == 0);
-        ZLOGD("unshare: /storage/self/primary exists=%d\n", access("/storage/self/primary", F_OK) == 0);
+        ZLOGD("unshare: /sdcard exists=%s\n", access("/sdcard", F_OK) == 0 ? "true" : "false");
+        ZLOGD("unshare: /storage/self/primary exists=%s\n", access("/storage/self/primary", F_OK) == 0 ? "true" : "false");
 
         // [诊断] 记录分支决策
         ZLOGD("unshare: branch decision: flags=0x%x (DO_ALLOW=%d, ALLOWLIST_ENFORCED=%d, DO_REVERT=%d)\n",
@@ -200,8 +200,8 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
 #ifdef MAGISK_DEBUG
         ZLOGD("unshare: ret=%d\n", ret);
         // [诊断] 记录 remote_request 后的状态
-        ZLOGD("unshare: /sdcard exists_after_remote=%d\n", access("/sdcard", F_OK) == 0);
-        ZLOGD("unshare: /storage/self/primary exists_after_remote=%d\n", access("/storage/self/primary", F_OK) == 0);
+        ZLOGD("unshare: /sdcard exists_after_remote=%s\n", access("/sdcard", F_OK) == 0 ? "true" : "false");
+        ZLOGD("unshare: /storage/self/primary exists_after_remote=%s\n", access("/storage/self/primary", F_OK) == 0 ? "true" : "false");
 #endif
 
         // clean up mount id hole by unshare mount namespace twice
@@ -214,8 +214,8 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
             ns_after[len] = '\0';
             ZLOGD("unshare: ns_after=[%s]\n", ns_after);
         }
-        ZLOGD("unshare: /sdcard exists_after_2nd_unshare=%d\n", access("/sdcard", F_OK) == 0);
-        ZLOGD("unshare: /storage/self/primary exists_after_2nd_unshare=%d\n", access("/storage/self/primary", F_OK) == 0);
+        ZLOGD("unshare: /sdcard exists_after_2nd_unshare=%s\n", access("/sdcard", F_OK) == 0 ? "true" : "false");
+        ZLOGD("unshare: /storage/self/primary exists_after_2nd_unshare=%s\n", access("/storage/self/primary", F_OK) == 0 ? "true" : "false");
 
         // [诊断] 检查 namespace 是否变化
         if (ns_before[0] && ns_after[0] && strcmp(ns_before, ns_after) != 0) {
@@ -239,29 +239,42 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
                 // 清理符号链接（无论是否损坏，强制删除）
                 struct stat st;
                 if (lstat("/sdcard", &st) == 0 && S_ISLNK(st.st_mode)) {
-                    unlink("/sdcard");
-                    ZLOGD("unshare: removed symlink /sdcard (forced)\n");
+                    if (unlink("/sdcard") != 0) {
+                        ZLOGE("unshare: unlink /sdcard failed: %s\n", strerror(errno));
+                    } else {
+                        ZLOGD("unshare: removed symlink /sdcard (forced)\n");
+                    }
                 }
 
-                // 选择可靠的挂载源（优先 /data/media/0）
+                // 选择可靠的挂载源（VPhoneOS 中 /data/media/0 是真实存储，优先使用）
                 const char* src = nullptr;
                 if (access("/data/media/0", F_OK) == 0) {
                     src = "/data/media/0";
+                    ZLOGD("unshare: /data/media/0 exists=true\n");
                 } else if (access("/storage/emulated/0", F_OK) == 0) {
                     src = "/storage/emulated/0";
+                    ZLOGD("unshare: /storage/emulated/0 exists=true\n");
                 } else if (access("/storage/self/primary", F_OK) == 0) {
                     src = "/storage/self/primary";
+                    ZLOGD("unshare: /storage/self/primary exists=true\n");
                 }
 
                 if (src) {
+                    ZLOGD("unshare: using source: %s\n", src);
                     if (mkdir("/sdcard", 0755) == 0 || errno == EEXIST) {
                         if (mount(src, "/sdcard", nullptr, MS_BIND, nullptr) == 0) {
                             ZLOGD("unshare: bind mount %s -> /sdcard success\n", src);
-                            if (mount(nullptr, "/sdcard", nullptr, MS_SHARED, nullptr) != 0) {
+                            if (mount(nullptr, "/sdcard", nullptr, MS_REC | MS_SHARED, nullptr) != 0) {
                                 ZLOGE("unshare: set MS_SHARED failed: %s\n", strerror(errno));
                             }
+                        } else {
+                            ZLOGE("unshare: bind mount %s -> /sdcard failed: %s\n", src, strerror(errno));
                         }
+                    } else {
+                        ZLOGE("unshare: mkdir /sdcard failed: %s\n", strerror(errno));
                     }
+                } else {
+                    ZLOGE("unshare: NO SOURCE PATH FOUND!\n");
                 }
             }
         }
@@ -343,7 +356,7 @@ ZygiskContext::ZygiskContext(JNIEnv *env, void *args) :
     allowed_fds(get_fd_max()), hook_info_lock(PTHREAD_MUTEX_INITIALIZER) { g_ctx = this; }
 
 ZygiskContext::~ZygiskContext() {
-    ZLOGD("~ZygiskContext: is_child=%d\n", is_child());
+    ZLOGD("~ZygiskContext: is_child=%s\n", is_child() ? "true" : "false");
     // This global pointer points to a variable on the stack.
     // Set this to nullptr to prevent leaking local variable.
     // This also disables most plt hooked functions.
@@ -508,8 +521,8 @@ static void log_sdcard_diagnostics(const char *stage) {
     ZLOGD("%s: sdcard_pid=%d\n", stage, sdcard_pid);
     
     // /sdcard 状态
-    ZLOGD("%s: /sdcard exists=%d\n", stage, access("/sdcard", F_OK) == 0);
-    ZLOGD("%s: /storage/self/primary exists=%d\n", stage, access("/storage/self/primary", F_OK) == 0);
+    ZLOGD("%s: /sdcard exists=%s\n", stage, access("/sdcard", F_OK) == 0 ? "true" : "false");
+    ZLOGD("%s: /storage/self/primary exists=%s\n", stage, access("/storage/self/primary", F_OK) == 0 ? "true" : "false");
 }
 #endif
 
@@ -801,6 +814,45 @@ void hook_entry() {
 #ifdef MAGISK_DEBUG
     log_sdcard_diagnostics("hook_entry");
 #endif
+
+    // VPhoneOS sdcard 修复（Zygote 初始化时，命名空间隔离前）
+    if (access("/share", F_OK) == 0) {
+        ZLOGD("hook_entry: VPhoneOS detected\n");
+        if (access("/sdcard", F_OK) != 0) {
+            // /sdcard 不存在或不可用，尝试绑定
+            const char *src = nullptr;
+            if (access("/data/media/0", F_OK) == 0) {
+                src = "/data/media/0";
+                ZLOGD("hook_entry: /data/media/0 exists=true\n");
+            } else if (access("/storage/emulated/0", F_OK) == 0) {
+                src = "/storage/emulated/0";
+                ZLOGD("hook_entry: /storage/emulated/0 exists=true\n");
+            } else if (access("/storage/self/primary", F_OK) == 0) {
+                src = "/storage/self/primary";
+                ZLOGD("hook_entry: /storage/self/primary exists=true\n");
+            }
+            if (src) {
+                ZLOGD("hook_entry: using source: %s\n", src);
+                if (mkdir("/sdcard", 0755) == 0 || errno == EEXIST) {
+                    if (mount(src, "/sdcard", nullptr, MS_BIND, nullptr) == 0) {
+                        ZLOGD("hook_entry: bind_mount %s -> /sdcard success\n", src);
+                        if (mount(nullptr, "/sdcard", nullptr, MS_REC | MS_SHARED, nullptr) != 0) {
+                            ZLOGE("hook_entry: set MS_REC|MS_SHARED failed: %s\n", strerror(errno));
+                        }
+                    } else {
+                        ZLOGE("hook_entry: bind_mount %s -> /sdcard failed: %s\n", src, strerror(errno));
+                    }
+                } else {
+                    ZLOGE("hook_entry: mkdir /sdcard failed: %s\n", strerror(errno));
+                }
+            } else {
+                ZLOGD("hook_entry: NO SOURCE PATH FOUND!\n");
+            }
+        } else {
+            ZLOGD("hook_entry: /sdcard already accessible\n");
+        }
+    }
+
     default_new(g_hook);
     g_hook->hook_plt();
     ZLOGD("hook_entry: done\n");
