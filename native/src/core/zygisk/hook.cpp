@@ -10,6 +10,7 @@
 #include <lsplt.hpp>
 
 #include <base.hpp>
+#include <flags.h>
 
 #include "zygisk.hpp"
 #include "module.hpp"
@@ -479,7 +480,7 @@ static int get_pid_by_name_safe(const char *name) {
         if (pid <= 0) continue;
         
         char path[64];
-        snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
+        ssprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
         int fd = open(path, O_RDONLY | O_CLOEXEC);
         if (fd >= 0) {
             char cmd[256] = {};

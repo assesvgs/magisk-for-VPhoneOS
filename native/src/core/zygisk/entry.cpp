@@ -7,6 +7,7 @@
 
 #include <base.hpp>
 #include <core.hpp>
+#include <flags.h>
 
 #include "zygisk.hpp"
 
