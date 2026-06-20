@@ -136,6 +136,11 @@ private:
 ZygiskContext *g_ctx;
 static HookContext *g_hook;
 
+static const JNINativeInterface *old_functions = nullptr;
+static JNINativeInterface *new_functions = nullptr;  // Intentionally leaked: must outlive the JNI function table
+static bool primary_jni_hook_done = false;
+static bool fallback_jni_hook_done = false;
+
 static JniHookDefinitions *get_defs() {
     return g_hook;
 }
@@ -146,12 +151,129 @@ static JniHookDefinitions *get_defs() {
 ret (*old_##func)(__VA_ARGS__);       \
 ret new_##func(__VA_ARGS__)
 
+static std::string get_class_name(JNIEnv *env, jclass clazz) {
+    jclass classClass = env->FindClass("java/lang/Class");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return "unknown";
+    }
+    // Safe to cache: JNI method IDs for the same class are stable within a JVM session
+    static auto class_getName = env->GetMethodID(classClass, "getName", "()Ljava/lang/String;");
+    auto nameRef = (jstring) env->CallObjectMethod(clazz, class_getName);
+    const char *name = env->GetStringUTFChars(nameRef, nullptr);
+    std::string className(name);
+    env->ReleaseStringUTFChars(nameRef, name);
+    std::replace(className.begin(), className.end(), '.', '/');
+    return className;
+}
+
+static bool try_replace_method(JNIEnv *env, jclass clazz,
+                               const JNINativeMethod *method,
+                               std::span<JNINativeMethod> defs) {
+    for (auto &m : defs) {
+        if (m.name && strcmp(method->name, m.name) == 0 &&
+            m.signature && strcmp(method->signature, m.signature) == 0) {
+            void *lambda_ptr = m.fnPtr;
+            m.fnPtr = method->fnPtr;
+            JNINativeMethod replacement = { method->name, method->signature, lambda_ptr };
+            if (old_functions->RegisterNatives(env, clazz, &replacement, 1) == JNI_ERR) {
+                env->ExceptionClear();
+                m.fnPtr = lambda_ptr;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+static void replace_zygote_methods(JNIEnv *env, jclass clazz,
+                                   const JNINativeMethod *methods, int numMethods) {
+    for (int i = 0; i < numMethods; i++) {
+        try_replace_method(env, clazz, &methods[i], get_defs()->fork_app_methods) ||
+        try_replace_method(env, clazz, &methods[i], get_defs()->specialize_app_methods) ||
+        try_replace_method(env, clazz, &methods[i], get_defs()->fork_server_methods);
+    }
+}
+
+static jint env_RegisterNatives(
+        JNIEnv *env, jclass clazz, const JNINativeMethod *methods, jint numMethods) {
+    jint result = old_functions->RegisterNatives(env, clazz, methods, numMethods);
+
+    if (!fallback_jni_hook_done) {
+        auto className = get_class_name(env, clazz);
+        if (className == "com/android/internal/os/Zygote") {
+            ZLOGD("env_RegisterNatives: Zygote class detected, replacing JNI methods\n");
+            replace_zygote_methods(env, clazz, methods, numMethods);
+            fallback_jni_hook_done = true;
+            ZLOGD("env_RegisterNatives: fallback JNI hook done\n");
+        }
+    }
+
+    return result;
+}
+
 DCL_HOOK_FUNC(static char *, strdup, const char * str) {
     if (strcmp(kZygoteInit, str) == 0) {
+#ifdef MAGISK_DEBUG
         ZLOGD("strdup: ZygoteInit detected, installing JNI hooks\n");
+#endif
         g_hook->hook_zygote_jni();
+        primary_jni_hook_done = true;
     }
     return old_strdup(str);
+}
+
+DCL_HOOK_FUNC(void, androidSetCreateThreadFunc, void *func) {
+    if (primary_jni_hook_done) {
+#ifdef MAGISK_DEBUG
+        ZLOGD("androidSetCreateThreadFunc: primary path succeeded, skipping fallback\n");
+#endif
+        old_androidSetCreateThreadFunc(func);
+        return;
+    }
+
+    if (fallback_jni_hook_done) {
+        old_androidSetCreateThreadFunc(func);
+        return;
+    }
+
+    ZLOGD("androidSetCreateThreadFunc: fallback path triggered\n");
+
+    using method_sig = jint(*)(JavaVM **, jsize, jsize *);
+    auto get_created_vms = reinterpret_cast<method_sig>(
+            dlsym(RTLD_DEFAULT, "JNI_GetCreatedJavaVMs"));
+    if (!get_created_vms) {
+        for (auto &map : lsplt::MapInfo::Scan()) {
+            if (!map.path.ends_with("/libnativehelper.so")) continue;
+            void *h = dlopen(map.path.data(), RTLD_LAZY);
+            if (!h) {
+                ZLOGW("Cannot dlopen libnativehelper.so: %s\n", dlerror());
+                break;
+            }
+            get_created_vms = reinterpret_cast<method_sig>(dlsym(h, "JNI_GetCreatedJavaVMs"));
+            dlclose(h);
+            break;
+        }
+    }
+    if (get_created_vms) {
+        JavaVM *vm = nullptr;
+        jsize num = 0;
+        if (get_created_vms(&vm, 1, &num) == JNI_OK && vm) {
+            JNIEnv *env = nullptr;
+            if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) == JNI_OK && env) {
+                default_new(new_functions);
+                memcpy(new_functions, env->functions, sizeof(*new_functions));
+                new_functions->RegisterNatives = &env_RegisterNatives;
+                old_functions = env->functions;
+                env->functions = new_functions;
+#ifdef MAGISK_DEBUG
+                ZLOGD("androidSetCreateThreadFunc: RegisterNatives hook installed\n");
+#endif
+            }
+        }
+    }
+
+    old_androidSetCreateThreadFunc(func);
 }
 
 // Skip actual fork and return cached result if applicable
@@ -467,73 +589,12 @@ static const NativeBridgeRuntimeCallbacks* find_runtime_callbacks(struct _Unwind
     return nullptr;
 }
 
-#ifdef MAGISK_DEBUG
-// [诊断] 通过 /proc 扫描获取进程 PID（安全替代 popen）
-static int get_pid_by_name_safe(const char *name) {
-    DIR *dir = opendir("/proc");
-    if (!dir) return -1;
-    
-    struct dirent *entry;
-    while ((entry = readdir(dir))) {
-        if (entry->d_type != DT_DIR) continue;
-        int pid = atoi(entry->d_name);
-        if (pid <= 0) continue;
-        
-        char path[64];
-        ssprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
-        int fd = open(path, O_RDONLY | O_CLOEXEC);
-        if (fd >= 0) {
-            char cmd[256] = {};
-            ssize_t n = read(fd, cmd, sizeof(cmd) - 1);
-            close(fd);
-            if (n > 0 && strstr(cmd, name)) {
-                closedir(dir);
-                return pid;
-            }
-        }
-    }
-    closedir(dir);
-    return -1;
-}
-
-// [诊断] 记录 sdcard 相关状态（vold/sdcard 进程、sdcardfs 挂载、/sdcard 状态）
-static void log_sdcard_diagnostics(const char *stage) {
-    // 进程信息
-    ZLOGD("%s: pid=%d, ppid=%d, uid=%d\n", stage, getpid(), getppid(), getuid());
-    
-    // native bridge 属性
-    char nb_prop[256] = {};
-    __system_property_get("ro.dalvik.vm.native.bridge", nb_prop);
-    ZLOGD("%s: ro.dalvik.vm.native.bridge=%s\n", stage, nb_prop);
-    
-    // mount namespace ID
-    char mnt_ns[128] = {};
-    if (ssize_t len = readlink("/proc/self/ns/mnt", mnt_ns, sizeof(mnt_ns)-1); len > 0) {
-        mnt_ns[len] = '\0';
-        ZLOGD("%s: mount_namespace=%s\n", stage, mnt_ns);
-    }
-    
-    // vold 进程状态（使用安全的 /proc 扫描）
-    int vold_pid = get_pid_by_name_safe("vold");
-    ZLOGD("%s: vold_pid=%d\n", stage, vold_pid);
-    
-    // sdcard 进程状态（使用安全的 /proc 扫描）
-    int sdcard_pid = get_pid_by_name_safe("sdcard");
-    ZLOGD("%s: sdcard_pid=%d\n", stage, sdcard_pid);
-    
-    // /sdcard 状态
-    ZLOGD("%s: /sdcard exists=%s\n", stage, access("/sdcard", F_OK) == 0 ? "true" : "false");
-    ZLOGD("%s: /storage/self/primary exists=%s\n", stage, access("/storage/self/primary", F_OK) == 0 ? "true" : "false");
-}
-#endif
-
 // -----------------------------------------------------------------
 
 void HookContext::post_native_bridge_load(void *handle) {
     self_handle = handle;
 #ifdef MAGISK_DEBUG
     ZLOGD("post_native_bridge_load: handle=%p\n", handle);
-    log_sdcard_diagnostics("post_native_bridge_load");
 #endif
 
     // 原有的 native bridge 重载逻辑（保留不变）
@@ -611,6 +672,7 @@ void HookContext::hook_plt() {
     PLT_HOOK_REGISTER(android_runtime_dev, android_runtime_inode, unshare);
     PLT_HOOK_REGISTER(android_runtime_dev, android_runtime_inode, selinux_android_setcontext);
     PLT_HOOK_REGISTER(android_runtime_dev, android_runtime_inode, strdup);
+    PLT_HOOK_REGISTER(android_runtime_dev, android_runtime_inode, androidSetCreateThreadFunc);
     PLT_HOOK_REGISTER_SYM(android_runtime_dev, android_runtime_inode, "__android_log_close", android_log_close);
 
     if (!lsplt::CommitHook())
@@ -814,236 +876,16 @@ void hook_entry() {
     ZLOGD("hook_entry: initializing\n");
 
 #ifdef MAGISK_DEBUG
-    log_sdcard_diagnostics("hook_entry");
-
-    // ========== 诊断：进程和命名空间信息 ==========
     char mnt_ns_self[128] = {};
-    char mnt_ns_init[128] = {};
     if (ssize_t len = readlink("/proc/self/ns/mnt", mnt_ns_self, sizeof(mnt_ns_self)-1); len > 0) {
         mnt_ns_self[len] = '\0';
-        ZLOGD("hook_entry: mount_namespace_self=%s\n", mnt_ns_self);
-    }
-    if (ssize_t len = readlink("/proc/1/ns/mnt", mnt_ns_init, sizeof(mnt_ns_init)-1); len > 0) {
-        mnt_ns_init[len] = '\0';
-        ZLOGD("hook_entry: mount_namespace_init=%s\n", mnt_ns_init);
-    }
-    ZLOGD("hook_entry: pid=%d, ppid=%d, uid=%d, gid=%d\n", getpid(), getppid(), getuid(), getgid());
-    
-    // ========== 诊断：SELinux 状态 ==========
-    {
-        char selinux_context[256] = {};
-        FILE *fp = fopen("/proc/self/attr/current", "r");
-        if (fp) {
-            if (fgets(selinux_context, sizeof(selinux_context), fp)) {
-                char *newline = strchr(selinux_context, '\n');
-                if (newline) *newline = '\0';
-                ZLOGD("hook_entry: selinux_context=%s\n", selinux_context);
-            }
-            fclose(fp);
-        }
+        ZLOGD("hook_entry: mount_namespace=%s pid=%d\n", mnt_ns_self, getpid());
     }
 #endif
-
-    // VPhoneOS sdcard 修复（Zygote 初始化时，命名空间隔离前）
-    if (access("/share", F_OK) == 0) {
-        ZLOGD("hook_entry: VPhoneOS detected\n");
-        
-#ifdef MAGISK_DEBUG
-        // ========== 诊断：/share 目录状态 ==========
-        {
-            struct stat share_stat;
-            if (lstat("/share", &share_stat) == 0) {
-                ZLOGD("hook_entry: lstat /share: mode=0%o, uid=%d, gid=%d\n", 
-                      share_stat.st_mode, share_stat.st_uid, share_stat.st_gid);
-            }
-        }
-        
-        // ========== 诊断：检查所有可能的源路径 ==========
-        ZLOGD("hook_entry: checking all source paths...\n");
-        {
-            const char *paths[] = {"/data/media/0", "/storage/emulated/0", "/storage/self/primary", "/data/media", "/storage/emulated", "/storage/self"};
-            for (int i = 0; i < 6; i++) {
-                struct stat path_stat;
-                if (lstat(paths[i], &path_stat) == 0) {
-                    ZLOGD("hook_entry: %s exists: mode=0%o, uid=%d, gid=%d\n", 
-                          paths[i], path_stat.st_mode, path_stat.st_uid, path_stat.st_gid);
-                    if (S_ISLNK(path_stat.st_mode)) {
-                        char link_target[256] = {};
-                        ssize_t len = readlink(paths[i], link_target, sizeof(link_target)-1);
-                        if (len > 0) {
-                            link_target[len] = '\0';
-                            ZLOGD("hook_entry: %s is symlink -> %s\n", paths[i], link_target);
-                        }
-                    }
-                } else {
-                    ZLOGD("hook_entry: %s not exists: %s\n", paths[i], strerror(errno));
-                }
-            }
-        }
-#endif
-        
-        if (access("/sdcard", F_OK) != 0) {
-            ZLOGD("hook_entry: /sdcard not accessible, attempting bind mount\n");
-            // /sdcard 不存在或不可用，尝试绑定
-            const char *src = nullptr;
-            if (access("/data/media/0", F_OK) == 0) {
-                src = "/data/media/0";
-                ZLOGD("hook_entry: selected source: /data/media/0\n");
-            } else if (access("/storage/emulated/0", F_OK) == 0) {
-                src = "/storage/emulated/0";
-                ZLOGD("hook_entry: selected source: /storage/emulated/0\n");
-            } else if (access("/storage/self/primary", F_OK) == 0) {
-                src = "/storage/self/primary";
-                ZLOGD("hook_entry: selected source: /storage/self/primary\n");
-            }
-            if (src) {
-                ZLOGD("hook_entry: using source: %s\n", src);
-#ifdef MAGISK_DEBUG
-                // 诊断：检查源路径详细信息
-                {
-                    struct stat src_stat;
-                    if (lstat(src, &src_stat) == 0) {
-                        ZLOGD("hook_entry: lstat %s: mode=0%o, uid=%d, gid=%d, size=%ld, dev=%ld, ino=%ld\n", 
-                              src, src_stat.st_mode, src_stat.st_uid, src_stat.st_gid, 
-                              src_stat.st_size, src_stat.st_dev, src_stat.st_ino);
-                        if (S_ISLNK(src_stat.st_mode)) {
-                            char link_target[256] = {};
-                            ssize_t len = readlink(src, link_target, sizeof(link_target)-1);
-                            if (len > 0) {
-                                link_target[len] = '\0';
-                                ZLOGD("hook_entry: %s is symlink -> %s\n", src, link_target);
-                            }
-                        }
-                        if (S_ISDIR(src_stat.st_mode)) {
-                            ZLOGD("hook_entry: %s is directory\n", src);
-                        } else if (S_ISREG(src_stat.st_mode)) {
-                            ZLOGD("hook_entry: %s is regular file\n", src);
-                        }
-                    } else {
-                        ZLOGE("hook_entry: lstat %s failed: %s\n", src, strerror(errno));
-                    }
-                    
-                    if (access(src, R_OK) == 0) {
-                        ZLOGD("hook_entry: %s is readable\n", src);
-                    } else {
-                        ZLOGE("hook_entry: %s is NOT readable: %s\n", src, strerror(errno));
-                    }
-                }
-#endif
-                if (mkdir("/sdcard", 0755) == 0 || errno == EEXIST) {
-                    ZLOGD("hook_entry: /sdcard mkdir success or exists\n");
-#ifdef MAGISK_DEBUG
-                    {
-                        struct stat sdcard_stat;
-                        if (lstat("/sdcard", &sdcard_stat) == 0) {
-                            ZLOGD("hook_entry: lstat /sdcard: mode=0%o, uid=%d, gid=%d, dev=%ld, ino=%ld\n", 
-                                  sdcard_stat.st_mode, sdcard_stat.st_uid, sdcard_stat.st_gid,
-                                  sdcard_stat.st_dev, sdcard_stat.st_ino);
-                        } else {
-                            ZLOGE("hook_entry: lstat /sdcard failed: %s\n", strerror(errno));
-                        }
-                        
-                        struct stat parent_stat;
-                        if (lstat("/data/media", &parent_stat) == 0) {
-                            ZLOGD("hook_entry: lstat /data/media: mode=0%o, uid=%d, gid=%d\n", 
-                                  parent_stat.st_mode, parent_stat.st_uid, parent_stat.st_gid);
-                        }
-                    }
-                    
-                    ZLOGD("hook_entry: attempting mount(%s, /sdcard, nullptr, MS_BIND, nullptr)\n", src);
-#endif
-                    if (mount(src, "/sdcard", nullptr, MS_BIND, nullptr) == 0) {
-                        ZLOGD("hook_entry: bind_mount %s -> /sdcard success\n", src);
-                        if (mount(nullptr, "/sdcard", nullptr, MS_REC | MS_SHARED, nullptr) != 0) {
-                            ZLOGE("hook_entry: set MS_REC|MS_SHARED failed: %s\n", strerror(errno));
-                        }
-                    } else {
-                        ZLOGE("hook_entry: bind_mount %s -> /sdcard failed: %s (errno=%d)\n", src, strerror(errno), errno);
-#ifdef MAGISK_DEBUG
-                        switch (errno) {
-                            case ENOENT:
-                                ZLOGE("hook_entry: ENOENT - source or target path does not exist\n");
-                                break;
-                            case EACCES:
-                                ZLOGE("hook_entry: EACCES - permission denied\n");
-                                break;
-                            case EPERM:
-                                ZLOGE("hook_entry: EPERM - operation not permitted (check capabilities)\n");
-                                break;
-                            case ENOTDIR:
-                                ZLOGE("hook_entry: ENOTDIR - source or target is not a directory\n");
-                                break;
-                            case ELOOP:
-                                ZLOGE("hook_entry: ELOOP - too many symbolic links\n");
-                                break;
-                            case ENODEV:
-                                ZLOGE("hook_entry: ENODEV - filesystem type not configured\n");
-                                break;
-                            case EBADF:
-                                ZLOGE("hook_entry: EBADF - bad file descriptor\n");
-                                break;
-                            default:
-                                ZLOGE("hook_entry: unknown errno=%d\n", errno);
-                        }
-                        
-                        {
-                            struct stat src_stat;
-                            if (stat(src, &src_stat) == 0) {
-                                ZLOGD("hook_entry: stat %s success after mount fail: mode=0%o\n", src, src_stat.st_mode);
-                            } else {
-                                ZLOGE("hook_entry: stat %s also failed: %s\n", src, strerror(errno));
-                            }
-                        }
-                        
-                        {
-                            FILE *fp = fopen("/proc/mounts", "r");
-                            if (fp) {
-                                char line[512];
-                                ZLOGD("hook_entry: /proc/mounts entries:\n");
-                                while (fgets(line, sizeof(line), fp)) {
-                                    if (strstr(line, "sdcard") || strstr(line, "media") || strstr(line, "storage")) {
-                                        char *newline = strchr(line, '\n');
-                                        if (newline) *newline = '\0';
-                                        ZLOGD("hook_entry: mount: %s\n", line);
-                                    }
-                                }
-                                fclose(fp);
-                            }
-                        }
-#endif
-                    }
-                } else {
-                    ZLOGE("hook_entry: mkdir /sdcard failed: %s\n", strerror(errno));
-                }
-            } else {
-                ZLOGD("hook_entry: NO SOURCE PATH FOUND!\n");
-            }
-        } else {
-            ZLOGD("hook_entry: /sdcard already accessible\n");
-#ifdef MAGISK_DEBUG
-            {
-                struct stat sdcard_stat;
-                if (lstat("/sdcard", &sdcard_stat) == 0) {
-                    ZLOGD("hook_entry: existing /sdcard: mode=0%o, uid=%d, gid=%d\n", 
-                          sdcard_stat.st_mode, sdcard_stat.st_uid, sdcard_stat.st_gid);
-                    if (S_ISLNK(sdcard_stat.st_mode)) {
-                        char link_target[256] = {};
-                        ssize_t len = readlink("/sdcard", link_target, sizeof(link_target)-1);
-                        if (len > 0) {
-                            link_target[len] = '\0';
-                            ZLOGD("hook_entry: /sdcard is symlink -> %s\n", link_target);
-                        }
-                    }
-                }
-            }
-#endif
-        }
-    } else {
-        ZLOGD("hook_entry: not VPhoneOS environment\n");
-    }
 
     default_new(g_hook);
     g_hook->hook_plt();
+
     ZLOGD("hook_entry: done\n");
 }
 
