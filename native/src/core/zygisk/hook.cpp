@@ -138,6 +138,9 @@ static HookContext *g_hook;
 
 static const JNINativeInterface *old_functions = nullptr;
 static JNINativeInterface *new_functions = nullptr;  // Intentionally leaked: must outlive the JNI function table
+// Injection path coordination: fallback_jni_hook_done is set by env_RegisterNatives (fallback path),
+// primary_jni_hook_done is set by strdup hook (primary path). hook_zygote_jni() checks
+// fallback_jni_hook_done to avoid overwriting the fallback's lambda with the original method.
 static bool primary_jni_hook_done = false;
 static bool fallback_jni_hook_done = false;
 
@@ -786,6 +789,10 @@ void HookContext::hook_jni_methods(JNIEnv *env, const char *clz, JNIMethods meth
 }
 
 void HookContext::hook_zygote_jni() {
+    if (fallback_jni_hook_done) {
+        ZLOGD("hook_zygote_jni: fallback already done, skipping\n");
+        return;
+    }
     ZLOGD("hook_zygote_jni: start\n");
     using method_sig = jint(*)(JavaVM **, jsize, jsize *);
     auto get_created_vms = reinterpret_cast<method_sig>(
