@@ -14,8 +14,6 @@
 
 #include "zygisk.hpp"
 #include "module.hpp"
-#include "jni_hooks.hpp"
-#include "solist.hpp"
 #include "memory.hpp"
 
 using namespace std;
@@ -290,134 +288,17 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
     if (g_ctx && (flags & CLONE_NEWNS) != 0 && res == 0) {
 #ifdef MAGISK_DEBUG
         ZLOGD("unshare: CLONE_NEWNS, ctx_flags=0x%x\n", g_ctx->flags);
-
-        // [诊断] 记录第一次 unshare 后的 mount namespace ID
-        char ns_before[128] = {};
-        if (ssize_t len = readlink("/proc/self/ns/mnt", ns_before, sizeof(ns_before)-1); len > 0) {
-            ns_before[len] = '\0';
-            ZLOGD("unshare: ns_before=[%s]\n", ns_before);
+        char ns[128] = {};
+        if (ssize_t len = readlink("/proc/self/ns/mnt", ns, sizeof(ns)-1); len > 0) {
+            ns[len] = '\0';
+            ZLOGD("unshare: ns=[%s]\n", ns);
         }
-
-        // [诊断] 记录 /sdcard 和 /storage/self/primary 状态
-        ZLOGD("unshare: /sdcard exists=%s\n", access("/sdcard", F_OK) == 0 ? "true" : "false");
-        ZLOGD("unshare: /storage/self/primary exists=%s\n", access("/storage/self/primary", F_OK) == 0 ? "true" : "false");
-
-        // [诊断] 记录分支决策
-        ZLOGD("unshare: branch decision: flags=0x%x (DO_ALLOW=%d, ALLOWLIST_ENFORCED=%d, DO_REVERT=%d)\n",
-            g_ctx->flags,
-            !!(g_ctx->flags & DO_ALLOW),
-            !!(g_ctx->flags & ALLOWLIST_ENFORCED),
-            !!(g_ctx->flags & DO_REVERT_UNMOUNT));
+        ZLOGD("unshare: /sdcard exists=%d\n", access("/sdcard", F_OK) == 0);
+        ZLOGD("unshare: /storage/self/primary exists=%d\n", access("/storage/self/primary", F_OK) == 0);
 #endif
-
-        // 核心逻辑：根据标志决定操作
-        int ret = (g_ctx->flags & DO_ALLOW)?
-                remote_request_sulist() :
-        // 关键：检查 ALLOWLIST_ENFORCED 标志
-        (!(g_ctx->flags & ALLOWLIST_ENFORCED) && (g_ctx->flags & DO_REVERT_UNMOUNT))?
-                remote_request_umount() : 0 /* do nothing */;
-        if (ret == -1) ZLOGE("remote request failed\n");
-
-        // 与 kokoro 一致：仅在 sulist 模式下设置 logging_muted
-        if (g_ctx->flags & DO_ALLOW) {
-            logging_muted = true;
+        if (g_ctx->flags & DO_REVERT_UNMOUNT) {
+            revert_unmount();
         }
-
-#ifdef MAGISK_DEBUG
-        ZLOGD("unshare: ret=%d\n", ret);
-        // [诊断] 记录 remote_request 后的状态
-        ZLOGD("unshare: /sdcard exists_after_remote=%s\n", access("/sdcard", F_OK) == 0 ? "true" : "false");
-        ZLOGD("unshare: /storage/self/primary exists_after_remote=%s\n", access("/storage/self/primary", F_OK) == 0 ? "true" : "false");
-#endif
-
-        // clean up mount id hole by unshare mount namespace twice
-        old_unshare(CLONE_NEWNS);
-
-#ifdef MAGISK_DEBUG
-        // [诊断] 记录第二次 unshare 后的状态
-        char ns_after[128] = {};
-        if (ssize_t len = readlink("/proc/self/ns/mnt", ns_after, sizeof(ns_after)-1); len > 0) {
-            ns_after[len] = '\0';
-            ZLOGD("unshare: ns_after=[%s]\n", ns_after);
-        }
-        ZLOGD("unshare: /sdcard exists_after_2nd_unshare=%s\n", access("/sdcard", F_OK) == 0 ? "true" : "false");
-        ZLOGD("unshare: /storage/self/primary exists_after_2nd_unshare=%s\n", access("/storage/self/primary", F_OK) == 0 ? "true" : "false");
-
-        // [诊断] 检查 namespace 是否变化
-        if (ns_before[0] && ns_after[0] && strcmp(ns_before, ns_after) != 0) {
-            ZLOGD("unshare: WARNING namespace changed! [%s] -> [%s]\n", ns_before, ns_after);
-        } else if (ns_before[0] && ns_after[0]) {
-            ZLOGD("unshare: namespace unchanged [%s]\n", ns_before);
-        }
-#endif
-
-        // 恢复 mount_external 状态
-        if (g_ctx->flags & RESTORE_MOUNT_EXTERNAL_NONE) {
-            g_ctx->args.app->mount_external = 0;
-            ZLOGD("unshare: restored mount_external to 0\n");
-        }
-
-        // VPhoneOS sdcard 链路修复（unshare 后兜底）
-        // 条件：检测到 VPhoneOS 且 /sdcard 仍不可访问
-        if (access("/share", F_OK) == 0 && access("/sdcard", F_OK) != 0) {
-            ZLOGD("unshare: VPhoneOS detected, applying storage fix\n");
-
-            if (access("/data/media/0", F_OK) != 0) {
-                ZLOGE("unshare: /data/media/0 not available, cannot fix sdcard\n");
-            } else {
-                ZLOGD("unshare: /data/media/0 available, applying storage fix\n");
-                const char *emulated_0 = "/storage/emulated/0";
-                const char *primary = "/storage/self/primary";
-
-                // 1. 确保 /storage 存在（新 namespace 中可能没有 vold 的挂载）
-                mkdir("/storage", 0700);
-
-                // 2. 创建 /storage/emulated/0 目录
-                if (mkdir(emulated_0, 0771) != 0 && errno != EEXIST) {
-                    ZLOGE("unshare: mkdir %s failed: %s\n", emulated_0, strerror(errno));
-                } else {
-                    ZLOGD("unshare: mkdir %s done\n", emulated_0);
-
-                    // 4. chown root:sdcard_rw, chmod 771（动态 GID）
-                    struct stat st;
-                    gid_t gid = 1015;
-                    if (stat("/data/media/0", &st) == 0) {
-                        gid = st.st_gid;
-                        ZLOGD("unshare: /data/media/0 st_gid=%u\n", gid);
-                    }
-                    chown(emulated_0, 0, gid);
-                    chmod(emulated_0, 0771);
-
-                    // 5. bind mount /data/media/0 → /storage/emulated/0
-                    if (mount("/data/media/0", emulated_0, nullptr, MS_BIND, nullptr) == 0) {
-                        ZLOGD("unshare: bind mount /data/media/0 -> %s success\n", emulated_0);
-
-                        // 6. 设置 MS_SHARED 传播
-                        mount(nullptr, "/storage", nullptr, MS_REC | MS_SHARED, nullptr);
-                        ZLOGD("unshare: set MS_REC|MS_SHARED on /storage\n");
-
-                        // 7. 修复 /storage/self/primary symlink
-                        unlink(primary);
-                        if (symlink(emulated_0, primary) == 0) {
-                            ZLOGD("unshare: symlink %s -> %s success\n", primary, emulated_0);
-                        } else {
-                            ZLOGE("unshare: symlink %s -> %s failed: %s\n",
-                                  primary, emulated_0, strerror(errno));
-                        }
-
-                        // 8. 最终验证
-                        ZLOGD("unshare: /sdcard accessible after fix=%d\n",
-                              access("/sdcard", F_OK) == 0);
-                        ZLOGD("unshare: /storage/emulated/0 accessible after fix=%d\n",
-                              access(emulated_0, F_OK) == 0);
-                    } else {
-                        ZLOGE("unshare: bind mount /data/media/0 -> %s failed: %s\n",
-                              emulated_0, strerror(errno));
-                    }
-                }
-            }
-        }
-
         // Restore errno back to 0
         errno = 0;
     }
