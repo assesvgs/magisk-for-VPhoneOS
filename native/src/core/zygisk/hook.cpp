@@ -357,50 +357,60 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
             ZLOGD("unshare: restored mount_external to 0\n");
         }
 
-        // VPhoneOS 健壮恢复逻辑（如果 /sdcard 仍然不存在）
-        if (access("/sdcard", F_OK) != 0) {
-            if (access("/share", F_OK) == 0) {  // 检测 VPhoneOS
-                ZLOGD("unshare: VPhoneOS detected, attempting robust restore\n");
+        // VPhoneOS sdcard 链路修复（unshare 后兜底）
+        // 条件：检测到 VPhoneOS 且 /sdcard 仍不可访问
+        if (access("/share", F_OK) == 0 && access("/sdcard", F_OK) != 0) {
+            ZLOGD("unshare: VPhoneOS detected, applying storage fix\n");
 
-                // 清理符号链接（无论是否损坏，强制删除）
-                struct stat st;
-                if (lstat("/sdcard", &st) == 0 && S_ISLNK(st.st_mode)) {
-                    if (unlink("/sdcard") != 0) {
-                        ZLOGE("unshare: unlink /sdcard failed: %s\n", strerror(errno));
-                    } else {
-                        ZLOGD("unshare: removed symlink /sdcard (forced)\n");
-                    }
-                }
+            if (access("/data/media/0", F_OK) != 0) {
+                ZLOGE("unshare: /data/media/0 not available, cannot fix sdcard\n");
+            } else {
+                ZLOGD("unshare: /data/media/0 available, applying storage fix\n");
+                const char *emulated_0 = "/storage/emulated/0";
+                const char *primary = "/storage/self/primary";
 
-                // 选择可靠的挂载源（VPhoneOS 中 /data/media/0 是真实存储，优先使用）
-                const char* src = nullptr;
-                if (access("/data/media/0", F_OK) == 0) {
-                    src = "/data/media/0";
-                    ZLOGD("unshare: /data/media/0 exists=true\n");
-                } else if (access("/storage/emulated/0", F_OK) == 0) {
-                    src = "/storage/emulated/0";
-                    ZLOGD("unshare: /storage/emulated/0 exists=true\n");
-                } else if (access("/storage/self/primary", F_OK) == 0) {
-                    src = "/storage/self/primary";
-                    ZLOGD("unshare: /storage/self/primary exists=true\n");
-                }
-
-                if (src) {
-                    ZLOGD("unshare: using source: %s\n", src);
-                    if (mkdir("/sdcard", 0755) == 0 || errno == EEXIST) {
-                        if (mount(src, "/sdcard", nullptr, MS_BIND, nullptr) == 0) {
-                            ZLOGD("unshare: bind mount %s -> /sdcard success\n", src);
-                            if (mount(nullptr, "/sdcard", nullptr, MS_REC | MS_SHARED, nullptr) != 0) {
-                                ZLOGE("unshare: set MS_SHARED failed: %s\n", strerror(errno));
-                            }
-                        } else {
-                            ZLOGE("unshare: bind mount %s -> /sdcard failed: %s\n", src, strerror(errno));
-                        }
-                    } else {
-                        ZLOGE("unshare: mkdir /sdcard failed: %s\n", strerror(errno));
-                    }
+                // 1. 创建 /storage/emulated/0 目录
+                if (mkdir(emulated_0, 0771) != 0 && errno != EEXIST) {
+                    ZLOGE("unshare: mkdir %s failed: %s\n", emulated_0, strerror(errno));
                 } else {
-                    ZLOGE("unshare: NO SOURCE PATH FOUND!\n");
+                    ZLOGD("unshare: mkdir %s done\n", emulated_0);
+
+                    // 2. chown root:sdcard_rw, chmod 771（动态 GID）
+                    struct stat st;
+                    gid_t gid = 1015;
+                    if (stat("/data/media/0", &st) == 0) {
+                        gid = st.st_gid;
+                        ZLOGD("unshare: /data/media/0 st_gid=%u\n", gid);
+                    }
+                    chown(emulated_0, 0, gid);
+                    chmod(emulated_0, 0771);
+
+                    // 3. bind mount /data/media/0 → /storage/emulated/0
+                    if (mount("/data/media/0", emulated_0, nullptr, MS_BIND, nullptr) == 0) {
+                        ZLOGD("unshare: bind mount /data/media/0 -> %s success\n", emulated_0);
+
+                        // 4. 设置 MS_SHARED 传播
+                        mount(nullptr, "/storage", nullptr, MS_REC | MS_SHARED, nullptr);
+                        ZLOGD("unshare: set MS_REC|MS_SHARED on /storage\n");
+
+                        // 5. 修复 /storage/self/primary symlink
+                        unlink(primary);
+                        if (symlink(emulated_0, primary) == 0) {
+                            ZLOGD("unshare: symlink %s -> %s success\n", primary, emulated_0);
+                        } else {
+                            ZLOGE("unshare: symlink %s -> %s failed: %s\n",
+                                  primary, emulated_0, strerror(errno));
+                        }
+
+                        // 6. 最终验证
+                        ZLOGD("unshare: /sdcard accessible after fix=%d\n",
+                              access("/sdcard", F_OK) == 0);
+                        ZLOGD("unshare: /storage/emulated/0 accessible after fix=%d\n",
+                              access(emulated_0, F_OK) == 0);
+                    } else {
+                        ZLOGE("unshare: bind mount /data/media/0 -> %s failed: %s\n",
+                              emulated_0, strerror(errno));
+                    }
                 }
             }
         }
