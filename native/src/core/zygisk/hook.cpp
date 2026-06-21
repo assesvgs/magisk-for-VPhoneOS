@@ -369,13 +369,16 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
                 const char *emulated_0 = "/storage/emulated/0";
                 const char *primary = "/storage/self/primary";
 
-                // 1. 创建 /storage/emulated/0 目录
+                // 1. 确保 /storage 存在（新 namespace 中可能没有 vold 的挂载）
+                mkdir("/storage", 0700);
+
+                // 2. 创建 /storage/emulated/0 目录
                 if (mkdir(emulated_0, 0771) != 0 && errno != EEXIST) {
                     ZLOGE("unshare: mkdir %s failed: %s\n", emulated_0, strerror(errno));
                 } else {
                     ZLOGD("unshare: mkdir %s done\n", emulated_0);
 
-                    // 2. chown root:sdcard_rw, chmod 771（动态 GID）
+                    // 4. chown root:sdcard_rw, chmod 771（动态 GID）
                     struct stat st;
                     gid_t gid = 1015;
                     if (stat("/data/media/0", &st) == 0) {
@@ -385,15 +388,15 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
                     chown(emulated_0, 0, gid);
                     chmod(emulated_0, 0771);
 
-                    // 3. bind mount /data/media/0 → /storage/emulated/0
+                    // 5. bind mount /data/media/0 → /storage/emulated/0
                     if (mount("/data/media/0", emulated_0, nullptr, MS_BIND, nullptr) == 0) {
                         ZLOGD("unshare: bind mount /data/media/0 -> %s success\n", emulated_0);
 
-                        // 4. 设置 MS_SHARED 传播
+                        // 6. 设置 MS_SHARED 传播
                         mount(nullptr, "/storage", nullptr, MS_REC | MS_SHARED, nullptr);
                         ZLOGD("unshare: set MS_REC|MS_SHARED on /storage\n");
 
-                        // 5. 修复 /storage/self/primary symlink
+                        // 7. 修复 /storage/self/primary symlink
                         unlink(primary);
                         if (symlink(emulated_0, primary) == 0) {
                             ZLOGD("unshare: symlink %s -> %s success\n", primary, emulated_0);
@@ -402,7 +405,7 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
                                   primary, emulated_0, strerror(errno));
                         }
 
-                        // 6. 最终验证
+                        // 8. 最终验证
                         ZLOGD("unshare: /sdcard accessible after fix=%d\n",
                               access("/sdcard", F_OK) == 0);
                         ZLOGD("unshare: /storage/emulated/0 accessible after fix=%d\n",
