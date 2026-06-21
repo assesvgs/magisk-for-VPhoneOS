@@ -14,6 +14,7 @@
 
 #include "zygisk.hpp"
 #include "module.hpp"
+#include "jni_hooks.hpp"
 #include "memory.hpp"
 
 using namespace std;
