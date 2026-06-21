@@ -120,8 +120,8 @@ fn bind_sdcard_in_vphoneos(stage: &str) {
         debug!("{}: remove_file /storage/self/primary ok={}", stage, rm_ok);
     }
     match std::os::unix::fs::symlink("/storage/emulated/0", "/storage/self/primary") {
-        Ok(()) => debug!("{}: symlink /storage/self/primary -> /storage/emulated/0 success", stage),
-        Err(e) => error!("{}: symlink /storage/self/primary -> /storage/emulated/0 failed: {}", stage, e),
+        Ok(()) => { debug!("{}: symlink /storage/self/primary -> /storage/emulated/0 success", stage); }
+        Err(e) => { error!("{}: symlink /storage/self/primary -> /storage/emulated/0 failed: {}", stage, e); }
     }
 
     // 7. 验证 /sdcard 符号链接目标（评审 3.2）
