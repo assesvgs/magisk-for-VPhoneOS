@@ -17,7 +17,6 @@ use crate::mount::{clean_mounts, setup_preinit_dir};
 use crate::resetprop::get_prop;
 use crate::selinux::{restorecon, setfilecon};
 use std::io::BufReader;
-use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::UnixStream;
 use std::process::{Command, Stdio};
 use std::sync::atomic::Ordering;
@@ -67,14 +66,15 @@ fn bind_sdcard_in_vphoneos(stage: &str) {
     }
 
     // 从 /data/media/0 动态获取 GID（评审 3.3）
-    let gid = match std::fs::metadata("/data/media/0") {
-        Ok(m) => {
-            let g = m.st_gid() as u32;
+    // 使用 Magisk 的 get_attr() 替代 std::os::unix::MetadataExt（跨平台兼容）
+    let gid = match cstr!("/data/media/0").follow_link().get_attr() {
+        Ok(attr) => {
+            let g = attr.st.st_gid as u32;
             debug!("{}: /data/media/0 st_gid={}", stage, g);
             g
         }
-        Err(e) => {
-            debug!("{}: stat /data/media/0 failed: {}, using fallback gid=1015", stage, e);
+        Err(_) => {
+            debug!("{}: stat /data/media/0 failed, using fallback gid=1015", stage);
             1015
         }
     };
@@ -88,10 +88,11 @@ fn bind_sdcard_in_vphoneos(stage: &str) {
     debug!("{}: mkdir /storage/emulated/0 success", stage);
 
     // 2. 设置所有者 root:sdcard_rw，权限 771
+    //    使用 Magisk 的 chmod() 替代 std::Permissions::from_mode（跨平台兼容）
     {
         let c_res = std::os::unix::fs::chown("/storage/emulated/0", Some(0), Some(gid));
-        let p_res = std::fs::set_permissions("/storage/emulated/0", std::fs::Permissions::from_mode(0o771));
-        debug!("{}: chown(root,{}) ok={}, chmod(771) ok={}", stage, gid, c_res.is_ok(), p_res.is_ok());
+        let p_res = cstr!("/storage/emulated/0").follow_link().chmod(0o771).is_ok();
+        debug!("{}: chown(root,{}) ok={}, chmod(771) ok={}", stage, gid, c_res.is_ok(), p_res);
     }
 
     // 3. bind mount /data/media/0 → /storage/emulated/0
@@ -126,11 +127,12 @@ fn bind_sdcard_in_vphoneos(stage: &str) {
     // 7. 验证 /sdcard 符号链接目标（评审 3.2）
     match std::fs::read_link("/sdcard") {
         Ok(target) => {
+            let target = target.to_string_lossy();
             let expected = "/storage/self/primary";
             if target == expected {
                 debug!("{}: /sdcard -> {} (expected)", stage, expected);
             } else {
-                warn!("{}: /sdcard points to '{}', expected '{}' (cannot fix, on RO fs)", stage, target.to_string_lossy(), expected);
+                warn!("{}: /sdcard points to '{}', expected '{}' (cannot fix, on RO fs)", stage, target, expected);
             }
         }
         Err(e) => {
