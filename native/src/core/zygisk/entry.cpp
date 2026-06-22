@@ -1,13 +1,10 @@
 #include <sys/mount.h>
 #include <android/dlext.h>
-#include <unistd.h>
-#include <cstring>
 #include <dlfcn.h>
 #include <poll.h>
 
 #include <base.hpp>
 #include <core.hpp>
-#include <flags.h>
 
 #include "zygisk.hpp"
 

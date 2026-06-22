@@ -11,19 +11,10 @@
 
 using namespace std;
 
-int zygisk_request(int req) {
-    ZLOGD("zygisk_request: req=%d\n", req);
+static int zygisk_request(int req) {
     int fd = connect_daemon(RequestCode::ZYGISK);
-    ZLOGD("zygisk_request: connect_daemon result fd=%d\n", fd);
-    
-    if (fd < 0) {
-        ZLOGD("zygisk_request: connect_daemon failed\n");
-        return fd;
-    }
-    
+    if (fd < 0) return fd;
     write_int(fd, req);
-    ZLOGD("zygisk_request: wrote req=%d to fd=%d\n", req, fd);
-    
     return fd;
 }
 
@@ -78,28 +69,17 @@ bool ZygiskModule::RegisterModuleImpl(ApiTable *api, long *module) {
 }
 
 bool ZygiskModule::valid() const {
-    ZLOGD("ZygiskModule::valid: checking module id=%d\n", id);
-    
-    if (mod.api_version == nullptr) {
-        ZLOGD("ZygiskModule::valid: api_version is null, return false\n");
+    if (mod.api_version == nullptr)
         return false;
-    }
-    
-    ZLOGD("ZygiskModule::valid: api_version=%ld\n", *mod.api_version);
-    
     switch (*mod.api_version) {
         case 5:
         case 4:
         case 3:
         case 2:
-        case 1: {
-            bool result = mod.v1->impl && mod.v1->preAppSpecialize && mod.v1->postAppSpecialize &&
+        case 1:
+            return mod.v1->impl && mod.v1->preAppSpecialize && mod.v1->postAppSpecialize &&
                    mod.v1->preServerSpecialize && mod.v1->postServerSpecialize;
-            ZLOGD("ZygiskModule::valid: result=%d\n", result);
-            return result;
-        }
         default:
-            ZLOGD("ZygiskModule::valid: unsupported api_version, return false\n");
             return false;
     }
 }
@@ -128,11 +108,9 @@ int ZygiskModule::getModuleDir() const {
 void ZygiskModule::setOption(zygisk::Option opt) {
     if (g_ctx == nullptr)
         return;
-    ZLOGD("setOption: opt=%d, ctx_flags=0x%x\n", opt, g_ctx->flags);
     switch (opt) {
         case zygisk::FORCE_DENYLIST_UNMOUNT:
             g_ctx->flags |= DO_REVERT_UNMOUNT;
-            ZLOGD("setOption: FORCE_DENYLIST_UNMOUNT, new flags=0x%x\n", g_ctx->flags);
             break;
         case zygisk::DLCLOSE_MODULE_LIBRARY:
             unload = true;

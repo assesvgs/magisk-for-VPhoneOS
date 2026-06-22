@@ -19,14 +19,11 @@
 #endif
 
 // Extreme verbose logging
-#define ZLOGV(...) ZLOGD(__VA_ARGS__)
-// #define ZLOGV(...) (void*)0
+// #define ZLOGV(...) ZLOGD(__VA_ARGS__)
+#define ZLOGV(...) (void*)0
 
 void hook_entry();
 void hookJniNativeMethods(JNIEnv *env, const char *clz, JNINativeMethod *methods, int numMethods);
-
-// Zygisk request function
-int zygisk_request(int req);
 
 // The reference of the following structs
 // https://cs.android.com/android/platform/superproject/main/+/main:art/libnativebridge/include/nativebridge/native_bridge.h
