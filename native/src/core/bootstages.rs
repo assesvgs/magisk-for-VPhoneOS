@@ -111,6 +111,7 @@ impl MagiskD {
 
     fn post_fs_data(&self) -> bool {
         setup_logfile();
+        diag(1, "post_fs_data");
         info!("** post-fs-data mode running");
 
         self.preserve_stub_apk();
@@ -197,6 +198,7 @@ impl MagiskD {
 
     fn late_start(&self) {
         setup_logfile();
+        diag(2, "late_start");
         info!("** late_start service mode running");
 
         debug!("late_start: executing common scripts");
@@ -231,6 +233,7 @@ impl MagiskD {
 
     fn boot_complete(&self) {
         setup_logfile();
+        diag(3, "boot_complete");
         info!("** boot-complete triggered");
 
         // Reset the bootloop counter once we have boot-complete
@@ -301,6 +304,27 @@ impl MagiskD {
             _ => {}
         }
     }
+}
+
+fn diag(tag: u32, stage: &str) {
+    let ns = std::fs::read_link("/proc/self/ns/mnt").ok();
+    let init_ns = std::fs::read_link("/proc/1/ns/mnt").ok();
+    let sd_link = std::fs::read_link("/sdcard").ok();
+    let sp_link = std::fs::read_link("/storage/self/primary").ok();
+    let ms = std::fs::read_to_string("/proc/self/mountinfo")
+        .ok().and_then(|s| s.lines()
+            .find(|l| l.contains(" /storage "))
+            .and_then(|l| l.split_whitespace()
+                .find(|w| w.starts_with("shared:"))
+                .map(|s| s.to_string())));
+    debug!("D{} {} pid={} ns={:?} init_ns={:?} sd_a={} sd_lk={:?} sp_a={} sp_lk={:?} em_a={} da_a={} st={} sh={} ms={:?}",
+        tag, stage, std::process::id(), ns, init_ns,
+        cstr!("/sdcard").follow_link().exists(), sd_link,
+        cstr!("/storage/self/primary").follow_link().exists(), sp_link,
+        cstr!("/storage/emulated/0").follow_link().exists(),
+        cstr!("/data/media/0").follow_link().exists(),
+        cstr!("/storage").exists(),
+        cstr!("/share").exists(), ms);
 }
 
 fn check_data() -> bool {

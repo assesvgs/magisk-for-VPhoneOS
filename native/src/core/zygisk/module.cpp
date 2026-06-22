@@ -398,6 +398,7 @@ void ZygiskContext::run_modules_post() {
 }
 
 void ZygiskContext::app_specialize_pre() {
+    DIAG(12);
     flags |= APP_SPECIALIZE;
 
     rust::Vec<int> module_fds;
@@ -411,6 +412,7 @@ void ZygiskContext::app_specialize_pre() {
 }
 
 void ZygiskContext::app_specialize_post() {
+    DIAG(13);
     run_modules_post();
     if (info_flags & +ZygiskStateFlags::ProcessIsMagiskApp) {
         setenv("ZYGISK_ENABLED", "1", 1);
@@ -421,6 +423,7 @@ void ZygiskContext::app_specialize_post() {
 }
 
 void ZygiskContext::server_specialize_pre() {
+    DIAG(10);
     rust::Vec<int> module_fds;
     if (owned_fd fd = get_module_info(1000, module_fds); fd >= 0) {
         if (module_fds.empty()) {
@@ -441,6 +444,7 @@ void ZygiskContext::server_specialize_pre() {
 }
 
 void ZygiskContext::server_specialize_post() {
+    DIAG(11);
     run_modules_post();
 }
 

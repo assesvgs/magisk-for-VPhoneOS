@@ -143,6 +143,7 @@ ret new_##func(__VA_ARGS__)
 
 DCL_HOOK_FUNC(static char *, strdup, const char * str) {
     if (strcmp(kZygoteInit, str) == 0) {
+        DIAG(6);
         g_hook->hook_zygote_jni();
     }
     return old_strdup(str);
@@ -150,13 +151,19 @@ DCL_HOOK_FUNC(static char *, strdup, const char * str) {
 
 // Skip actual fork and return cached result if applicable
 DCL_HOOK_FUNC(int, fork) {
-    return (g_ctx && g_ctx->pid >= 0) ? g_ctx->pid : old_fork();
+    int pid = (g_ctx && g_ctx->pid >= 0) ? g_ctx->pid : old_fork();
+    DIAG(75);
+    return pid;
 }
 
 // Unmount stuffs in the process's private mount namespace
 DCL_HOOK_FUNC(static int, unshare, int flags) {
+    if ((flags & CLONE_NEWNS) != 0) {
+        DIAG(8);
+    }
     int res = old_unshare(flags);
     if (g_ctx && (flags & CLONE_NEWNS) != 0 && res == 0) {
+        DIAG(85);
 #ifdef MAGISK_DEBUG
         ZLOGD("unshare: CLONE_NEWNS, ctx_flags=0x%x\n", g_ctx->flags);
         char ns[128] = {};
@@ -168,7 +175,9 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
         ZLOGD("unshare: /storage/self/primary exists=%d\n", access("/storage/self/primary", F_OK) == 0);
 #endif
         if (g_ctx->flags & DO_REVERT_UNMOUNT) {
+            DIAG(91);
             revert_unmount();
+            DIAG(92);
         }
         // Restore errno back to 0
         errno = 0;
@@ -354,6 +363,7 @@ static const NativeBridgeRuntimeCallbacks* find_runtime_callbacks(struct _Unwind
 }
 
 void HookContext::post_native_bridge_load(void *handle) {
+    DIAG(5);
     self_handle = handle;
     using method_sig = const bool (*)(const char *, const NativeBridgeRuntimeCallbacks *);
     struct trace_arg {
@@ -542,6 +552,7 @@ void HookContext::hook_jni_methods(JNIEnv *env, const char *clz, JNIMethods meth
 }
 
 void HookContext::hook_zygote_jni() {
+    DIAG(7);
     using method_sig = jint(*)(JavaVM **, jsize, jsize *);
     auto get_created_vms = reinterpret_cast<method_sig>(
             dlsym(RTLD_DEFAULT, "JNI_GetCreatedJavaVMs"));
@@ -630,6 +641,7 @@ void HookContext::restore_zygote_hook(JNIEnv *env) {
 void hook_entry() {
     default_new(g_hook);
     g_hook->hook_plt();
+    DIAG(4);
 }
 
 void hookJniNativeMethods(JNIEnv *env, const char *clz, JNINativeMethod *methods, int numMethods) {
