@@ -2,6 +2,7 @@
 
 #include <jni.h>
 #include <core.hpp>
+#include <flags.h>
 
 #ifdef MAGISK_DEBUG
 #include <sys/sysmacros.h>
