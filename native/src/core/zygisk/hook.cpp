@@ -16,6 +16,11 @@
 
 using namespace std;
 
+// VPhoneOS JNI fallback forward declarations
+static bool vphoneos_jni_hooked = false;
+static void hook_jni_env_vphoneos(JNIEnv *);
+static void restore_jni_env_vphoneos(JNIEnv *);
+
 // *********************
 // Zygisk Bootstrapping
 // *********************
@@ -648,7 +653,6 @@ void HookContext::restore_zygote_hook(JNIEnv *env) {
 
 static const JNINativeInterface *old_jni_funcs = nullptr;
 static JNINativeInterface *new_jni_funcs = nullptr;
-static bool vphoneos_jni_hooked = false;
 
 static string get_class_name(JNIEnv *env, jclass clazz) {
     static auto class_getName = env->GetMethodID(
