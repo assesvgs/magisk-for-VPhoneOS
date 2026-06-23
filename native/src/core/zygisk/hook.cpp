@@ -3,6 +3,7 @@
 #include <sys/resource.h>
 #include <dlfcn.h>
 #include <unwind.h>
+#include <memory>
 #include <span>
 
 #include <lsplt.hpp>
@@ -618,6 +619,12 @@ void HookContext::hook_zygote_jni() {
 
     if (missing_method.name != nullptr) {
         ZLOGE("Cannot hook method: %s %s\n", missing_method.name, missing_method.signature);
+        // VPhoneOS fallback: try JNIEnv table replacement
+        if (!vphoneos_jni_hooked && access("/share", F_OK) == 0) {
+            ZLOGW("Trying VPhoneOS JNI fallback\n");
+            hook_jni_env_vphoneos(env);
+            return;
+        }
         // Restore methods that were already replaced
         if (replaced_fork_app) register_jni_methods(env, clazz, fork_app_methods);
         if (replaced_specialize_app) register_jni_methods(env, clazz, specialize_app_methods);
@@ -630,10 +637,95 @@ void HookContext::hook_zygote_jni() {
 }
 
 void HookContext::restore_zygote_hook(JNIEnv *env) {
+    restore_jni_env_vphoneos(env);
     jclass clazz = env->FindClass(kZygote);
     register_jni_methods(env, clazz, fork_app_methods);
     register_jni_methods(env, clazz, specialize_app_methods);
     register_jni_methods(env, clazz, fork_server_methods);
+}
+
+// ─── VPhoneOS JNI fallback ──────────────────────────────────────────
+
+static const JNINativeInterface *old_jni_funcs = nullptr;
+static JNINativeInterface *new_jni_funcs = nullptr;
+static bool vphoneos_jni_hooked = false;
+
+static string get_class_name(JNIEnv *env, jclass clazz) {
+    static auto class_getName = env->GetMethodID(
+            env->FindClass("java/lang/Class"), "getName", "()Ljava/lang/String;");
+    auto nameRef = (jstring) env->CallObjectMethod(clazz, class_getName);
+    const char *name = env->GetStringUTFChars(nameRef, nullptr);
+    string className(name);
+    env->ReleaseStringUTFChars(nameRef, name);
+    return className;
+}
+
+static jint env_RegisterNatives(
+        JNIEnv *env, jclass clazz, const JNINativeMethod *methods, jint numMethods) {
+    auto className = get_class_name(env, clazz);
+    bool is_zygote = className == "com.android.internal.os.Zygote"sv;
+
+    if (!is_zygote) {
+        return old_jni_funcs->RegisterNatives(env, clazz, methods, numMethods);
+    }
+
+    auto newMethods = make_unique<JNINativeMethod[]>(numMethods);
+    memcpy(newMethods.get(), methods, sizeof(JNINativeMethod) * numMethods);
+    int replaced = 0;
+    auto *defs = get_defs();
+
+    for (int i = 0; i < numMethods; i++) {
+        if (methods[i].name == "nativeForkAndSpecialize"sv) {
+            for (auto &m : defs->fork_app_methods) {
+                if (strcmp(methods[i].signature, m.signature) == 0) {
+                    newMethods[i].fnPtr = m.fnPtr;
+                    replaced++;
+                    break;
+                }
+            }
+        } else if (methods[i].name == "nativeSpecializeAppProcess"sv) {
+            for (auto &m : defs->specialize_app_methods) {
+                if (strcmp(methods[i].signature, m.signature) == 0) {
+                    newMethods[i].fnPtr = m.fnPtr;
+                    replaced++;
+                    break;
+                }
+            }
+        } else if (methods[i].name == "nativeForkSystemServer"sv) {
+            for (auto &m : defs->fork_server_methods) {
+                if (strcmp(methods[i].signature, m.signature) == 0) {
+                    newMethods[i].fnPtr = m.fnPtr;
+                    replaced++;
+                    break;
+                }
+            }
+        }
+    }
+
+    ZLOGI("vphoneos: replaced %d/%d Zygote methods\n", replaced, numMethods);
+    return old_jni_funcs->RegisterNatives(env, clazz, newMethods.get(), numMethods);
+}
+
+static void hook_jni_env_vphoneos(JNIEnv *env) {
+    if (vphoneos_jni_hooked) return;
+
+    new_jni_funcs = new JNINativeInterface();
+    memcpy(new_jni_funcs, env->functions, sizeof(JNINativeInterface));
+    new_jni_funcs->RegisterNatives = &env_RegisterNatives;
+    old_jni_funcs = env->functions;
+    env->functions = new_jni_funcs;
+    vphoneos_jni_hooked = true;
+    ZLOGI("vphoneos: JNI env hook installed\n");
+}
+
+static void restore_jni_env_vphoneos(JNIEnv *env) {
+    if (!vphoneos_jni_hooked) return;
+    env->functions = old_jni_funcs;
+    delete new_jni_funcs;
+    new_jni_funcs = nullptr;
+    old_jni_funcs = nullptr;
+    vphoneos_jni_hooked = false;
+    ZLOGI("vphoneos: JNI env hook restored\n");
 }
 
 // -----------------------------------------------------------------
