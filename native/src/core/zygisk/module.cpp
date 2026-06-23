@@ -422,18 +422,27 @@ void ZygiskContext::app_specialize_pre() {
             gid = st.st_gid;
         }
         if (access("/storage/emulated/0", F_OK) != 0) {
-            mkdir("/storage/emulated/0", 0771);
-            chown("/storage/emulated/0", 0, gid);
-            chmod("/storage/emulated/0", 0771);
+            if (access("/storage/emulated", F_OK) != 0) {
+                mkdir("/storage/emulated", 0755);
+            }
+            if (mkdir("/storage/emulated/0", 0771) != 0) {
+                ZLOGE("vphoneos: mkdir /storage/emulated/0 failed: %d\n", errno);
+            } else {
+                chown("/storage/emulated/0", 0, gid);
+                chmod("/storage/emulated/0", 0771);
+                ZLOGI("vphoneos: created /storage/emulated/0\n");
+            }
         }
-        if (mount("/data/media/0", "/storage/emulated/0", "",
-                 MS_BIND, nullptr) == 0) {
-            ZLOGI("vphoneos: bind /data/media/0 -> /storage/emulated/0 OK\n");
-            unlink("/storage/self/primary");
-            symlink("/storage/emulated/0", "/storage/self/primary");
-            ZLOGI("vphoneos: sdcard link rebuilt\n");
-        } else {
-            ZLOGE("vphoneos: bind mount failed: %d\n", errno);
+        if (access("/storage/emulated/0", F_OK) == 0) {
+            if (mount("/data/media/0", "/storage/emulated/0", "",
+                     MS_BIND, nullptr) == 0) {
+                ZLOGI("vphoneos: bind /data/media/0 -> /storage/emulated/0 OK\n");
+                unlink("/storage/self/primary");
+                symlink("/storage/emulated/0", "/storage/self/primary");
+                ZLOGI("vphoneos: sdcard link rebuilt\n");
+            } else {
+                ZLOGE("vphoneos: bind mount failed: %d\n", errno);
+            }
         }
     }
 }
