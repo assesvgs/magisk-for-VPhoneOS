@@ -414,6 +414,8 @@ void ZygiskContext::app_specialize_pre() {
     }
 
     // VPhoneOS: rebuild /sdcard chain in child process namespace
+    // /storage/self/primary exists as dangling symlink (→ /mnt/user/0/primary broken after unshare)
+    // Replace it with a bind mount of /data/media/0 directly
     if (access("/sdcard", F_OK) != 0 && access("/data/media/0", F_OK) == 0 &&
         access("/storage", F_OK) == 0) {
         struct stat st;
@@ -421,28 +423,18 @@ void ZygiskContext::app_specialize_pre() {
         if (stat("/data/media/0", &st) == 0) {
             gid = st.st_gid;
         }
-        if (access("/storage/emulated/0", F_OK) != 0) {
-            if (access("/storage/emulated", F_OK) != 0) {
-                mkdir("/storage/emulated", 0755);
-            }
-            if (mkdir("/storage/emulated/0", 0771) != 0) {
-                ZLOGE("vphoneos: mkdir /storage/emulated/0 failed: %d\n", errno);
-            } else {
-                chown("/storage/emulated/0", 0, gid);
-                chmod("/storage/emulated/0", 0771);
-                ZLOGI("vphoneos: created /storage/emulated/0\n");
-            }
-        }
-        if (access("/storage/emulated/0", F_OK) == 0) {
-            if (mount("/data/media/0", "/storage/emulated/0", "",
+        unlink("/storage/self/primary");
+        if (mkdir("/storage/self/primary", 0771) == 0) {
+            chown("/storage/self/primary", 0, gid);
+            chmod("/storage/self/primary", 0771);
+            if (mount("/data/media/0", "/storage/self/primary", "",
                      MS_BIND, nullptr) == 0) {
-                ZLOGI("vphoneos: bind /data/media/0 -> /storage/emulated/0 OK\n");
-                unlink("/storage/self/primary");
-                symlink("/storage/emulated/0", "/storage/self/primary");
                 ZLOGI("vphoneos: sdcard link rebuilt\n");
             } else {
                 ZLOGE("vphoneos: bind mount failed: %d\n", errno);
             }
+        } else {
+            ZLOGE("vphoneos: mkdir /storage/self/primary failed: %d\n", errno);
         }
     }
 }
