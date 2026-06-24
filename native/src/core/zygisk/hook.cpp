@@ -216,24 +216,28 @@ DCL_HOOK_FUNC(static int, selinux_android_setcontext,
         if (stat("/data/media/0", &st) == 0) {
             gid = st.st_gid;
         }
-#ifdef MAGISK_DEBUG
-        ZLOGD("vphoneos: /storage/self exists=%d\n", access("/storage/self", F_OK) == 0);
-#endif
-        if (access("/storage/self", F_OK) != 0) {
-            mkdir("/storage/self", 0755);
-        }
-        unlink("/storage/self/primary");
-        if (mkdir("/storage/self/primary", 0771) == 0) {
-            chown("/storage/self/primary", 0, gid);
-            chmod("/storage/self/primary", 0771);
-            if (mount("/data/media/0", "/storage/self/primary", "",
-                     MS_BIND, nullptr) == 0) {
-                ZLOGI("vphoneos: sdcard link rebuilt\n");
-            } else {
-                ZLOGE("vphoneos: bind mount failed: %d\n", errno);
+        // /storage/self may exist as dangling symlink; use lstat to detect it
+        if (lstat("/storage/self", &st) == 0) {
+            if (unlink("/storage/self") != 0) {
+                ZLOGE("vphoneos: unlink /storage/self failed: %d\n", errno);
             }
+        }
+        if (mkdir("/storage/self", 0755) != 0) {
+            ZLOGE("vphoneos: mkdir /storage/self failed: %d\n", errno);
         } else {
-            ZLOGE("vphoneos: mkdir /storage/self/primary failed: %d\n", errno);
+            unlink("/storage/self/primary");
+            if (mkdir("/storage/self/primary", 0771) == 0) {
+                chown("/storage/self/primary", 0, gid);
+                chmod("/storage/self/primary", 0771);
+                if (mount("/data/media/0", "/storage/self/primary", "",
+                         MS_BIND, nullptr) == 0) {
+                    ZLOGI("vphoneos: sdcard link rebuilt\n");
+                } else {
+                    ZLOGE("vphoneos: bind mount failed: %d\n", errno);
+                }
+            } else {
+                ZLOGE("vphoneos: mkdir /storage/self/primary failed: %d\n", errno);
+            }
         }
     }
 
