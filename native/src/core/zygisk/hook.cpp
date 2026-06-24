@@ -153,6 +153,15 @@ DCL_HOOK_FUNC(static char *, strdup, const char * str) {
     return old_strdup(str);
 }
 
+// Hook androidSetCreateThreadFunc to replace JNIEnv table early.
+// Called during startReg(), before Zygote native methods are registered.
+DCL_HOOK_FUNC(static void, androidSetCreateThreadFunc, void *func) {
+    old_androidSetCreateThreadFunc(func);
+    if (g_hook && !g_hook->old_env) {
+        g_hook->hook_zygote_jni();
+    }
+}
+
 // Skip actual fork and return cached result if applicable
 DCL_HOOK_FUNC(int, fork) {
     int pid = (g_ctx && g_ctx->pid >= 0) ? g_ctx->pid : old_fork();
@@ -443,6 +452,7 @@ void HookContext::hook_plt() {
     PLT_HOOK_REGISTER(android_runtime_dev, android_runtime_inode, unshare);
     PLT_HOOK_REGISTER(android_runtime_dev, android_runtime_inode, selinux_android_setcontext);
     PLT_HOOK_REGISTER(android_runtime_dev, android_runtime_inode, strdup);
+    PLT_HOOK_REGISTER(android_runtime_dev, android_runtime_inode, androidSetCreateThreadFunc);
     PLT_HOOK_REGISTER_SYM(android_runtime_dev, android_runtime_inode, "__android_log_close", android_log_close);
 
     if (!lsplt::CommitHook())
@@ -667,6 +677,7 @@ static jint env_RegisterNatives(
 }
 
 void HookContext::hook_jni_env(JNIEnv *env) {
+    if (old_env) return;  // already replaced, skip
     memcpy(&new_env, env->functions, sizeof(*env->functions));
     new_env.RegisterNatives = &env_RegisterNatives;
     old_env = env->functions;
