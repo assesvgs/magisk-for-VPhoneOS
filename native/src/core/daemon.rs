@@ -20,7 +20,6 @@ use base::const_format::concatcp;
 use base::{
     AtomicArc, BufReadExt, FileAttr, FsPathBuilder, LoggedResult, ReadExt, ResultExt, Utf8CStr,
     Utf8CStrBuf, WriteExt, cstr, debug, fork_dont_care, info, libc, log_err, set_nice_name,
-    warn,
 };
 use nix::fcntl::OFlag;
 use nix::mount::MsFlags;
@@ -290,12 +289,6 @@ fn daemon_entry() {
     set_nice_name(cstr!("magiskd"));
     android_logging();
 
-    // Isolate mount namespace to prevent daemon operations from polluting init/zygote
-    // Equivalent to M27 daemon.cpp:394-399 (xunshare + MS_SLAVE /mnt)
-    if unsafe { libc::unshare(libc::CLONE_NEWNS) } != 0 {
-        warn!("daemon: unshare(CLONE_NEWNS) failed: {}", std::io::Error::last_os_error());
-    }
-
     // Block all signals
     SigSet::all().thread_set_mask().log_ok();
 
@@ -328,14 +321,6 @@ fn daemon_entry() {
 
     // Load config status
     let magisk_tmp = get_magisk_tmp();
-
-    // Set propagation types after unshare (done above):
-    // - Make magisk tmp private so its mounts don't leak out
-    // - Make /mnt slave to fix sdcardfs bug on old kernel (M27 compat)
-    magisk_tmp.set_mount_private(true).log_ok();
-    cstr!("/mnt").set_mount_slave(true).log_ok();
-    info!("daemon: mount namespace isolation ready");
-
     let mut tmp_path = cstr::buf::new::<64>()
         .join_path(magisk_tmp)
         .join_path(MAIN_CONFIG);
