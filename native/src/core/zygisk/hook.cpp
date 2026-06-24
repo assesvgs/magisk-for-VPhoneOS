@@ -104,11 +104,14 @@ struct HookContext : JniHookDefinitions {
     const NativeBridgeRuntimeCallbacks *runtime_callbacks = nullptr;
     void *self_handle = nullptr;
     bool should_unmap = false;
+    JNINativeInterface new_env{};
+    const JNINativeInterface *old_env = nullptr;
 
     void hook_plt();
     void hook_unloader();
     void restore_plt_hook();
     void hook_zygote_jni();
+    void hook_jni_env();
     void restore_zygote_hook(JNIEnv *env);
     void hook_jni_methods(JNIEnv *env, const char *clz, JNIMethods methods) const;
     void post_native_bridge_load(void *handle);
@@ -586,55 +589,89 @@ void HookContext::hook_zygote_jni() {
     res = vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
     if (res != JNI_OK || env == nullptr) {
         ZLOGW("JNIEnv not found\n");
+        return;
     }
 
-    JNINativeMethod missing_method{};
-    bool replaced_fork_app = false;
-    bool replaced_specialize_app = false;
-    bool replaced_fork_server = false;
-
-    jclass clazz = env->FindClass(kZygote);
-    auto [ptr, count] = get_jni_methods(env, clazz);
-    for (const auto methods = span(ptr.get(), count); const auto &method : methods) {
-        if (strcmp(method.name, kForkApp) == 0) {
-            if (hook_jni_methods(env, clazz, fork_app_methods) == 0) {
-                missing_method = method;
-                break;
-            }
-            replaced_fork_app = true;
-        } else if (strcmp(method.name, kSpecializeApp) == 0) {
-            if (hook_jni_methods(env, clazz, specialize_app_methods) == 0) {
-                missing_method = method;
-                break;
-            }
-            replaced_specialize_app = true;
-        } else if (strcmp(method.name, kForkServer) == 0) {
-            if (hook_jni_methods(env, clazz, fork_server_methods) == 0) {
-                missing_method = method;
-                break;
-            }
-            replaced_fork_server = true;
-        }
-    }
-
-    if (missing_method.name != nullptr) {
-        ZLOGE("Cannot hook method: %s %s\n", missing_method.name, missing_method.signature);
-        // Restore methods that were already replaced
-        if (replaced_fork_app) register_jni_methods(env, clazz, fork_app_methods);
-        if (replaced_specialize_app) register_jni_methods(env, clazz, specialize_app_methods);
-        if (replaced_fork_server) register_jni_methods(env, clazz, fork_server_methods);
-        // Clear the method lists just in case
-        ranges::for_each(fork_app_methods, [](auto &m) { m.fnPtr = nullptr; });
-        ranges::for_each(specialize_app_methods, [](auto &m) { m.fnPtr = nullptr; });
-        ranges::for_each(fork_server_methods, [](auto &m) { m.fnPtr = nullptr; });
-    }
+    // Replace JNIEnv function table to intercept RegisterNatives (M27 compat)
+    hook_jni_env();
 }
 
 void HookContext::restore_zygote_hook(JNIEnv *env) {
+    // Restore JNIEnv function table
+    if (old_env) {
+        env->functions = old_env;
+        old_env = nullptr;
+    }
     jclass clazz = env->FindClass(kZygote);
     register_jni_methods(env, clazz, fork_app_methods);
     register_jni_methods(env, clazz, specialize_app_methods);
     register_jni_methods(env, clazz, fork_server_methods);
+}
+
+// ─── JNIEnv table replacement (M27 compat) ───────────────────────
+
+static string get_class_name(JNIEnv *env, jclass clazz) {
+    static auto class_getName = env->GetMethodID(
+            env->FindClass("java/lang/Class"), "getName", "()Ljava/lang/String;");
+    auto nameRef = (jstring) env->CallObjectMethod(clazz, class_getName);
+    const char *name = env->GetStringUTFChars(nameRef, nullptr);
+    string className(name);
+    env->ReleaseStringUTFChars(nameRef, name);
+    return className;
+}
+
+static jint env_RegisterNatives(
+        JNIEnv *env, jclass clazz, const JNINativeMethod *methods, jint numMethods) {
+    auto *defs = get_defs();
+    auto className = get_class_name(env, clazz);
+    bool is_zygote = className == "com.android.internal.os.Zygote"sv;
+
+    if (!is_zygote) {
+        return g_hook->old_env->RegisterNatives(env, clazz, methods, numMethods);
+    }
+
+    auto newMethods = make_unique<JNINativeMethod[]>(numMethods);
+    memcpy(newMethods.get(), methods, sizeof(JNINativeMethod) * numMethods);
+    int replaced = 0;
+
+    for (int i = 0; i < numMethods; i++) {
+        if (methods[i].name == "nativeForkAndSpecialize"sv) {
+            for (auto &m : defs->fork_app_methods) {
+                if (strcmp(methods[i].signature, m.signature) == 0) {
+                    newMethods[i].fnPtr = m.fnPtr;
+                    replaced++;
+                    break;
+                }
+            }
+        } else if (methods[i].name == "nativeSpecializeAppProcess"sv) {
+            for (auto &m : defs->specialize_app_methods) {
+                if (strcmp(methods[i].signature, m.signature) == 0) {
+                    newMethods[i].fnPtr = m.fnPtr;
+                    replaced++;
+                    break;
+                }
+            }
+        } else if (methods[i].name == "nativeForkSystemServer"sv) {
+            for (auto &m : defs->fork_server_methods) {
+                if (strcmp(methods[i].signature, m.signature) == 0) {
+                    newMethods[i].fnPtr = m.fnPtr;
+                    replaced++;
+                    break;
+                }
+            }
+        }
+    }
+
+    ZLOGI("zygisk: replaced %d/%d Zygote methods via JNIEnv hook\n", replaced, numMethods);
+    return g_hook->old_env->RegisterNatives(env, clazz, newMethods.get(), numMethods);
+}
+
+void HookContext::hook_jni_env() {
+    memcpy(&new_env, env->functions, sizeof(*env->functions));
+    new_env.RegisterNatives = &env_RegisterNatives;
+    old_env = env->functions;
+    env->functions = &new_env;
+    ZLOGI("zygisk: JNIEnv function table replaced\n");
 }
 // -----------------------------------------------------------------
 
