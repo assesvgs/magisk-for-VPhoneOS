@@ -1,9 +1,7 @@
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/resource.h>
-#include <sys/stat.h>
 #include <dlfcn.h>
-#include <unistd.h>
 #include <unwind.h>
 #include <memory>
 #include <span>
@@ -189,58 +187,10 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
 }
 
 // This is the last moment before the secontext of the process changes
-// Also the first moment when /storage is guaranteed to be writable tmpfs
-// (system mounts it after unshare, before setcontext).
 DCL_HOOK_FUNC(static int, selinux_android_setcontext,
               uid_t uid, bool isSystemServer, const char *seinfo, const char *pkgname) {
     // Pre-fetch logd before secontext transition
     zygisk_get_logd();
-
-    // VPhoneOS: rebuild /sdcard chain. At this point:
-    // - unshare(CLONE_NEWNS) already done (private namespace)
-    // - system has mounted tmpfs on /storage (writable)
-    // - still in zygote context (has mount permission)
-    // - about to switch to app context (loses mount permission)
-    bool need_sdcard = !isSystemServer && g_ctx && (g_ctx->flags & APP_SPECIALIZE) &&
-        access("/sdcard", F_OK) != 0;
-    bool have_data_media = access("/data/media/0", F_OK) == 0;
-    bool have_storage = access("/storage", F_OK) == 0;
-#ifdef MAGISK_DEBUG
-    ZLOGD("setcontext: sdcard=%d data_media=%d storage=%d sysserv=%d flags=0x%x\n",
-          need_sdcard, have_data_media, have_storage, isSystemServer,
-          g_ctx ? g_ctx->flags : 0);
-#endif
-    if (need_sdcard && have_data_media && have_storage) {
-        struct stat st;
-        gid_t gid = 1015;
-        if (stat("/data/media/0", &st) == 0) {
-            gid = st.st_gid;
-        }
-        // /storage/self may exist as dangling symlink; only unlink if it's a symlink
-        if (lstat("/storage/self", &st) == 0 && S_ISLNK(st.st_mode)) {
-            if (unlink("/storage/self") != 0) {
-                ZLOGE("vphoneos: unlink /storage/self failed: %d\n", errno);
-            }
-        }
-        if (mkdir("/storage/self", 0755) != 0) {
-            ZLOGE("vphoneos: mkdir /storage/self failed: %d\n", errno);
-        } else {
-            unlink("/storage/self/primary");
-            if (mkdir("/storage/self/primary", 0771) == 0) {
-                chown("/storage/self/primary", 0, gid);
-                chmod("/storage/self/primary", 0771);
-                if (mount("/data/media/0", "/storage/self/primary", "",
-                         MS_BIND, nullptr) == 0) {
-                    ZLOGI("vphoneos: sdcard link rebuilt\n");
-                } else {
-                    ZLOGE("vphoneos: bind mount failed: %d\n", errno);
-                }
-            } else {
-                ZLOGE("vphoneos: mkdir /storage/self/primary failed: %d\n", errno);
-            }
-        }
-    }
-
     return old_selinux_android_setcontext(uid, isSystemServer, seinfo, pkgname);
 }
 
