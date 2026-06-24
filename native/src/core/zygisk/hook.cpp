@@ -216,8 +216,8 @@ DCL_HOOK_FUNC(static int, selinux_android_setcontext,
         if (stat("/data/media/0", &st) == 0) {
             gid = st.st_gid;
         }
-        // /storage/self may exist as dangling symlink; use lstat to detect it
-        if (lstat("/storage/self", &st) == 0) {
+        // /storage/self may exist as dangling symlink; only unlink if it's a symlink
+        if (lstat("/storage/self", &st) == 0 && S_ISLNK(st.st_mode)) {
             if (unlink("/storage/self") != 0) {
                 ZLOGE("vphoneos: unlink /storage/self failed: %d\n", errno);
             }
