@@ -111,7 +111,7 @@ struct HookContext : JniHookDefinitions {
     void hook_unloader();
     void restore_plt_hook();
     void hook_zygote_jni();
-    void hook_jni_env();
+    void hook_jni_env(JNIEnv *env);
     void restore_zygote_hook(JNIEnv *env);
     void hook_jni_methods(JNIEnv *env, const char *clz, JNIMethods methods) const;
     void post_native_bridge_load(void *handle);
@@ -593,7 +593,7 @@ void HookContext::hook_zygote_jni() {
     }
 
     // Replace JNIEnv function table to intercept RegisterNatives (M27 compat)
-    hook_jni_env();
+    hook_jni_env(env);
 }
 
 void HookContext::restore_zygote_hook(JNIEnv *env) {
@@ -666,7 +666,7 @@ static jint env_RegisterNatives(
     return g_hook->old_env->RegisterNatives(env, clazz, newMethods.get(), numMethods);
 }
 
-void HookContext::hook_jni_env() {
+void HookContext::hook_jni_env(JNIEnv *env) {
     memcpy(&new_env, env->functions, sizeof(*env->functions));
     new_env.RegisterNatives = &env_RegisterNatives;
     old_env = env->functions;
