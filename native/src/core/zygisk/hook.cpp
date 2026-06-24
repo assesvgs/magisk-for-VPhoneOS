@@ -1,7 +1,9 @@
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <dlfcn.h>
+#include <unistd.h>
 #include <unwind.h>
 #include <memory>
 #include <span>
@@ -15,11 +17,6 @@
 #include "jni_hooks.hpp"
 
 using namespace std;
-
-// VPhoneOS JNI fallback forward declarations
-static bool vphoneos_jni_hooked = false;
-static void hook_jni_env_vphoneos(JNIEnv *);
-static void restore_jni_env_vphoneos(JNIEnv *);
 
 // *********************
 // Zygisk Bootstrapping
@@ -192,10 +189,54 @@ DCL_HOOK_FUNC(static int, unshare, int flags) {
 }
 
 // This is the last moment before the secontext of the process changes
+// Also the first moment when /storage is guaranteed to be writable tmpfs
+// (system mounts it after unshare, before setcontext).
 DCL_HOOK_FUNC(static int, selinux_android_setcontext,
               uid_t uid, bool isSystemServer, const char *seinfo, const char *pkgname) {
     // Pre-fetch logd before secontext transition
     zygisk_get_logd();
+
+    // VPhoneOS: rebuild /sdcard chain. At this point:
+    // - unshare(CLONE_NEWNS) already done (private namespace)
+    // - system has mounted tmpfs on /storage (writable)
+    // - still in zygote context (has mount permission)
+    // - about to switch to app context (loses mount permission)
+    bool need_sdcard = !isSystemServer && g_ctx && (g_ctx->flags & APP_SPECIALIZE) &&
+        access("/sdcard", F_OK) != 0;
+    bool have_data_media = access("/data/media/0", F_OK) == 0;
+    bool have_storage = access("/storage", F_OK) == 0;
+#ifdef MAGISK_DEBUG
+    ZLOGD("setcontext: sdcard=%d data_media=%d storage=%d sysserv=%d flags=0x%x\n",
+          need_sdcard, have_data_media, have_storage, isSystemServer,
+          g_ctx ? g_ctx->flags : 0);
+#endif
+    if (need_sdcard && have_data_media && have_storage) {
+        struct stat st;
+        gid_t gid = 1015;
+        if (stat("/data/media/0", &st) == 0) {
+            gid = st.st_gid;
+        }
+#ifdef MAGISK_DEBUG
+        ZLOGD("vphoneos: /storage/self exists=%d\n", access("/storage/self", F_OK) == 0);
+#endif
+        if (access("/storage/self", F_OK) != 0) {
+            mkdir("/storage/self", 0755);
+        }
+        unlink("/storage/self/primary");
+        if (mkdir("/storage/self/primary", 0771) == 0) {
+            chown("/storage/self/primary", 0, gid);
+            chmod("/storage/self/primary", 0771);
+            if (mount("/data/media/0", "/storage/self/primary", "",
+                     MS_BIND, nullptr) == 0) {
+                ZLOGI("vphoneos: sdcard link rebuilt\n");
+            } else {
+                ZLOGE("vphoneos: bind mount failed: %d\n", errno);
+            }
+        } else {
+            ZLOGE("vphoneos: mkdir /storage/self/primary failed: %d\n", errno);
+        }
+    }
+
     return old_selinux_android_setcontext(uid, isSystemServer, seinfo, pkgname);
 }
 
@@ -624,12 +665,6 @@ void HookContext::hook_zygote_jni() {
 
     if (missing_method.name != nullptr) {
         ZLOGE("Cannot hook method: %s %s\n", missing_method.name, missing_method.signature);
-        // VPhoneOS fallback: try JNIEnv table replacement
-        if (!vphoneos_jni_hooked && access("/share", F_OK) == 0) {
-            ZLOGW("Trying VPhoneOS JNI fallback\n");
-            hook_jni_env_vphoneos(env);
-            return;
-        }
         // Restore methods that were already replaced
         if (replaced_fork_app) register_jni_methods(env, clazz, fork_app_methods);
         if (replaced_specialize_app) register_jni_methods(env, clazz, specialize_app_methods);
@@ -642,96 +677,11 @@ void HookContext::hook_zygote_jni() {
 }
 
 void HookContext::restore_zygote_hook(JNIEnv *env) {
-    restore_jni_env_vphoneos(env);
     jclass clazz = env->FindClass(kZygote);
     register_jni_methods(env, clazz, fork_app_methods);
     register_jni_methods(env, clazz, specialize_app_methods);
     register_jni_methods(env, clazz, fork_server_methods);
 }
-
-// ─── VPhoneOS JNI fallback ──────────────────────────────────────────
-
-static const JNINativeInterface *old_jni_funcs = nullptr;
-static JNINativeInterface *new_jni_funcs = nullptr;
-
-static string get_class_name(JNIEnv *env, jclass clazz) {
-    static auto class_getName = env->GetMethodID(
-            env->FindClass("java/lang/Class"), "getName", "()Ljava/lang/String;");
-    auto nameRef = (jstring) env->CallObjectMethod(clazz, class_getName);
-    const char *name = env->GetStringUTFChars(nameRef, nullptr);
-    string className(name);
-    env->ReleaseStringUTFChars(nameRef, name);
-    return className;
-}
-
-static jint env_RegisterNatives(
-        JNIEnv *env, jclass clazz, const JNINativeMethod *methods, jint numMethods) {
-    auto className = get_class_name(env, clazz);
-    bool is_zygote = className == "com.android.internal.os.Zygote"sv;
-
-    if (!is_zygote) {
-        return old_jni_funcs->RegisterNatives(env, clazz, methods, numMethods);
-    }
-
-    auto newMethods = make_unique<JNINativeMethod[]>(numMethods);
-    memcpy(newMethods.get(), methods, sizeof(JNINativeMethod) * numMethods);
-    int replaced = 0;
-    auto *defs = get_defs();
-
-    for (int i = 0; i < numMethods; i++) {
-        if (methods[i].name == "nativeForkAndSpecialize"sv) {
-            for (auto &m : defs->fork_app_methods) {
-                if (strcmp(methods[i].signature, m.signature) == 0) {
-                    newMethods[i].fnPtr = m.fnPtr;
-                    replaced++;
-                    break;
-                }
-            }
-        } else if (methods[i].name == "nativeSpecializeAppProcess"sv) {
-            for (auto &m : defs->specialize_app_methods) {
-                if (strcmp(methods[i].signature, m.signature) == 0) {
-                    newMethods[i].fnPtr = m.fnPtr;
-                    replaced++;
-                    break;
-                }
-            }
-        } else if (methods[i].name == "nativeForkSystemServer"sv) {
-            for (auto &m : defs->fork_server_methods) {
-                if (strcmp(methods[i].signature, m.signature) == 0) {
-                    newMethods[i].fnPtr = m.fnPtr;
-                    replaced++;
-                    break;
-                }
-            }
-        }
-    }
-
-    ZLOGI("vphoneos: replaced %d/%d Zygote methods\n", replaced, numMethods);
-    return old_jni_funcs->RegisterNatives(env, clazz, newMethods.get(), numMethods);
-}
-
-static void hook_jni_env_vphoneos(JNIEnv *env) {
-    if (vphoneos_jni_hooked) return;
-
-    new_jni_funcs = new JNINativeInterface();
-    memcpy(new_jni_funcs, env->functions, sizeof(JNINativeInterface));
-    new_jni_funcs->RegisterNatives = &env_RegisterNatives;
-    old_jni_funcs = env->functions;
-    env->functions = new_jni_funcs;
-    vphoneos_jni_hooked = true;
-    ZLOGI("vphoneos: JNI env hook installed\n");
-}
-
-static void restore_jni_env_vphoneos(JNIEnv *env) {
-    if (!vphoneos_jni_hooked) return;
-    env->functions = old_jni_funcs;
-    delete new_jni_funcs;
-    new_jni_funcs = nullptr;
-    old_jni_funcs = nullptr;
-    vphoneos_jni_hooked = false;
-    ZLOGI("vphoneos: JNI env hook restored\n");
-}
-
 // -----------------------------------------------------------------
 
 void hook_entry() {

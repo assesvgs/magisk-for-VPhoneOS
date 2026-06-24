@@ -1,7 +1,5 @@
 #include <sys/mman.h>
-#include <sys/mount.h>
 #include <sys/stat.h>
-#include <unistd.h>
 #include <android/dlext.h>
 #include <dlfcn.h>
 
@@ -411,31 +409,6 @@ void ZygiskContext::app_specialize_pre() {
         flags |= DO_REVERT_UNMOUNT;
     } else if (fd >= 0) {
         run_modules_pre(module_fds);
-    }
-
-    // VPhoneOS: rebuild /sdcard chain in child process namespace
-    // /storage/self/primary exists as dangling symlink (→ /mnt/user/0/primary broken after unshare)
-    // Replace it with a bind mount of /data/media/0 directly
-    if (access("/sdcard", F_OK) != 0 && access("/data/media/0", F_OK) == 0 &&
-        access("/storage", F_OK) == 0) {
-        struct stat st;
-        gid_t gid = 1015;
-        if (stat("/data/media/0", &st) == 0) {
-            gid = st.st_gid;
-        }
-        unlink("/storage/self/primary");
-        if (mkdir("/storage/self/primary", 0771) == 0) {
-            chown("/storage/self/primary", 0, gid);
-            chmod("/storage/self/primary", 0771);
-            if (mount("/data/media/0", "/storage/self/primary", "",
-                     MS_BIND, nullptr) == 0) {
-                ZLOGI("vphoneos: sdcard link rebuilt\n");
-            } else {
-                ZLOGE("vphoneos: bind mount failed: %d\n", errno);
-            }
-        } else {
-            ZLOGE("vphoneos: mkdir /storage/self/primary failed: %d\n", errno);
-        }
     }
 }
 
