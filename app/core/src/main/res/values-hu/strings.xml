@@ -109,8 +109,6 @@
     <string name="module_action_install_external">Telepítés tárhelyről</string>
     <string name="update_available">Frissítés érhető el</string>
     <string name="suspend_text_riru">A modul felfüggesztve, mert a %1$s engedélyezve van</string>
-    <string name="suspend_text_zygisk">A modul felfüggesztve, mert a %1$s nincs engedélyezve</string>
-    <string name="zygisk_module_unloaded">A Zygisk modul nem lett betöltve inkompatibilitás miatt</string>
     <string name="module_empty">Nincs telepített modul</string>
 
     <!--Settings-->
@@ -134,7 +132,6 @@
     <string name="settings_update_beta">Beta</string>
     <string name="settings_update_custom">Egyéni</string>
     <string name="settings_update_custom_msg">Adj meg egy egyéni csatorna URL-t</string>
-    <string name="settings_zygisk_summary">Futtassa a Magisk egyes részeit a zigóta démonban</string>
     <string name="settings_denylist_title">Tiltólista kényszerítés</string>
     <string name="settings_denylist_summary">A tiltólistán lévő folyamatok minden Magisk módosítást visszaállítanak</string>
     <string name="settings_denylist_config_title">Tiltólista konfigurálás</string>

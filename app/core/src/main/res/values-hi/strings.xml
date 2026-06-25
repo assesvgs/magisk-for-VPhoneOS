@@ -109,8 +109,6 @@
     <string name="module_action_install_external">स्टोरेज से इनस्टॉल करें</string>
     <string name="update_available">अपडेट उपलब्ध</string>
     <string name="suspend_text_riru">%1$s सक्रिय होने के कारण मॉड्यूल निलंबित</string>
-    <string name="suspend_text_zygisk">%1$s अक्षम होने के कारण मॉड्यूल निलंबित</string>
-    <string name="zygisk_module_unloaded">Zygisk मॉड्यूल असंगतता के कारण लोड होने में असमर्थ</string>
     <string name="module_empty">कोई मॉड्यूल इंस्टॉल्ड नहीं</string>
 
     <!--Settings -->
@@ -134,7 +132,6 @@
     <string name="settings_update_beta">बीटा</string>
     <string name="settings_update_custom">कस्टम चैनल</string>
     <string name="settings_update_custom_msg">एक कस्टम URL डालें</string>
-    <string name="settings_zygisk_summary">मैजिस्क को जाइगोट डेमॉन के कुछ हिस्सों को चलाएं</string>
     <string name="settings_denylist_title">अस्वीकार सूची लागू करें</string>
     <string name="settings_denylist_summary">अस्वीकृत सूची की प्रक्रियाओं में सभी मैजिस्क संशोधन पूर्ववत हो जाएंगे</string>
     <string name="settings_denylist_config_title">अस्वीकार सूची कॉन्फ़िगर करें</string>

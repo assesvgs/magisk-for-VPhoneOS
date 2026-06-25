@@ -114,8 +114,6 @@
     <string name="module_action_install_external">لە بیرگەکەتەوە ڕێکی بخە</string>
     <string name="update_available">وەشانی نوێ بەردەستە</string>
     <string name="suspend_text_riru">زیادکراوەکە کار ناکات چونکە %1$s کراوەتەوە</string>
-    <string name="suspend_text_zygisk">زیادکراوەکە کارناکات چونکە %1$s نەکراوەتەوە</string>
-    <string name="zygisk_module_unloaded">زیادکراوی Zygisk بەهۆی نەگونجان کارناکات</string>
     <string name="module_empty">هیچ زیادکراوێک دانەبەزیوە</string>
     <string name="confirm_install">دابەزاندنی زیادکراو %1$s?</string>
     <string name="confirm_install_title">دڵنیابوونەوە لە دابەزاندن</string>
@@ -141,7 +139,6 @@
     <string name="settings_update_beta">پێشوەختە(بێتا)</string>
     <string name="settings_update_custom">تایبەت</string>
     <string name="settings_update_custom_msg">بەستەرێکی تایبەت دابنێ</string>
-    <string name="settings_zygisk_summary">کارپێکردنی بەشێکی ماجیسک لە zygote daemon</string>
     <string name="settings_denylist_title">پێڕستی نەرێنی کراوەکان</string>
     <string name="settings_denylist_summary">هەر ئەپێک لە پێڕستی نەرێنییەکان کاریگەریەکانی ماجیسکی لەسەر نییە</string>
     <string name="settings_denylist_config_title">دەستکاریکردنی پێڕستی نەرێنیکراوەکان</string>

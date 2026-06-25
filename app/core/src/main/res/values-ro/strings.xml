@@ -113,8 +113,6 @@
     <string name="module_action_install_external">Instalează din spațiul de stocare</string>
     <string name="update_available">Actualizare disponibilă</string>
     <string name="suspend_text_riru">Modul suspendat deoarece %1$s este activat</string>
-    <string name="suspend_text_zygisk">Modul suspendat deoarece %1$s nu este activat</string>
-    <string name="zygisk_module_unloaded">Modulul Zygisk nu a fost încărcat din cauza incompatibilității</string>
     <string name="module_empty">Niciun modul instalat</string>
     <string name="confirm_install">Instalezi modulul %1$s?</string>
     <string name="confirm_install_title">Confirmare pentru instalare</string>
@@ -140,7 +138,6 @@
     <string name="settings_update_beta">Beta</string>
     <string name="settings_update_custom">Personalizat</string>
     <string name="settings_update_custom_msg">Inserează un URL pentru canal personalizat</string>
-    <string name="settings_zygisk_summary">Rulează părți ale Magisk în daemonul zygote</string>
     <string name="settings_denylist_title">Impune lista de refuzări</string>
     <string name="settings_denylist_summary">Procesele din lista de refuzări vor avea toate modificările Magisk anulate</string>
     <string name="settings_denylist_config_title">Configurează lista de refuzări</string>

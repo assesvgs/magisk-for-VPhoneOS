@@ -116,8 +116,6 @@ Refuzoni nëse nuk jeni të sigurt!</string>
     <string name="module_action_install_external">Instalo nga memoria</string>
     <string name="update_available">Përditësim i disponueshëm</string>
     <string name="suspend_text_riru">Moduli u pezullua sepse %1$s është aktiv</string>
-    <string name="suspend_text_zygisk">Moduli u pezullua sepse %1$s nuk është aktiv</string>
-    <string name="zygisk_module_unloaded">Moduli Zygisk nuk u ngarkua për shkak të mospërputhjes</string>
     <string name="module_empty">Nuk ka module të instaluara</string>
     <string name="confirm_install">Të instalohet moduli %1$s?</string>
     <string name="confirm_install_title">Konfirmim instalimi</string>
@@ -144,7 +142,6 @@ Refuzoni nëse nuk jeni të sigurt!</string>
     <string name="settings_update_debug">Debug</string>
     <string name="settings_update_custom">Custom</string>
     <string name="settings_update_custom_msg">Fut një URL të personalizuar të kanalit</string>
-    <string name="settings_zygisk_summary">Ekzekuto pjesë të Magisk në demonin Zygote</string>
     <string name="settings_denylist_title">Zbato listën e ndaluar</string>
     <string name="settings_denylist_summary">Proceset në listën e ndaluar do të rikthehen pa modifikimet e Magisk</string>
     <string name="settings_denylist_config_title">Konfiguro listën e ndaluar</string>

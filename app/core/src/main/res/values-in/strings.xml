@@ -109,8 +109,6 @@
     <string name="module_action_install_external">Pasang dari penyimpanan</string>
     <string name="update_available">Pembaruan tersedia</string>
     <string name="suspend_text_riru">Modul ditangguhkan karena %1$s diaktifkan</string>
-    <string name="suspend_text_zygisk">Modul ditangguhkan karena %1$s tidak diaktifkan</string>
-    <string name="zygisk_module_unloaded">Modul Zygisk tidak dimuat karena ketidakcocokan</string>
     <string name="module_empty">Tidak ada modul terpasang</string>
     <string name="confirm_install">Pasang modul %1$s?</string>
     <string name="confirm_install_title">Konfirmasi Pasang</string>
@@ -136,7 +134,6 @@
     <string name="settings_update_beta">Beta</string>
     <string name="settings_update_custom">Saluran khusus</string>
     <string name="settings_update_custom_msg">Masukkan URL khusus</string>
-    <string name="settings_zygisk_summary">Jalankan bagian-bagian Magisk dalam zygote daemon</string>
     <string name="settings_denylist_title">Paksa DenyList</string>
     <string name="settings_denylist_summary">Proses pada denylist akan mengembalikan semua modifikasi Magisk</string>
     <string name="settings_denylist_config_title">Konfigurasi DenyList</string>

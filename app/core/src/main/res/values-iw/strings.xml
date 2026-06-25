@@ -112,8 +112,6 @@
     <string name="module_action_install_external">התקנה מהאחסון</string>
     <string name="update_available">עדכונים זמינים</string>
     <string name="suspend_text_riru">מודול מושעה כי %1$s מופעל</string>
-    <string name="suspend_text_zygisk">המודול הושעה כי %1$s אינו מופעל</string>
-    <string name="zygisk_module_unloaded">מודול Zygisk לא נטען עקב חוסר תאימות</string>
     <string name="module_empty">לא מותקן מודול</string>
     <string name="confirm_install">להתקין מודול %1$s?</string>
     <string name="confirm_install_title">אישור התקנה</string>
@@ -139,7 +137,6 @@
     <string name="settings_update_beta">בטא</string>
     <string name="settings_update_custom">מותאם אישית</string>
     <string name="settings_update_custom_msg">הזנת כתובת מותאמת אישית</string>
-    <string name="settings_zygisk_summary">הפעל חלקים של Magisk בדמון zygote</string>
     <string name="settings_denylist_title">אכיפת רשימת דחייה</string>
     <string name="settings_denylist_summary">כל השינויים של Magisk יוחזרו לתהליכים ברשימת הדחייה</string>
     <string name="settings_denylist_config_title">הגדרת רשימת הדחייה</string>

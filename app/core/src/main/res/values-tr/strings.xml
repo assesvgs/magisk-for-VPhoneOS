@@ -111,8 +111,6 @@
     <string name="module_action_install_external">Depolamadan yükle</string>
     <string name="update_available">Güncelleme mevcut</string>
     <string name="suspend_text_riru">Modül, %1$s etkin olduğu için askıya alındı</string>
-    <string name="suspend_text_zygisk">Modül, %1$s etkin olmadığı için askıya alındı</string>
-    <string name="zygisk_module_unloaded">Zygisk modülü uyumsuzluk nedeniyle yüklenmedi</string>
     <string name="module_empty">Yüklü modül yok</string>
     <string name="confirm_install">%1$s modülü yüklensin mi?</string>
     <string name="confirm_install_title">Yükleme Onayı</string>
@@ -139,7 +137,6 @@
     <string name="settings_update_debug">Hata Ayıklama</string>
     <string name="settings_update_custom">Özel</string>
     <string name="settings_update_custom_msg">Özel bir kanal URL\'si girin</string>
-    <string name="settings_zygisk_summary">Magisk\'in bazı kısımlarını Zygote daemon içinde çalıştırın</string>
     <string name="settings_denylist_title">Red Listesini Uygula</string>
     <string name="settings_denylist_summary">Red listesindeki işlemlerin tüm Magisk değişiklikleri geri alınacak</string>
     <string name="settings_denylist_config_title">Red Listesini Yapılandır</string>

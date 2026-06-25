@@ -110,8 +110,6 @@
     <string name="module_action_install_external">نصب از حافظه</string>
     <string name="update_available">بروزرسانی در دسترس است</string>
     <string name="suspend_text_riru">ماژول به دلیل فعال بودن %1$s متوقف شد</string>
-    <string name="suspend_text_zygisk">ماژول به دلیل غیرفعال بودن %1$s متوقف شد</string>
-    <string name="zygisk_module_unloaded">ماژول Zygisk به دلیل ناسازگاری بارگذاری نشد</string>
     <string name="module_empty">هیچ ماژولی نصب نشده است</string>
     <string name="confirm_install">نصب ماژول %1$s؟</string>
     <string name="confirm_install_title">تأیید نصب</string>
@@ -139,7 +137,6 @@
     <string name="settings_update_debug">اشکال‌زدایی</string>
     <string name="settings_update_custom">شخصی سازی شده</string>
     <string name="settings_update_custom_msg">اضافه کردن یک URL سفارشی</string>
-    <string name="settings_zygisk_summary">اجرای بخش‌هایی از Magisk در سرویس Zygote</string>
     <string name="settings_denylist_title">اعمال لیست منع</string>
     <string name="settings_denylist_summary">فرآیندهای موجود در لیست منع تمام تغییرات Magisk را از دست خواهند داد</string>
     <string name="settings_denylist_config_title">پیکربندی لیست منع</string>

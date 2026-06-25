@@ -113,8 +113,6 @@
     <string name="module_action_install_external">Құрылғы жадынан орнату</string>
     <string name="update_available">Жаңарту қолжетімді</string>
     <string name="suspend_text_riru">Модуль сөндірілді, себебі %1$s қосылған</string>
-    <string name="suspend_text_zygisk">Модуль сөндірілді, себебі %1$s қосылмаған</string>
-    <string name="zygisk_module_unloaded">Zygisk модулі үйлеспегендіктен жүктелмеді</string>
     <string name="module_empty">Еш модуль орнатылған жоқ</string>
     <string name="confirm_install">%1$s модулін орнатасыз ба?</string>
     <string name="confirm_install_title">Орнатуды растау</string>
@@ -140,7 +138,6 @@
     <string name="settings_update_beta">Beta</string>
     <string name="settings_update_custom">Басқа</string>
     <string name="settings_update_custom_msg">Басқа арнаның URL мекенжайын енгізіңіз</string>
-    <string name="settings_zygisk_summary">Magisk кодын zygote процесіне енгізу</string>
     <string name="settings_denylist_title">DenyList-тi қолдану</string>
     <string name="settings_denylist_summary">Magisk жасаған барлық өзгеріс DenyList-тегі процестерден жасырылады.</string>
     <string name="settings_denylist_config_title">DenyList-тi баптау</string>

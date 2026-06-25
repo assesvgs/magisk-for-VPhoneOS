@@ -66,8 +66,6 @@ void rescan_apps();
 extern bool sulist_enabled;
 extern std::atomic<bool> denylist_enforced;
 
-// Deny flags update function
-void update_deny_flags(int uid, rust::Str process, uint32_t &flags);
 
 // revert.cpp functions
 bool is_rootfs();

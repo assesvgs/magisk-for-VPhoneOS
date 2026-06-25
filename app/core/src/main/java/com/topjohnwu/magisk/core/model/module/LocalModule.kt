@@ -30,12 +30,8 @@ data class LocalModule(
     private val removeFile = base.getChildFile("remove")
     private val disableFile = base.getChildFile("disable")
     private val updateFile = base.getChildFile("update")
-    val zygiskFolder = base.getChildFile("zygisk")
-
     val updated get() = updateFile.exists()
     val isRiru = (id == "riru-core") || base.getChildFile("riru").exists()
-    val isZygisk = zygiskFolder.exists()
-    val zygiskUnloaded = zygiskFolder.getChildFile("unloaded").exists()
     val hasAction = base.getChildFile("action.sh").exists()
 
     var enable: Boolean

@@ -104,8 +104,6 @@
     <string name="module_action_install_external">اسٹوریج سے انسٹال کریں</string>
     <string name="update_available">اپ ڈیٹ دستیاب ہے</string>
     <string name="suspend_text_riru">ماڈیول معطل کر دیا گیا کیونکہ %1$s فعال ہے</string>
-    <string name="suspend_text_zygisk">ماڈیول معطل کر دیا گیا کیونکہ %1$s فعال نہیں ہے</string>
-    <string name="zygisk_module_unloaded">غیر مطابقت کی وجہ سے Zygisk ماڈیول لوڈ نہیں ہوا</string>
     <string name="module_empty">کوئی ماڈیول انسٹال نہیں ہے</string>
     <string name="confirm_install">ماڈیول %1$s انسٹال کریں؟</string>
     <string name="confirm_install_title">انسٹالیشن کی تصدیق</string>
@@ -130,7 +128,6 @@
     <string name="settings_update_beta">بیٹا</string>
     <string name="settings_update_custom">کسٹم</string>
     <string name="settings_update_custom_msg">ایک کسٹم چینل URL درج کریں</string>
-    <string name="settings_zygisk_summary">zygote ڈیمن میں Magisk کے کچھ حصے چلائیں</string>
     <string name="settings_denylist_title">مسترد فہرست نافذ کریں</string>
     <string name="settings_denylist_summary">مسترد فہرست میں موجود عملوں میں Magisk کی تمام ترامیم کو کالعدم قرار دیا جائے گا</string>
     <string name="settings_denylist_config_title">مسترد فہرست کی تشکیل کریں</string>

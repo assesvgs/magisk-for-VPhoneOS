@@ -16,7 +16,6 @@ constexpr Applet applets[] = {
 };
 
 constexpr Applet private_applets[] = {
-    { "zygisk", zygisk_main },
 };
 
 int main(int argc, char *argv[]) {

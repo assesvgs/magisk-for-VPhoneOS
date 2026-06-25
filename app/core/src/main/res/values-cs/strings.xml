@@ -112,8 +112,6 @@
     <string name="module_action_install_external">Instalace z úložiště</string>
     <string name="update_available">Dostupná aktualizace</string>
     <string name="suspend_text_riru">Modul byl pozastaven, protože je povolen %1$s</string>
-    <string name="suspend_text_zygisk">Modul byl pozastaven, protože %1$s není povoleno</string>
-    <string name="zygisk_module_unloaded">Modul Zygisk nebyl načten z důvodu nekompatibility</string>
     <string name="module_empty">Není nainstalován žádný modul</string>
     <string name="confirm_install">Instalovat modul %1$s?</string>
     <string name="confirm_install_title">Potvrzení instalace</string>
@@ -139,7 +137,6 @@
     <string name="settings_update_beta">Beta</string>
     <string name="settings_update_custom">Vlastní</string>
     <string name="settings_update_custom_msg">Vložte vlastní URL</string>
-    <string name="settings_zygisk_summary">Spustí části Magisku v démonu Zygote</string>
     <string name="settings_denylist_title">Vynutit DenyList</string>
     <string name="settings_denylist_summary">Na procesy v Denylistu nebudou aplikovány žádné změny, nebo modifikace způsobené Magiskem</string>
     <string name="settings_denylist_config_title">Nastavit DenyList</string>

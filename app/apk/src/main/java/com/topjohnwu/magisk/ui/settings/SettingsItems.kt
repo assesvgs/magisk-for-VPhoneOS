@@ -205,20 +205,6 @@ object Magisk : BaseSettingsItem.Section() {
     override val title = CoreR.string.magisk.asText()
 }
 
-object Zygisk : BaseSettingsItem.Toggle() {
-    override val title = CoreR.string.zygisk.asText()
-    override val description get() =
-        if (mismatch) CoreR.string.reboot_apply_change.asText()
-        else CoreR.string.settings_zygisk_summary.asText()
-    override var value
-        get() = Config.zygisk
-        set(value) {
-            Config.zygisk = value
-            notifyPropertyChanged(BR.description)
-        }
-    val mismatch get() = value != Info.isZygiskEnabled
-}
-
 object MagiskHide : BaseSettingsItem.Toggle() {
     override val title = CoreR.string.settings_denylist_title.asText()
     override val description get() = CoreR.string.settings_denylist_summary.asText()
@@ -239,10 +225,10 @@ object MagiskHide : BaseSettingsItem.Toggle() {
 }
 
 object SuList : BaseSettingsItem.Toggle() {
-    override val title = "SuList".asText()
+    override val title = CoreR.string.settings_sulist.asText()
     override val description get() = 
-        if (!Config.denyList) "Enable MagiskHide first".asText()
-        else "Use SuList mode (whitelist)".asText()
+        if (!Config.denyList) CoreR.string.settings_sulist_error_magiskhide.asText()
+        else CoreR.string.settings_sulist_summary.asText()
 
     override var value = false
         set(value) {

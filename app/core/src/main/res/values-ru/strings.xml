@@ -112,8 +112,6 @@
     <string name="module_action_install_external">Установить из хранилища</string>
     <string name="update_available">Доступно обновление</string>
     <string name="suspend_text_riru">Модуль отключён, поскольку активирован %1$s</string>
-    <string name="suspend_text_zygisk">Модуль отключён, поскольку %1$s не активирован</string>
-    <string name="zygisk_module_unloaded">Модуль Zygisk не запущен из-за несовместимости</string>
     <string name="module_empty">Модули не установлены</string>
     <string name="confirm_install">Установить модуль %1$s?</string>
     <string name="confirm_install_title">Подтверждение установки</string>
@@ -139,7 +137,6 @@
     <string name="settings_update_beta">Beta канал</string>
     <string name="settings_update_custom">Сторонний канал</string>
     <string name="settings_update_custom_msg">Укажите ссылку</string>
-    <string name="settings_zygisk_summary">Запускать компоненты Magisk в zygote процессе</string>
     <string name="settings_denylist_title">Активировать DenyList</string>
     <string name="settings_denylist_summary">Все изменения, внесённые Magisk-ом, будут скрыты от процессов, отмеченных в DenyList</string>
     <string name="settings_denylist_config_title">Настройка DenyList</string>

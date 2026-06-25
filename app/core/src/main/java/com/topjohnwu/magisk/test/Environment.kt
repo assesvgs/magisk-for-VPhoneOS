@@ -62,10 +62,8 @@ class Environment : BaseTest {
         private const val MODULE_ERROR = "Module zip processing incorrect"
         const val MOUNT_TEST = "mount_test"
         const val SEPOLICY_RULE = "sepolicy_rule"
-        const val INVALID_ZYGISK = "invalid_zygisk"
         const val REMOVE_TEST = "remove_test"
         const val REMOVE_TEST_MARKER = "/dev/.remove_test_removed"
-        const val EMPTY_ZYGISK = "empty_zygisk"
         const val UPGRADE_TEST = "upgrade_test"
     }
 
@@ -142,30 +140,6 @@ class Environment : BaseTest {
             "set_default_perm $path",
             "copy_preinit_files"
         ).exec().isSuccess)
-    }
-
-    private fun setupEmptyZygiskModule(root: ExtendedFile) {
-        val error = "$EMPTY_ZYGISK setup failed"
-        val path = root.getChildFile(EMPTY_ZYGISK)
-
-        // Create an empty zygisk folder
-        val module = LocalModule(path)
-        assertTrue(error, module.zygiskFolder.mkdirs())
-    }
-
-    private fun setupInvalidZygiskModule(root: ExtendedFile) {
-        val error = "$INVALID_ZYGISK setup failed"
-        val path = root.getChildFile(INVALID_ZYGISK)
-
-        // Create invalid zygisk libraries
-        val module = LocalModule(path)
-        assertTrue(error, module.zygiskFolder.mkdirs())
-        assertTrue(error, module.zygiskFolder.getChildFile("armeabi-v7a.so").createNewFile())
-        assertTrue(error, module.zygiskFolder.getChildFile("arm64-v8a.so").createNewFile())
-        assertTrue(error, module.zygiskFolder.getChildFile("x86.so").createNewFile())
-        assertTrue(error, module.zygiskFolder.getChildFile("x86_64.so").createNewFile())
-
-        assertTrue(error, Shell.cmd("set_default_perm $path").exec().isSuccess)
     }
 
     private fun setupRemoveModule(root: ExtendedFile) {
@@ -256,8 +230,6 @@ class Environment : BaseTest {
         if (mount()) { setupMountTest(update) }
         if (preinit()) { setupSepolicyRuleModule(update) }
         setupSystemlessHost()
-        setupEmptyZygiskModule(update)
-        setupInvalidZygiskModule(update)
         setupRemoveModule(root)
         setupUpgradeModule(root, update)
     }

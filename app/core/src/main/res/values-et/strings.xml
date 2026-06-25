@@ -108,8 +108,6 @@
     <string name="module_action_install_external">Installi sisemälust</string>
     <string name="update_available">Uuendus saadaval</string>
     <string name="suspend_text_riru">Moodul keelatud %1$s lubamise tõttu</string>
-    <string name="suspend_text_zygisk">Moodul keelatud %1$s mittelubamise tõttu</string>
-    <string name="zygisk_module_unloaded">Zygisk-moodulit ei laaditud ühildumatuse tõttu</string>
 
     <!--Settings-->
     <string name="settings_dark_mode_title">Teema režiim</string>
@@ -132,7 +130,6 @@
     <string name="settings_update_beta">Beeta</string>
     <string name="settings_update_custom">Kohandatud</string>
     <string name="settings_update_custom_msg">Sisesta kohandatud kanali URL</string>
-    <string name="settings_zygisk_summary">Käivita teatud Magiski osi zygote-protsessis</string>
     <string name="settings_denylist_title">Jõusta keeluloend</string>
     <string name="settings_denylist_summary">Keeluloendis olevatel protsessidel tühistatakse kõik Magiski muudatused</string>
     <string name="settings_denylist_config_title">Seadista keeluloendit</string>

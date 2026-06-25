@@ -109,8 +109,6 @@
     <string name="module_action_install_external">Εγκατάσταση από χώρο αποθήκευσης</string>
     <string name="update_available">Διαθέσιμη Ενημέρωση</string>
     <string name="suspend_text_riru">Η επέκταση έχει ανασταλεί επειδή το %1$s είναι ενεργοποιημένο</string>
-    <string name="suspend_text_zygisk">Η επέκταση έχει ανασταλεί επειδή το %1$s δεν είναι ενεργοποιημένο</string>
-    <string name="zygisk_module_unloaded">Zygisk module not loaded due to incompatibility</string>
     <string name="module_empty">Δεν υπάρχουν εγκατεστημένες επεκτάσεις</string>
 
     <!--Settings-->
@@ -134,7 +132,6 @@
     <string name="settings_update_beta">Δοκιμαστικό</string>
     <string name="settings_update_custom">Προσαρμοσμένο</string>
     <string name="settings_update_custom_msg">Εισαγωγή ενός custom URL</string>
-    <string name="settings_zygisk_summary">Εκτέλεση μέρους του Magisk μέσα στο zygote daemon</string>
     <string name="settings_denylist_title">Επιβολή Λίστας Απορρίψεων</string>
     <string name="settings_denylist_summary">Επαναφορά όλων των τροποποιήσεων του Magisk για της διεργασίες στην λίστα απορρίψεων</string>
     <string name="settings_denylist_config_title">Τροποποίηση της Λίστας Απορρίψεων</string>

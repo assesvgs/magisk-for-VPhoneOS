@@ -12,9 +12,7 @@ LOCAL_STATIC_LIBRARIES := \
     libbase \
     libsystemproperties \
     liblsplt \
-    libmagisk-rs \
-    libphmap \
-    libxdl
+    libmagisk-rs
 
 LOCAL_SRC_FILES := \
     core/applets.cpp \
@@ -24,10 +22,6 @@ LOCAL_SRC_FILES := \
     core/core-rs.cpp \
     core/resetprop/sys.cpp \
     core/su/su.cpp \
-    core/zygisk/entry.cpp \
-    core/zygisk/module.cpp \
-    core/zygisk/hook.cpp \
-    core/zygisk/memory.cpp \
     core/deny/cli.cpp \
     core/deny/utils.cpp \
     core/deny/ptrace.cpp \

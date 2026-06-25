@@ -113,8 +113,6 @@
     <string name="module_action_install_external">Inštalácia z úložiska</string>
     <string name="update_available">Dostupná aktualizácia</string>
     <string name="suspend_text_riru">Modul bol pozastavený, lebo %1$s je povolené</string>
-    <string name="suspend_text_zygisk">Modul bol pozastavený, lebo %1$s nie je povolené</string>
-    <string name="zygisk_module_unloaded">Modul Zygisk sa nenačítal z dôvodu nekompatibility</string>
     <string name="module_empty">Nie je nainštalovaný žiadny modul</string>
     <string name="confirm_install">Nainštalovať modul %1$s?</string>
     <string name="confirm_install_title">Potvrdenie inštalácie</string>
@@ -140,7 +138,6 @@
     <string name="settings_update_beta">Beta</string>
     <string name="settings_update_custom">Vlastný kanál</string>
     <string name="settings_update_custom_msg">Zadajte vlastnú URL</string>
-    <string name="settings_zygisk_summary">Spustiť časti Magisku v démonovi zygote</string>
     <string name="settings_denylist_title">Vynútiť zoznam zamietnutých</string>
     <string name="settings_denylist_summary">Pre procesy na zozname zamietnutých budú všetky úpravy Magiskom vrátené</string>
     <string name="settings_denylist_config_title">Nastavenie zoznamu zamietnutých</string>

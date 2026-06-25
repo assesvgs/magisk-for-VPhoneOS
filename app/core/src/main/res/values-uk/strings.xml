@@ -129,7 +129,6 @@
     <string name="settings_update_beta">Бета реліз</string>
     <string name="settings_update_custom">Власний</string>
     <string name="settings_update_custom_msg">Вставте власний URL</string>
-    <string name="settings_zygisk_summary">Запускати частини Magisk в сервісі zygote</string>
     <string name="settings_denylist_title">Увімкнути DenyList</string>
     <string name="settings_denylist_summary">Всі зміни, внесені Magisk, будуть приховані від процесів, позначених у DenyList</string>
     <string name="settings_denylist_config_title">Налаштувати DenyList</string>

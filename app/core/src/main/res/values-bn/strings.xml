@@ -108,8 +108,6 @@
     <string name="module_action_install_external">স্টোরেজ থেকে ইনস্টল করুন</string>
     <string name="update_available">আপডেট উপলব্ধ</string>
     <string name="suspend_text_riru">মডিউল সাসপেন্ড করা হয়েছে কারণ %1$s সক্ষম হয়েছে৷</string>
-    <string name="suspend_text_zygisk">মডিউল সাসপেন্ড করা হয়েছে কারণ %1$s সক্ষম করা নেই৷</string>
-    <string name="zygisk_module_unloaded">অসামঞ্জস্যতার কারণে জাইগিস্ক মডিউল লোড করা হয়নি</string>
     <string name="module_empty">কোন মডিউল ইনস্টল করা নেই</string>
 
     <!--Settings-->
@@ -133,7 +131,6 @@
     <string name="settings_update_beta">বেটা</string>
     <string name="settings_update_custom">কাস্টম</string>
     <string name="settings_update_custom_msg">একটি কাস্টম চ্যানেল URL সন্নিবেশ করুন</string>
-    <string name="settings_zygisk_summary">জাইগোট ডেমনে ম্যাজিস্কের অংশগুলি চালান</string>
     <string name="settings_denylist_title">তালিকা অস্বীকার করুন প্রয়োগ করুন</string>
     <string name="settings_denylist_summary">ডিনালিস্টের প্রসেসগুলিতে সমস্ত ম্যাজিস্ক পরিবর্তনগুলি ফিরিয়ে দেওয়া হবে</string>
     <string name="settings_denylist_config_title">অস্বীকার তালিকা কনফিগার করুন</string>

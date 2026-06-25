@@ -110,8 +110,6 @@
     <string name="module_action_install_external">Instalar desde almacenamiento</string>
     <string name="update_available">Actualización disponible</string>
     <string name="suspend_text_riru">Módulo suspendido porque %1$s está activado</string>
-    <string name="suspend_text_zygisk">Módulo suspendido porque %1$s está desactivado</string>
-    <string name="zygisk_module_unloaded">El módulo Zygisk no se cargó por problemas de compatibilidad</string>
     <string name="module_empty">No hay módulos instalados</string>
     <string name="confirm_install">¿Quieres instalar el módulo %1$s?</string>
     <string name="confirm_install_title">Confirmar instalación</string>
@@ -137,7 +135,6 @@
     <string name="settings_update_beta">Beta</string>
     <string name="settings_update_custom">Personalizado</string>
     <string name="settings_update_custom_msg">Ingresa la URL del canal personalizado</string>
-    <string name="settings_zygisk_summary">Ejecuta Magisk en el proceso Zygote de Android</string>
     <string name="settings_denylist_title">Aplicar lista de denegación</string>
     <string name="settings_denylist_summary">Las apps en la lista de denegación no serán modificadas por Magisk</string>
     <string name="settings_denylist_config_title">Configurar lista de denegación</string>

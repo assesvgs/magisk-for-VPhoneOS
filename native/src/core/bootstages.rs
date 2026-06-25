@@ -19,7 +19,6 @@ use crate::selinux::restorecon;
 use std::io::BufReader;
 use std::os::unix::net::UnixStream;
 use std::process::{Command, Stdio};
-use std::sync::atomic::Ordering;
 
 bitflags! {
     #[derive(Default)]
@@ -151,19 +150,14 @@ impl MagiskD {
 
         if safe_mode {
             info!("* Safe mode triggered");
-            // Disable all modules and zygisk so next boot will be clean
+            // Disable all modules so next boot will be clean
             disable_modules();
-            self.set_db_setting(DbEntryKey::ZygiskConfig, 0).log_ok();
             return true;
         }
 
         info!("post_fs_data: executing post-fs-data scripts");
         exec_common_scripts(cstr!("post-fs-data"));
         info!("post_fs_data: post-fs-data scripts done");
-        self.zygisk_enabled.store(
-            self.get_db_setting(DbEntryKey::ZygiskConfig) != 0,
-            Ordering::Release,
-        );
         initialize_denylist();
         info!("post_fs_data: handling modules");
         self.handle_modules();
@@ -256,10 +250,6 @@ impl MagiskD {
         info!("boot_complete: setup_preinit_dir done");
         info!("boot_complete: ensuring manager");
         self.ensure_manager();
-        if self.zygisk_enabled.load(Ordering::Relaxed) {
-            info!("boot_complete: resetting zygisk");
-            self.zygisk.lock().reset(true);
-        }
         
         info!("boot_complete: done");
     }

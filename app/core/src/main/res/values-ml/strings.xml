@@ -109,8 +109,6 @@
     <string name="module_action_install_external">സ്റ്റോറേജിൽ നിന്ന് ഇൻസ്റ്റാൾ ചെയ്യുക</string>
     <string name="update_available">അപ്ഡേറ്റ് ലഭ്യമാണ്</string>
     <string name="suspend_text_riru">%1$s പ്രവർത്തനക്ഷമമാക്കിയതിനാൽ മൊഡ്യൂൾ താൽക്കാലികമായി നിർത്തി</string>
-    <string name="suspend_text_zygisk">%1$s പ്രവർത്തനക്ഷമമാക്കാത്തതിനാൽ മൊഡ്യൂൾ താൽക്കാലികമായി നിർത്തി</string>
-    <string name="zygisk_module_unloaded">പൊരുത്തക്കേട് കാരണം Zygisk മൊഡ്യൂൾ ലോഡ് ചെയ്തിട്ടില്ല</string>
     <string name="module_empty">മൊഡ്യൂൾ ഇൻസ്റ്റാൾ ചെയ്തിട്ടില്ല</string>
 
     <!--Settings-->
@@ -134,7 +132,6 @@
     <string name="settings_update_beta">ബീറ്റ</string>
     <string name="settings_update_custom">കസ്റ്റം</string>
     <string name="settings_update_custom_msg">കസ്റ്റം ചാനലിന്റെ URL ചേർക്കുക</string>
-    <string name="settings_zygisk_summary">സൈഗോട്ട് ഡെമണിൽ മജിസ്കിന്റെ ഭാഗങ്ങൾ പ്രവർത്തിപ്പിക്കുക</string>
     <string name="settings_denylist_title">നിഷിദ്ധ പട്ടിക പ്രാബല്യത്തിലാകുക</string>
     <string name="settings_denylist_summary">നിഷിദ്ധ പട്ടികയിലെ പ്രോസസ്സുകൾക്കായി എല്ലാ മജിസ്‌ക് പരിഷ്‌ക്കരണങ്ങളും പഴയപടിയാക്കും</string>
     <string name="settings_denylist_config_title">നിഷിദ്ധ പട്ടിക കോൺഫിഗർ ചെയ്യുക</string>

@@ -62,7 +62,6 @@ pub struct DbSettings {
     pub mnt_ns: MntNsMode,
     pub boot_count: i32,
     pub denylist: bool,
-    pub zygisk: bool,
 }
 
 #[repr(i32)]
@@ -97,7 +96,6 @@ impl DbEntryKey {
             DbEntryKey::SuMultiuserMode => "multiuser_mode",
             DbEntryKey::SuMntNs => "mnt_ns",
             DbEntryKey::DenylistConfig => "denylist",
-            DbEntryKey::ZygiskConfig => "zygisk",
             DbEntryKey::BootloopCount => "bootloop",
             DbEntryKey::SuManager => "requester",
             _ => "",
@@ -123,7 +121,6 @@ impl SqlTable for DbSettings {
             }
             "mnt_ns" => self.mnt_ns = MntNsMode { repr: value },
             "denylist" => self.denylist = value != 0,
-            "zygisk" => self.zygisk = value != 0,
             "bootloop" => self.boot_count = value,
             _ => {}
         }
@@ -252,7 +249,6 @@ impl MagiskD {
             DbEntryKey::SuMultiuserMode => MultiuserMode::default() as i32,
             DbEntryKey::SuMntNs => MntNsMode::default().repr,
             DbEntryKey::DenylistConfig => 0,
-            DbEntryKey::ZygiskConfig => self.is_emulator as i32,
             DbEntryKey::BootloopCount => 0,
             _ => -1,
         };
@@ -271,10 +267,7 @@ impl MagiskD {
     }
 
     pub fn get_db_settings(&self) -> SqliteResult<DbSettings> {
-        let mut cfg = DbSettings {
-            zygisk: self.is_emulator,
-            ..Default::default()
-        };
+        let mut cfg = DbSettings::default();
         self.db_exec_with_rows("SELECT * FROM settings", &[], &mut cfg)
             .sql_result()?;
         Ok(cfg)

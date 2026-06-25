@@ -3,7 +3,6 @@ package com.topjohnwu.magisk.ui.module
 import androidx.databinding.Bindable
 import com.topjohnwu.magisk.BR
 import com.topjohnwu.magisk.R
-import com.topjohnwu.magisk.core.Info
 import com.topjohnwu.magisk.core.model.module.LocalModule
 import com.topjohnwu.magisk.databinding.DiffItem
 import com.topjohnwu.magisk.databinding.ItemWrapper
@@ -11,8 +10,6 @@ import com.topjohnwu.magisk.databinding.ObservableRvItem
 import com.topjohnwu.magisk.databinding.RvItem
 import com.topjohnwu.magisk.databinding.set
 import com.topjohnwu.magisk.utils.TextHolder
-import com.topjohnwu.magisk.utils.asText
-import com.topjohnwu.magisk.core.R as CoreR
 
 object InstallModule : RvItem(), DiffItem<InstallModule> {
     override val layoutRes = R.layout.item_module_download
@@ -29,20 +26,9 @@ class LocalModuleRvItem(
     val noticeText: TextHolder
 
     init {
-        val isZygisk = item.isZygisk
-        val isRiru = item.isRiru
-        val zygiskUnloaded = isZygisk && item.zygiskUnloaded
-
-        showNotice = zygiskUnloaded ||
-            (Info.isZygiskEnabled && isRiru) ||
-            (!Info.isZygiskEnabled && isZygisk)
-        showAction = item.hasAction && !showNotice
-        noticeText =
-            when {
-                zygiskUnloaded -> CoreR.string.zygisk_module_unloaded.asText()
-                isRiru -> CoreR.string.suspend_text_riru.asText(CoreR.string.zygisk.asText())
-                else -> CoreR.string.suspend_text_zygisk.asText(CoreR.string.zygisk.asText())
-            }
+        showNotice = false
+        showAction = item.hasAction
+        noticeText = TextHolder.EMPTY
     }
 
     @get:Bindable

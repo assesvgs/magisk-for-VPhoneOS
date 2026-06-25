@@ -30,11 +30,6 @@ class MagiskAppTest : BaseTest {
     }
 
     @Test
-    fun testZygisk() {
-        assertTrue("Zygisk should be enabled", Info.isZygiskEnabled)
-    }
-
-    @Test
     fun testSuRequest() {
         // Bypass the need to actually show a dialog
         Config.suAutoResponse = Config.Value.SU_AUTO_ALLOW

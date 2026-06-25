@@ -108,8 +108,6 @@
     <string name="module_action_install_external">저장소에서 설치</string>
     <string name="update_available">업데이트 가능</string>
     <string name="suspend_text_riru">%1$s 가 활성화 되어있어 모듈이 로드되지 않았습니다.</string>
-    <string name="suspend_text_zygisk">%1$s 가 활성화되어 있지 않아 모듈이 로드되지 않았습니다.</string>
-    <string name="zygisk_module_unloaded">호환성 문제로 인해 Zygisk 모듈이 로드되지 않았습니다.</string>
 
     <!--Settings-->
     <string name="settings_dark_mode_title">테마 선택</string>
@@ -132,7 +130,6 @@
     <string name="settings_update_beta">베타</string>
     <string name="settings_update_custom">사용자 지정</string>
     <string name="settings_update_custom_msg">사용자 지정 URL 입력</string>
-    <string name="settings_zygisk_summary">zygote 데몬에서 Magisk 부분 실행</string>
     <string name="settings_denylist_title">DenyList 적용</string>
     <string name="settings_denylist_summary">DenyList에 있는 프로세스를 실행할때 Magisk의 모든 수정사항을 되돌리고 실행합니다.</string>
     <string name="settings_denylist_config_title">DenyList 구성</string>

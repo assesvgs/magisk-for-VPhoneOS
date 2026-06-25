@@ -107,8 +107,6 @@
     <string name="module_action_install_external">Installa dal dispositivo</string>
     <string name="update_available">Aggiornamento disponibile</string>
     <string name="suspend_text_riru">Modulo sospeso perché %1$s è abilitato</string>
-    <string name="suspend_text_zygisk">Modulo sospeso perché %1$s non è abilitato</string>
-    <string name="zygisk_module_unloaded">Modulo Zygisk non caricato a causa di incompatibilità</string>
     <string name="module_empty">Nessun modulo installato</string>
 
     <!--Settings -->
@@ -134,7 +132,6 @@
     <string name="settings_update_beta">Beta</string>
     <string name="settings_update_custom">Personalizzato</string>
     <string name="settings_update_custom_msg">Inserisci l\'URL del canale personalizzato</string>
-    <string name="settings_zygisk_summary">Esegui parti di Magisk nel processo zygote</string>
     <string name="settings_denylist_title">Applica lista di blocco</string>
     <string name="settings_denylist_summary">Tutte le modifiche apportate da Magisk verranno annullate per i processi in lista di blocco</string>
     <string name="settings_denylist_config_title">Configura lista di blocco</string>

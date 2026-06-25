@@ -105,8 +105,6 @@
     <string name="module_action_install_external">Instalar dende l\'almacenamientu</string>
     <string name="update_available">Hai un anovamientu disponible</string>
     <string name="suspend_text_riru">Suspendióse\'l módulu porque s\'activó «%1$s»</string>
-    <string name="suspend_text_zygisk">Suspendióse\'l módulu porque nun s\'activó «%1$s»</string>
-    <string name="zygisk_module_unloaded">El módulu de Zygisk nun cargó por haber incompatibilidaes</string>
     <string name="module_empty">Nun hai nengún módulu instaláu</string>
     <string name="confirm_install">¿Quies instalar el módulu «%1$s»?</string>
     <string name="confirm_install_title">Confirmación de la instalación</string>
@@ -131,7 +129,6 @@
     <string name="settings_update_beta">Beta</string>
     <string name="settings_update_custom">Canal personalizada</string>
     <string name="settings_update_custom_msg">Inxerta la URL d\'una canal personalizada</string>
-    <string name="settings_zygisk_summary">Executa partes de Magisk nel degorriu de Zygote</string>
     <string name="settings_denylist_title">Forciar la llista d\'esclusión</string>
     <string name="settings_denylist_summary">Los procesos de la llista d\'esclusión tienen toles modificaciones de Magisk anulaes</string>
     <string name="settings_denylist_config_title">Configurar la llista d\'esclusión</string>

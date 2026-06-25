@@ -113,8 +113,6 @@
     <string name="module_action_install_external">Installer depuis le stockage</string>
     <string name="update_available">Mise à jour disponible</string>
     <string name="suspend_text_riru">Module suspendu car %1$s est actif</string>
-    <string name="suspend_text_zygisk">Module suspendu car %1$s n’est pas actif</string>
-    <string name="zygisk_module_unloaded">Module Zygisk non chargé en raison d’une incompatibilité</string>
     <string name="module_empty">Aucun module installé</string>
     <string name="confirm_install">Installer le module %1$s?</string>
     <string name="confirm_install_title">Confirmer l’installation</string>
@@ -140,7 +138,6 @@
     <string name="settings_update_beta">Bêta</string>
     <string name="settings_update_custom">Canal personnalisé</string>
     <string name="settings_update_custom_msg">Saisissez une URL personnalisée</string>
-    <string name="settings_zygisk_summary">Exécuter des parties de Magisk dans le service zygote</string>
     <string name="settings_denylist_title">Imposer Liste Exclusion</string>
     <string name="settings_denylist_summary">Les processus figurant sur la liste des exclusions verront toutes les modifications de Magisk annulées.</string>
     <string name="settings_denylist_config_title">Configurer Liste Exclusion</string>

@@ -111,8 +111,6 @@
     <string name="module_action_install_external">Storage se install karo</string>
     <string name="update_available">Naya update available hai</string>
     <string name="suspend_text_riru">Module suspend kiya gaya kyunki %1$s enabled hai</string>
-    <string name="suspend_text_zygisk">Bhai %1$s ON kr tabb ye module chalega</string>
-    <string name="zygisk_module_unloaded">Zygisk module compatible nahi tha, isliye load nahi hua</string>
     <string name="module_empty">Koi module install nahi hai</string>
     <string name="confirm_install">>%1$s module install karna hai?</string>
     <string name="confirm_install_title">Ek baar firse soch lo</string>
@@ -139,7 +137,6 @@
     <string name="settings_update_debug">Debug</string>
     <string name="settings_update_custom">Custom</string>
     <string name="settings_update_custom_msg">Apna custom channel URL daaloL</string>
-    <string name="settings_zygisk_summary">Magisk ke kuch parts ko Zygote daemon mein run karo</string>
     <string name="settings_denylist_title">DenyList enforce karo</string>
     <string name="settings_denylist_summary">DenyList mein jo processes hain, unpe Magisk ka effect hata diya jayega</string>
     <string name="settings_denylist_config_title">DenyList set karo</string>

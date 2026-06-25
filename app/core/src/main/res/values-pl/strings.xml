@@ -112,8 +112,6 @@
     <string name="module_action_install_external">Zainstaluj z pamięci</string>
     <string name="update_available">Dostępna aktualizacja</string>
     <string name="suspend_text_riru">Moduł jest zawieszony, ponieważ %1$s jest włączony</string>
-    <string name="suspend_text_zygisk">Moduł jest zawieszony, ponieważ %1$s nie jest włączony</string>
-    <string name="zygisk_module_unloaded">Moduł Zygisk nie został załadowany z powodu niekompatybilności</string>
     <string name="module_empty">Brak zainstalowanych modułów</string>
     <string name="confirm_install">Zainstalować moduł %1$s?</string>
     <string name="confirm_install_title">Potwierdzenie instalacji</string>
@@ -139,7 +137,6 @@
     <string name="settings_update_beta">Beta</string>
     <string name="settings_update_custom">Własny kanał</string>
     <string name="settings_update_custom_msg">Wprowadź adres URL własnego kanału</string>
-    <string name="settings_zygisk_summary">Uruchom część Magisk w demonie zygote</string>
     <string name="settings_denylist_title">Egzekwowanie listy odmów (DenyList)</string>
     <string name="settings_denylist_summary">Procesy znajdujące się na liście odmów (DenyList) będą miały cofnięte wszystkie modyfikacje Magisk</string>
     <string name="settings_denylist_config_title">Konfiguracja listy odmów (DenyList)</string>

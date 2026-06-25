@@ -112,8 +112,6 @@
     <string name="module_action_install_external">Instaliraj iz skladišta</string>
     <string name="update_available">Ažuriranje dostupno</string>
     <string name="suspend_text_riru">Modul je suspendovan jer je %1$s omogućeno</string>
-    <string name="suspend_text_zygisk">Modul je suspendovan jer %1$s nije omogućeno</string>
-    <string name="zygisk_module_unloaded">Zygisk modul nije učitan zbog nekompatibilnosti</string>
     <string name="module_empty">Nijedan modul nije instaliran</string>
     <string name="confirm_install">Instaliraj modul %1$s?</string>
     <string name="confirm_install_title">Potvrda instalacije</string>
@@ -140,7 +138,6 @@
     <string name="settings_update_debug">Debug</string>
     <string name="settings_update_custom">Prilagođeno</string>
     <string name="settings_update_custom_msg">Unesi prilagođeni URL kanala</string>
-    <string name="settings_zygisk_summary">Pokreni delove Magisk-a u Zygote daemon-u</string>
     <string name="settings_denylist_title">Sprovedi listu zabrana</string>
     <string name="settings_denylist_summary">Procesi na listi zabrana će povratiti sve Magisk izmene</string>
     <string name="settings_denylist_config_title">Konfiguriši listu zabrana</string>
