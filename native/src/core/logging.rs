@@ -8,6 +8,7 @@ use base::{
 };
 use bytemuck::{Pod, Zeroable, bytes_of, write_zeroes};
 use libc::{PIPE_BUF, c_char, localtime_r, time_t, tm};
+use std::os::fd::RawFd;
 use nix::fcntl::OFlag;
 use nix::unistd::{Gid, Uid, chown, getpid, gettid};
 use num_derive::{FromPrimitive, ToPrimitive};
