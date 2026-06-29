@@ -11,7 +11,9 @@ use nix::fcntl::OFlag;
 use nix::mount::MsFlags;
 use nix::unistd::UnlinkatFlags;
 use std::collections::BTreeMap;
+use std::os::fd::IntoRawFd;
 use std::path::{Component, Path};
+use std::sync::atomic::Ordering;
 
 const MAGISK_BIN_INJECT_PARTITIONS: [&Utf8CStr; 4] = [
     cstr!("/system/"),
@@ -663,6 +665,39 @@ fn collect_modules() -> Vec<ModuleInfo> {
             z32: -1,
             z64: -1,
         });
+
+        let zygisk_enabled = crate::daemon::MAGISKD
+            .get()
+            .map(|d| d.zygisk_enabled.load(Ordering::Acquire))
+            .unwrap_or(false);
+
+        if zygisk_enabled {
+            let zygisk_dir = cstr::buf::default()
+                .join_path(MODULEROOT)
+                .join_path(name)
+                .join_path(cstr!("zygisk"));
+
+            if zygisk_dir.exists() {
+                let z32_name = cstr!("armeabi-v7a.so");
+                let z64_name = cstr!("arm64-v8a.so");
+
+                let idx = modules.len() - 1;
+                if let Ok(dir) = Directory::open(&zygisk_dir) {
+                    if let Ok(z32_file) = dir.open_as_file_at(
+                        z32_name, OFlag::O_RDONLY | OFlag::O_CLOEXEC, 0,
+                    ) {
+                        modules[idx].z32 = z32_file.into_raw_fd();
+                    }
+
+                    #[cfg(target_arch = "aarch64")]
+                    if let Ok(z64_file) = dir.open_as_file_at(
+                        z64_name, OFlag::O_RDONLY | OFlag::O_CLOEXEC, 0,
+                    ) {
+                        modules[idx].z64 = z64_file.into_raw_fd();
+                    }
+                }
+            }
+        }
         Ok(())
     })
     .log_ok();

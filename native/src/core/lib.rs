@@ -12,7 +12,7 @@ use crate::ffi::SuRequest;
 use crate::socket::Encodable;
 use base::derive::Decodable;
 use daemon::{MagiskD, connect_daemon_for_cxx};
-use logging::android_logging;
+use logging::{android_logging, zygisk_close_logd, zygisk_get_logd, zygisk_logging};
 use magisk::magisk_main;
 use resetprop::{get_prop, resetprop_main};
 use selinux::{lgetfilecon, setfilecon};
@@ -23,6 +23,7 @@ use std::ops::DerefMut;
 use std::os::fd::FromRawFd;
 use su::{get_pty_num, pump_tty};
 use mount::revert_unmount;
+use zygisk::zygisk_should_load_module;
 
 mod bootstages;
 #[path = "../include/consts.rs"]
@@ -39,6 +40,7 @@ mod selinux;
 mod socket;
 mod su;
 mod thread;
+mod zygisk;
 
 #[allow(clippy::needless_lifetimes)]
 #[cxx::bridge]
@@ -57,6 +59,7 @@ pub mod ffi {
         DENYLIST,
         SQLITE_CMD,
         REMOVE_MODULES,
+        ZYGISK,
 
         _STAGE_BARRIER_,
 
@@ -68,6 +71,23 @@ pub mod ffi {
     }
 
     #[repr(i32)]
+    enum ZygiskRequest {
+        GetInfo,
+        ConnectCompanion,
+        GetModDir,
+        SulistRootNs,
+        RevertUmount,
+    }
+
+    #[repr(u32)]
+    enum ZygiskStateFlags {
+        ProcessGrantedRoot = 0x00000001,
+        ProcessOnDenyList = 0x00000002,
+        DenyListEnforced = 0x40000000,
+        ProcessIsMagiskApp = 0x80000000,
+    }
+
+    #[repr(i32)]
     enum RespondCode {
         ERROR = -1,
         OK = 0,
@@ -76,6 +96,7 @@ pub mod ffi {
         END,
     }
 
+    #[repr(i32)]
     enum DbEntryKey {
         RootAccess,
         SuMultiuserMode,
@@ -83,6 +104,7 @@ pub mod ffi {
         DenylistConfig,
         BootloopCount,
         SuManager,
+        ZygiskConfig,
     }
 
     #[repr(i32)]
@@ -141,6 +163,10 @@ pub mod ffi {
         fn get_su_bin_fd() -> i32;
         fn get_magisktmpfs_fd() -> i32;
 
+        // Zygisk
+        fn update_deny_flags(uid: i32, process: &str, flags: &mut u32);
+        fn zygiskd_companion_entry(socket: i32);
+
         // Scripting
         fn exec_script(script: Utf8CStrRef);
         fn exec_common_scripts(stage: Utf8CStrRef);
@@ -171,6 +197,10 @@ pub mod ffi {
 
     extern "Rust" {
         fn android_logging();
+        fn zygisk_logging();
+        fn zygisk_close_logd();
+        fn zygisk_get_logd() -> i32;
+        fn zygisk_should_load_module(flags: u32) -> bool;
         fn revert_unmount(pid: i32);
         fn send_fd(socket: i32, fd: i32) -> bool;
         fn recv_fd(socket: i32) -> i32;
@@ -201,6 +231,7 @@ pub mod ffi {
         type MagiskD;
         fn sdk_int(&self) -> i32;
         fn get_db_setting(&self, key: DbEntryKey) -> i32;
+        fn get_zygisk_enabled(self: &MagiskD) -> bool;
         #[cxx_name = "set_db_setting"]
         fn set_db_setting_for_cxx(&self, key: DbEntryKey, value: i32) -> bool;
 

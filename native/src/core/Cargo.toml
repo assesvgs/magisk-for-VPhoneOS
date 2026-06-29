@@ -31,5 +31,6 @@ quick-protobuf = { workspace = true }
 bytemuck = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 bit-set = { workspace = true }
-nix = { workspace = true, features = ["fs", "mount", "poll", "signal", "term", "user", "zerocopy"] }
+nix = { workspace = true, features = ["fs", "mount", "poll", "process", "ptrace", "signal", "term", "user", "zerocopy"] }
+rand = { workspace = true }
 bitflags = { workspace = true }

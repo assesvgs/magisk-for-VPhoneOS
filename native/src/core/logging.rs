@@ -19,6 +19,7 @@ use std::fs::File;
 use std::io::{IoSlice, Read, Write};
 use std::os::fd::IntoRawFd;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::nonpoison::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{fs, io};
@@ -68,6 +69,50 @@ pub fn magisk_logging() {
         magisk_log_to_pipe(level_to_prio(level), msg);
     }
     update_logger(|logger| logger.write = magisk_log_write);
+}
+
+static ZYGISK_LOGD: AtomicI32 = AtomicI32::new(-1);
+
+pub fn zygisk_logging() {
+    fn write(level: LogLevel, msg: &Utf8CStr) {
+        unsafe {
+            __android_log_write(level_to_prio(level), raw_cstr!("Zygisk"), msg.as_ptr());
+        }
+        zygisk_log_to_pipe(level_to_prio(level), msg);
+    }
+    update_logger(|logger| logger.write = write);
+}
+
+pub fn zygisk_close_logd() {
+    let fd = ZYGISK_LOGD.swap(-1, Ordering::Relaxed);
+    if fd >= 0 {
+        unsafe { libc::close(fd); }
+    }
+}
+
+pub fn zygisk_get_logd() -> i32 {
+    let mut fd = ZYGISK_LOGD.load(Ordering::Relaxed);
+    if fd >= 0 {
+        return fd;
+    }
+    zygisk_logging();
+    let log_pipe = cstr::buf::default()
+        .join_path(get_magisk_tmp())
+        .join_path(cstr!("log_pipe"));
+    fd = unsafe { libc::open(log_pipe.as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
+    if fd >= 0 {
+        ZYGISK_LOGD.store(fd, Ordering::Relaxed);
+    }
+    fd
+}
+
+fn zygisk_log_to_pipe(prio: i32, msg: &Utf8CStr) {
+    let fd = ZYGISK_LOGD.load(Ordering::Relaxed);
+    if fd < 0 {
+        return;
+    }
+    let file = std::mem::ManuallyDrop::new(unsafe { File::from_raw_fd(fd) });
+    let _ = write_log_to_pipe(&file, prio, msg);
 }
 
 #[derive(Copy, Clone, Pod, Zeroable)]

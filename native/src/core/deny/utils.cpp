@@ -376,10 +376,10 @@ int enable_deny() {
         if (!ensure_data())
             return DenyResponse::ERROR;
 
-        denylist_enforced = true;
+        denylist_enforced.store(true, std::memory_order_release);
 
-        if (new_daemon_thread(&proc_monitor)) {
-            denylist_enforced = false;
+        if (!zygisk_enabled() && new_daemon_thread(&proc_monitor)) {
+            denylist_enforced.store(false, std::memory_order_release);
             return DenyResponse::ERROR;
         }
 
@@ -511,4 +511,8 @@ void update_sulist_config(bool enable) {
     sulist_enabled = enable;
     // Update database setting
     MagiskD::Get().set_db_setting(DbEntryKey::DenylistConfig, enable ? 1 : 0);
+}
+
+bool zygisk_enabled(void) {
+    return MagiskD::Get().get_zygisk_enabled();
 }

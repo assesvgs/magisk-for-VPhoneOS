@@ -11,8 +11,10 @@ LOCAL_MODULE := magisk
 LOCAL_STATIC_LIBRARIES := \
     libbase \
     libsystemproperties \
+    libphmap \
     liblsplt \
-    libmagisk-rs
+    libmagisk-rs \
+    libxdl
 
 LOCAL_SRC_FILES := \
     core/applets.cpp \
@@ -26,7 +28,11 @@ LOCAL_SRC_FILES := \
     core/deny/utils.cpp \
     core/deny/ptrace.cpp \
     core/deny/revert.cpp \
-    core/kitsune.cpp
+    core/kitsune.cpp \
+    core/zygisk/entry.cpp \
+    core/zygisk/main.cpp \
+    core/zygisk/hook.cpp \
+    core/zygisk/memory.cpp
 
 LOCAL_LDLIBS := -llog
 LOCAL_LDFLAGS := -Wl,--dynamic-list=src/exported_sym.txt

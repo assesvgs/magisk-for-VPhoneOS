@@ -11,6 +11,7 @@
 #include <core.hpp>
 #include <base.hpp>
 #include <consts.hpp>
+#include "deny/deny.hpp"
 
 using namespace std;
 
@@ -98,4 +99,14 @@ void su_mount() {
 // This function is declared but not used in revert.cpp
 void mount_mirrors() {
     LOGD("mount_mirrors: placeholder\n");
+}
+
+void update_deny_flags(int uid, rust::Str process, uint32_t &flags) {
+    flags = 0;
+    if (is_deny_target(uid, process.data(), 0)) {
+        flags |= static_cast<uint32_t>(ZygiskStateFlags::ProcessOnDenyList);
+    }
+    if (denylist_enforced.load(std::memory_order_acquire)) {
+        flags |= static_cast<uint32_t>(ZygiskStateFlags::DenyListEnforced);
+    }
 }

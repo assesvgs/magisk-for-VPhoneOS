@@ -96,3 +96,17 @@ impl ThreadPool {
         THREAD_POOL.exec_task_impl(f);
     }
 }
+
+/// C FFI bridge: schedule a task on the Rust thread pool
+/// Called from C++ code (zygiskd companion daemon)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn exec_task_from_cxx(
+    func: unsafe extern "C" fn(*mut std::ffi::c_void),
+    arg: *mut std::ffi::c_void,
+) {
+    let arg_ptr = arg as usize;
+    ThreadPool::exec_task(move || {
+        let arg = arg_ptr as *mut std::ffi::c_void;
+        func(arg);
+    });
+}

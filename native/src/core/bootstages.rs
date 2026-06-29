@@ -1,6 +1,6 @@
 // 外部 crate
 use base::const_format::concatcp;
-use base::{BufReadExt, FsPathBuilder, ResultExt, cstr, debug, error, info, parse_mount_info};
+use base::{BufReadExt, FsPathBuilder, ResultExt, cstr, debug, error, info, libc, parse_mount_info};
 use bitflags::bitflags;
 use nix::fcntl::OFlag;
 
@@ -14,11 +14,12 @@ use crate::ffi::{
 use crate::logging::setup_logfile;
 use crate::module::disable_modules;
 use crate::mount::{clean_mounts, setup_preinit_dir};
-use crate::resetprop::get_prop;
+use crate::resetprop::{get_prop, set_prop};
 use crate::selinux::restorecon;
 use std::io::BufReader;
 use std::os::unix::net::UnixStream;
 use std::process::{Command, Stdio};
+use std::sync::atomic::Ordering;
 
 bitflags! {
     #[derive(Default)]
@@ -152,16 +153,45 @@ impl MagiskD {
             info!("* Safe mode triggered");
             // Disable all modules so next boot will be clean
             disable_modules();
+            self.set_db_setting(DbEntryKey::ZygiskConfig, 0).log_ok();
             return true;
         }
 
         info!("post_fs_data: executing post-fs-data scripts");
         exec_common_scripts(cstr!("post-fs-data"));
         info!("post_fs_data: post-fs-data scripts done");
+
+        // Read DB and store zygisk_enabled BEFORE initialize_denylist
+        // so that enable_deny() checks zygisk_enabled and skips denylist monitor
+        self.zygisk_enabled.store(
+            self.get_db_setting(DbEntryKey::ZygiskConfig) != 0,
+            Ordering::Release,
+        );
+        info!("post_fs_data: zygisk_enabled={}", self.zygisk_enabled.load(Ordering::Relaxed));
+
         initialize_denylist();
         info!("post_fs_data: handling modules");
         self.handle_modules();
         info!("post_fs_data: handle_modules done");
+
+        // 创建 zygisk.so symlink（ptrace 注入器 dlopen 需要此路径）
+        let zygisk_link = cstr::buf::default()
+            .join_path(get_magisk_tmp())
+            .join_path(cstr!("zygisk.so"));
+        if !zygisk_link.exists() {
+            unsafe {
+                libc::symlink(
+                    cstr!("/proc/self/exe").as_ptr(),
+                    zygisk_link.as_ptr(),
+                );
+            }
+        }
+
+        if self.zygisk_enabled.load(Ordering::Acquire) {
+            info!("post_fs_data: starting zygisk proc_monitor");
+            crate::zygisk::proc_monitor::start_zygisk();
+        }
+
         info!("post_fs_data: clean_mounts");
         clean_mounts();
 
@@ -250,7 +280,11 @@ impl MagiskD {
         info!("boot_complete: setup_preinit_dir done");
         info!("boot_complete: ensuring manager");
         self.ensure_manager();
-        
+
+        if self.zygisk_enabled.load(Ordering::Relaxed) {
+            self.zygisk.lock().reset(true);
+        }
+
         info!("boot_complete: done");
     }
 

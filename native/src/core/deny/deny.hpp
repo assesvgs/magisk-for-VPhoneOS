@@ -66,6 +66,8 @@ void rescan_apps();
 extern bool sulist_enabled;
 extern std::atomic<bool> denylist_enforced;
 
+bool zygisk_enabled(void);
+
 
 // revert.cpp functions
 bool is_rootfs();

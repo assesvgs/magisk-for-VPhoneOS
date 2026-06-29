@@ -5,10 +5,12 @@ use crate::mount::find_preinit_device;
 use crate::selinux::restorecon;
 use crate::socket::{Decodable, Encodable};
 use argh::FromArgs;
-use base::{CmdArgs, EarlyExitExt, LoggedResult, Utf8CString, argh, clone_attr};
+use base::{CmdArgs, EarlyExitExt, LoggedResult, Utf8CString, argh, clone_attr, libc};
 use nix::poll::{PollFd, PollFlags, PollTimeout};
 use std::ffi::c_char;
 use std::os::fd::AsFd;
+use std::os::fd::FromRawFd;
+use std::os::unix::net::UnixStream;
 use std::process::exit;
 
 fn print_usage() {
@@ -76,6 +78,7 @@ enum MagiskAction {
     Path(PathCmd),
     DenyList(DenyList),
     PreInitDevice(PreInitDevice),
+    Zygisk(ZygiskCmd),
 }
 
 #[derive(FromArgs)]
@@ -180,6 +183,15 @@ struct DenyList {
 #[argh(subcommand, name = "--preinit-device")]
 struct PreInitDevice {}
 
+#[derive(FromArgs)]
+#[argh(subcommand, name = "zygisk")]
+struct ZygiskCmd {
+    #[argh(positional)]
+    subcmd: String,
+    #[argh(positional)]
+    args: Vec<String>,
+}
+
 impl MagiskAction {
     fn exec(self) -> LoggedResult<i32> {
         use MagiskAction::*;
@@ -280,6 +292,9 @@ impl MagiskAction {
                     println!("{name}");
                 }
             }
+            Zygisk(self::ZygiskCmd { subcmd, args }) => {
+                return Ok(zygisk_main(&subcmd, &args));
+            }
         };
         Ok(0)
     }
@@ -295,4 +310,27 @@ pub fn magisk_main(argc: i32, argv: *mut *mut c_char) -> i32 {
     cmds.insert(1, "--");
     let cli = Cli::from_args(&cmds[..1], &cmds[1..]).on_early_exit(print_usage);
     cli.action.exec().unwrap_or(1)
+}
+
+fn zygisk_main(subcmd: &str, args: &[String]) -> i32 {
+    if subcmd == "companion" {
+        if let Some(fd_str) = args.first() {
+            if let Ok(fd) = fd_str.parse::<i32>() {
+                if fd >= 0 {
+                    // 路由到 C++ zygiskd() 进行模块伴侣加载（android_dlopen_ext）
+                    unsafe { crate::ffi::zygiskd_companion_entry(fd); }
+                    return 0;
+                }
+            }
+        }
+    } else if subcmd == "trace_zygote" && args.len() >= 2 {
+        let pid: i32 = args[0].parse().unwrap_or(-1);
+        if pid > 0 {
+            if crate::zygisk::ptrace_inject::trace_zygote(pid, &args[1]) {
+                return 0;
+            }
+            unsafe { libc::kill(pid, libc::SIGKILL); }
+        }
+    }
+    -1
 }

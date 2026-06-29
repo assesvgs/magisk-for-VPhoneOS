@@ -33,6 +33,7 @@ dirent *xreaddir(DIR *dirp);
 pid_t xsetsid();
 int xfstat(int fd, struct stat *buf);
 int xdup2(int oldfd, int newfd);
+ssize_t xreadlink(const char * __restrict__ pathname, char * __restrict__ buf, size_t bufsiz);
 ssize_t xreadlinkat(
         int dirfd, const char * __restrict__ pathname, char * __restrict__ buf, size_t bufsiz);
 int xsymlink(const char *target, const char *linkpath);
@@ -351,3 +352,18 @@ void parse_prop_file(const char *file, Functor &&fn) {
         return fn(Utf8CStr(key.data(), key.size() + 1), Utf8CStr(val.data(), val.size() + 1));
     });
 }
+
+template<typename T, typename Impl>
+class stateless_allocator {
+public:
+    using value_type = T;
+    T *allocate(size_t num) { return static_cast<T*>(Impl::allocate(sizeof(T) * num)); }
+    void deallocate(T *ptr, size_t num) { Impl::deallocate(ptr, sizeof(T) * num); }
+    stateless_allocator() = default;
+    stateless_allocator(const stateless_allocator&) = default;
+    stateless_allocator(stateless_allocator&&) = default;
+    template <typename U>
+    stateless_allocator(const stateless_allocator<U, Impl>&) {}
+    bool operator==(const stateless_allocator&) { return true; }
+    bool operator!=(const stateless_allocator&) { return false; }
+};

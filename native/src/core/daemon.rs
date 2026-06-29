@@ -1,3 +1,4 @@
+use crate::zygisk::ZygiskState;
 use crate::bootstages::BootState;
 use crate::consts::{
     MAGISK_FILE_CON, MAGISK_FULL_VER, MAGISK_PROC_CON, MAGISK_VER_CODE, MAGISK_VERSION,
@@ -59,6 +60,8 @@ pub struct MagiskD {
     pub boot_stage_lock: Mutex<BootState>,
     pub module_list: OnceLock<Vec<ModuleInfo>>,
     pub cached_su_info: AtomicArc<SuInfo>,
+    pub zygisk_enabled: AtomicBool,
+    pub zygisk: Mutex<ZygiskState>,
     pub sdk_int: i32,
     pub is_emulator: bool,
     is_recovery: bool,
@@ -72,6 +75,10 @@ impl MagiskD {
 
     pub fn sdk_int(&self) -> i32 {
         self.sdk_int
+    }
+
+    pub fn get_zygisk_enabled(&self) -> bool {
+        self.zygisk_enabled.load(Ordering::Acquire)
     }
 
     pub fn app_data_dir(&self) -> &'static Utf8CStr {
@@ -125,6 +132,7 @@ impl MagiskD {
                 info!("** zygote restarted");
                 self.prune_su_access();
                 scan_deny_apps();
+                self.zygisk.lock().reset(false);
             }
             RequestCode::SQLITE_CMD => {
                 self.db_exec_for_cli(client).ok();
@@ -136,6 +144,9 @@ impl MagiskD {
                 if do_reboot {
                     self.reboot();
                 }
+            }
+            RequestCode::ZYGISK => {
+                crate::zygisk::zygisk_handler(self, client);
             }
             _ => {}
         }

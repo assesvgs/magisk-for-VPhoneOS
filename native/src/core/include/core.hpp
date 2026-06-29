@@ -5,6 +5,7 @@
 #include <vector>
 #include <atomic>
 #include <functional>
+#include <poll.h>
 
 #include <base.hpp>
 
@@ -28,6 +29,15 @@ inline int connect_daemon(RequestCode req) {
 int su_client_main(int argc, char *argv[]);
 
 struct ModuleInfo;
+
+struct module_info {
+    std::string name;
+    int z32 = -1;
+#if defined(__LP64__)
+    int z64 = -1;
+#endif
+};
+extern std::vector<module_info> *module_list;
 
 // Utils
 const char *get_magisk_tmp();
@@ -73,6 +83,7 @@ void clear_pkg(const char *pkg, int user_id);
 
 // Denylist
 extern std::atomic<bool> denylist_enforced;
+extern bool sulist_enabled;
 int denylist_cli(rust::Vec<rust::String> &args);
 void denylist_handler(int client);
 void initialize_denylist();
@@ -100,8 +111,34 @@ int get_magisktmpfs_fd();
 // MagiskSU
 void exec_root_shell(int client, int pid, SuRequest &req, MntNsMode mode);
 
+void check_pkg_refresh();
+int get_manager(int user_id = 0, std::string *pkg = nullptr, bool install = false);
+
+struct sock_cred : public ucred {
+    std::string context;
+};
+bool get_client_cred(int fd, sock_cred *cred);
+int send_fds(int sockfd, const int *fds, int cnt);
+
 // Rust bindings
 inline Utf8CStr get_magisk_tmp_rs() { return get_magisk_tmp(); }
 inline rust::String resolve_preinit_dir_rs(Utf8CStr base_dir) {
     return resolve_preinit_dir(base_dir.c_str());
+}
+
+void update_deny_flags(int uid, rust::Str process, uint32_t &flags);
+void zygiskd_companion_entry(int socket);
+
+// Rust thread pool bridge
+extern "C" void exec_task_from_cxx(void (*func)(void*), void *arg);
+
+template<typename F>
+void exec_task(F&& fn) noexcept {
+    using decayed = std::decay_t<F>;
+    auto *ctx = new decayed(std::forward<F>(fn));
+    exec_task_from_cxx([](void *arg) noexcept {
+        auto *ctx = static_cast<decayed*>(arg);
+        (*ctx)();
+        delete ctx;
+    }, ctx);
 }
