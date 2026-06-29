@@ -45,7 +45,7 @@ pub fn init_monitor() {
             unsafe { libc::ptrace(libc::PTRACE_DETACH, init_pid.as_raw(), 0, 0); }
             break;
         }
-        match waitpid(None, Some(WaitPidFlag::__WALL)) {
+        match waitpid(None, Some(WaitPidFlag::__WALL | WaitPidFlag::__WNOTHREAD)) {
             Ok(WaitStatus::PtraceEvent(tpid, sig, event)) => {
                 if tpid == init_pid {
                     if event == 0x1 {
