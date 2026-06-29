@@ -110,3 +110,6 @@ void update_deny_flags(int uid, rust::Str process, uint32_t &flags) {
         flags |= static_cast<uint32_t>(ZygiskStateFlags::DenyListEnforced);
     }
 }
+
+// 桩函数：替换移除的 zygisk/main.cpp
+void zygiskd_companion_entry(int) {}
