@@ -679,7 +679,6 @@ fn collect_modules() -> Vec<ModuleInfo> {
 
             if zygisk_dir.exists() {
                 let z32_name = cstr!("armeabi-v7a.so");
-                let z64_name = cstr!("arm64-v8a.so");
 
                 let idx = modules.len() - 1;
                 if let Ok(dir) = Directory::open(&zygisk_dir) {
@@ -690,10 +689,13 @@ fn collect_modules() -> Vec<ModuleInfo> {
                     }
 
                     #[cfg(target_arch = "aarch64")]
-                    if let Ok(z64_file) = dir.open_as_file_at(
-                        z64_name, OFlag::O_RDONLY | OFlag::O_CLOEXEC, 0,
-                    ) {
-                        modules[idx].z64 = z64_file.into_raw_fd();
+                    {
+                        let z64_name = cstr!("arm64-v8a.so");
+                        if let Ok(z64_file) = dir.open_as_file_at(
+                            z64_name, OFlag::O_RDONLY | OFlag::O_CLOEXEC, 0,
+                        ) {
+                            modules[idx].z64 = z64_file.into_raw_fd();
+                        }
                     }
                 }
             }

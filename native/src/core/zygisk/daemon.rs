@@ -21,7 +21,6 @@ pub fn zygisk_should_load_module(flags: u32) -> bool {
 pub struct ZygiskState {
     sockets: (Option<UnixStream>, Option<UnixStream>),
     start_count: u32,
-    pub ptrace_seize_failed: bool,
 }
 
 impl ZygiskState {
