@@ -153,7 +153,6 @@ impl MagiskD {
             info!("* Safe mode triggered");
             // Disable all modules so next boot will be clean
             disable_modules();
-            self.set_db_setting(DbEntryKey::ZygiskConfig, 0).log_ok();
             return true;
         }
 
