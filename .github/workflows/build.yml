@@ -35,20 +35,23 @@ jobs:
       - name: Build debug
         run: ./build.py -v all
 
+      - name: Set short SHA
+        run: echo "SHORT_SHA=${GITHUB_SHA::8}" >> $GITHUB_ENV
+
       - name: Stop gradle daemon
         run: ./app/gradlew --stop
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ github.sha }}
+          name: ${{ env.SHORT_SHA }}
           path: out
           compression-level: 9
 
       - name: Upload mapping and native debug symbols
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ github.sha }}-symbols
+          name: ${{ env.SHORT_SHA }}-symbols
           path: app/apk/build/outputs
           compression-level: 9
 

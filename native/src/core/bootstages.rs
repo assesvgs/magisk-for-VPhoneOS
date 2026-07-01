@@ -186,10 +186,8 @@ impl MagiskD {
             }
         }
 
-        if self.zygisk_enabled.load(Ordering::Acquire) {
-            info!("post_fs_data: starting zygisk proc_monitor");
-            crate::zygisk::proc_monitor::start_zygisk();
-        }
+        // proc_monitor is now handled by C++ deny/ptrace.cpp
+        // when zygisk_enabled(), check_zygote() calls trace_zygote() directly
 
         info!("post_fs_data: clean_mounts");
         clean_mounts();

@@ -13,10 +13,12 @@
 #include <sys/syscall.h>
 #include <sys/inotify.h>
 #include <errno.h>
+#include <cstdio>
 
 #include <core.hpp>
 
 #include "deny.hpp"
+#include "../zygisk/zygisk.hpp"
 #include <sys/ptrace.h>
 
 using namespace std;
@@ -186,7 +188,19 @@ static void check_zygote(){
     if (system_server_started) {
         // system_server, starting trace zygote
         for (int i = 0; i < zygote_list.size(); i++) {
-            new_zygote(zygote_list[i]);
+            if (zygisk_enabled()) {
+                // Use PTRACE_SEIZE-based injection instead of PTRACE_ATTACH
+                LOGI("proc_monitor: injecting zygisk into PID=[%d]\n", zygote_list[i]);
+                char libpath[128];
+                snprintf(libpath, sizeof(libpath), "%s/zygisk.so", get_magisk_tmp());
+                if (trace_zygote(zygote_list[i], libpath)) {
+                    struct stat st;
+                    if (read_ns(zygote_list[i], &st) == 0)
+                        zygote_map[zygote_list[i]] = st;
+                }
+            } else {
+                new_zygote(zygote_list[i]);
+            }
         }
     }
 
@@ -452,6 +466,9 @@ static std::string get_content(int pid, const char *file) {
 }
 
 void proc_monitor() {
+    // Prevent duplicate start
+    if (monitor_thread != -1 && monitor_thread != pthread_self())
+        return;
     monitor_thread = pthread_self();
 
     // Reset cached result

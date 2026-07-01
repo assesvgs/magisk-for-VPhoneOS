@@ -101,10 +101,6 @@ int zygisk_main(int argc, char *argv[]) {
     android_logging();
     if (argc == 3 && argv[1] == "companion"sv) {
         zygiskd(parse_int(argv[2]));
-    } else if (argc == 4 && argv[1] == "trace_zygote"sv) {
-        pid_t pid = parse_int(argv[2]);
-        if (!trace_zygote(pid, argv[3]))
-            kill(pid, SIGKILL);
     }
     return 0;
 }

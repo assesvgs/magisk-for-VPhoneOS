@@ -2,12 +2,11 @@ use crate::consts::MODULEROOT;
 use crate::daemon::MagiskD;
 use crate::ffi::{ZygiskRequest, ZygiskStateFlags};
 use crate::socket::{IpcRead, IpcWrite, UnixSocketExt};
-use crate::zygisk::proc_monitor;
 use base::{Directory, FsPathBuilder, ResultExt, Utf8CStr, WriteExt, cstr, libc, raw_cstr, warn};
 use std::fmt::Write;
 use std::os::fd::AsRawFd;
 use std::os::unix::net::UnixStream;
-use std::sync::atomic::Ordering;
+
 
 const UNMOUNT_MASK: u32 =
     ZygiskStateFlags::ProcessOnDenyList.repr | ZygiskStateFlags::DenyListEnforced.repr;
@@ -59,13 +58,11 @@ impl ZygiskState {
     pub fn reset(&mut self, restore: bool) {
         if restore {
             self.start_count = 1;
-            proc_monitor::STOP_TRACE_ZYGOTE.store(false, Ordering::Release);
         } else {
             self.sockets = (None, None);
             self.start_count += 1;
             if self.start_count > 3 {
                 warn!("zygote crashed too many times, stop injecting");
-                proc_monitor::STOP_TRACE_ZYGOTE.store(true, Ordering::Release);
             }
         }
     }
