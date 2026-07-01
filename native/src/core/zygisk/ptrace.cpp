@@ -13,7 +13,6 @@
 #include <cstdio>
 #include <dlfcn.h>
 #include <signal.h>
-#include <sys/system_properties.h>
 #include <string>
 #include <cerrno>
 #include <cstring>
@@ -29,20 +28,17 @@ using namespace std;
 #define PLOGE(fmt, ...) LOGE("ptrace: " fmt ": %s\n", ##__VA_ARGS__, strerror(errno))
 #endif
 
-#if defined(__LP64__)
-# define LP_SELECT(lp32, lp64) lp64
-#else
-# define LP_SELECT(lp32, lp64) lp32
-#endif
+
 
 static void gen_rand_str(char *buf, size_t len) {
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd >= 0) {
-        read(fd, buf, len);
+        ssize_t n = read(fd, buf, len);
+        if (n > 0) {
+            for (size_t i = 0; i < (size_t)n; i++)
+                buf[i] = 'a' + (buf[i] & 0xf);
+        }
         close(fd);
-    }
-    for (size_t i = 0; i < len; i++) {
-        buf[i] = 'a' + (buf[i] & 0xf);
     }
 }
 
@@ -186,6 +182,7 @@ bool trace_zygote(int pid, const char *libpath) {
 #define CONT_OR_DIE \
     if (ptrace(PTRACE_CONT, pid, 0, 0) == -1) { \
         PLOGE("cont"); \
+        ptrace(PTRACE_DETACH, pid, 0, 0); \
         return false; \
     }
     int status;
@@ -197,7 +194,7 @@ bool trace_zygote(int pid, const char *libpath) {
     WAIT_OR_DIE
     if (STOPPED_WITH(SIGSTOP, PTRACE_EVENT_STOP)) {
         char rstr[25] = { 0 };
-        sprintf(rstr, "/dev/");
+        ssprintf(rstr, sizeof(rstr), "/dev/");
 
         do {
             gen_rand_str(rstr + 5, sizeof(rstr) - 5);
@@ -216,6 +213,7 @@ bool trace_zygote(int pid, const char *libpath) {
         ZLOGD("inject done, continue process\n");
         if (kill(pid, SIGCONT)) {
             PLOGE("kill");
+            ptrace(PTRACE_DETACH, pid, 0, 0);
             return false;
         }
         CONT_OR_DIE
