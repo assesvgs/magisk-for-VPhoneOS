@@ -323,6 +323,7 @@ fn zygisk_main(subcmd: &str, args: &[String]) -> i32 {
                 }
             }
         }
+    }
     // trace_zygote is now handled by C++ deny/ptrace.cpp directly
     -1
 }
