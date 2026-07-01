@@ -146,6 +146,7 @@ pub mod ffi {
         type Utf8CStrRef<'a> = base::Utf8CStrRef<'a>;
 
         include!("include/core.hpp");
+        include!("zygisk/zygisk.hpp");
 
         #[cxx_name = "get_magisk_tmp_rs"]
         fn get_magisk_tmp() -> Utf8CStrRef<'static>;
@@ -166,6 +167,9 @@ pub mod ffi {
         // Zygisk
         fn update_deny_flags(uid: i32, process: &str, flags: &mut u32);
         fn zygiskd_companion_entry(socket: i32);
+        fn start_zygisk_monitor();
+        fn set_zygisk_stop_tracing(stop: bool);
+        fn trace_zygote(pid: i32, libpath: &str) -> bool;
 
         // Scripting
         fn exec_script(script: Utf8CStrRef);

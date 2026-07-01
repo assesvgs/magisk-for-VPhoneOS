@@ -18,7 +18,6 @@
 #include <core.hpp>
 
 #include "deny.hpp"
-#include "../zygisk/zygisk.hpp"
 #include <sys/ptrace.h>
 
 using namespace std;
@@ -188,19 +187,7 @@ static void check_zygote(){
     if (system_server_started) {
         // system_server, starting trace zygote
         for (int i = 0; i < zygote_list.size(); i++) {
-            if (zygisk_enabled()) {
-                // Use PTRACE_SEIZE-based injection instead of PTRACE_ATTACH
-                LOGI("proc_monitor: injecting zygisk into PID=[%d]\n", zygote_list[i]);
-                char libpath[128];
-                ssprintf(libpath, sizeof(libpath), "%s/zygisk.so", get_magisk_tmp());
-                if (trace_zygote(zygote_list[i], libpath)) {
-                    struct stat st;
-                    if (read_ns(zygote_list[i], &st) == 0)
-                        zygote_map[zygote_list[i]] = st;
-                }
-            } else {
-                new_zygote(zygote_list[i]);
-            }
+            new_zygote(zygote_list[i]);
         }
     }
 

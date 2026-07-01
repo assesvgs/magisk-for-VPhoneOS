@@ -378,7 +378,7 @@ int enable_deny() {
 
         denylist_enforced.store(true, std::memory_order_release);
 
-        if (new_daemon_thread(&proc_monitor)) {
+        if (!zygisk_enabled() && new_daemon_thread(&proc_monitor)) {
             denylist_enforced.store(false, std::memory_order_release);
             return DenyResponse::ERROR;
         }
@@ -415,11 +415,6 @@ void initialize_denylist() {
     if (!denylist_enforced) {
         if (MagiskD::Get().get_db_setting(DbEntryKey::DenylistConfig))
             enable_deny();
-    }
-    // If zygisk is enabled, always start the C++ proc_monitor for zygote monitoring
-    if (zygisk_enabled() && !denylist_enforced) {
-        LOGD("initialize_denylist: starting proc_monitor for zygisk\n");
-        new_daemon_thread(&proc_monitor);
     }
     LOGD("initialize_denylist: done, enforced=%d\n", (bool)denylist_enforced);
 }

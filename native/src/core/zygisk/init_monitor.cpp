@@ -1,0 +1,166 @@
+// Adapted from Kokoro-no-kitsune-27001b: native/src/core/zygisk/proc_monitor.cpp
+// Original author: 5ec1cff (ZygiskNext)
+
+#include <base.hpp>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/ptrace.h>
+#include <sys/wait.h>
+#include <string>
+#include <set>
+#include <atomic>
+
+#include <core.hpp>
+#include <consts.hpp>
+
+#include "zygisk.hpp"
+
+using namespace std;
+
+#define WEVENT(__status) (((__status) >> 16) & 0xff)
+
+static atomic<bool> stop_tracing{false};
+
+extern "C" void set_zygisk_stop_tracing(bool stop) {
+    stop_tracing.store(stop);
+}
+
+static string get_program(int pid) {
+    char path[32];
+    char buf[256];
+    ssprintf(path, sizeof(path), "/proc/%d/exe", pid);
+    auto sz = readlink(path, buf, sizeof(buf) - 1);
+    if (sz < 0) return "";
+    buf[sz] = '\0';
+    return buf;
+}
+
+static void inject_zygote(int pid) {
+    auto program = get_program(pid);
+    if (program.find("app_process") == string::npos) return;
+
+    LOGI("zygisk: inject zygote PID=[%d] [%s]\n", pid, program.c_str());
+
+    auto tracer = string(get_magisk_tmp()) + "/magisk";
+    auto pid_str = to_string(pid);
+
+    kill(pid, SIGSTOP);
+    ptrace(PTRACE_CONT, pid, 0, 0);
+    int status;
+    waitpid(pid, &status, __WALL);
+
+    if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP && (status >> 16) == 0) {
+        ptrace(PTRACE_DETACH, pid, 0, SIGSTOP);
+        status = 0;
+        auto p = fork_dont_care();
+        if (p == 0) {
+            execl(tracer.c_str(), "", "zygisk", "trace_zygote",
+                  pid_str.c_str(), tracer.c_str(), nullptr);
+            PLOGE("failed to exec");
+            kill(pid, SIGKILL);
+            exit(1);
+        } else if (p == -1) {
+            PLOGE("failed to fork");
+            kill(pid, SIGKILL);
+        }
+    } else {
+        ptrace(PTRACE_DETACH, pid, 0, 0);
+    }
+}
+
+static bool find_zygote_by_polling() {
+    // VPhoneOS fallback when PTRACE_SEIZE init(1) fails
+    for (int pid = 1; pid < 10000; pid++) {
+        auto program = get_program(pid);
+        if (program == "/system/bin/app_process64" ||
+            program == "/system/bin/app_process32") {
+            inject_zygote(pid);
+            return true;
+        }
+    }
+    return false;
+}
+
+extern "C" void *init_monitor(void *) {
+    LOGI("zygisk: init_monitor starting\n");
+
+    int status;
+    set<pid_t> process;
+
+    if (ptrace(PTRACE_SEIZE, 1, 0, PTRACE_O_TRACEFORK) == -1) {
+        LOGW("zygisk: PTRACE_SEIZE init(1) failed, falling back to polling\n");
+        // VPhoneOS fallback
+        while (!stop_tracing.load()) {
+            if (find_zygote_by_polling())
+                break;
+            sleep(1);
+        }
+        goto done;
+    }
+
+    LOGI("zygisk: start tracing init\n");
+
+    while (true) {
+        int pid;
+        while ((pid = waitpid(-1, &status, __WALL | __WNOTHREAD)) != 0) {
+            if (stop_tracing.load()) goto done;
+
+            if (pid < 0)
+                goto done;
+
+            if (pid == 1) {
+                if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP &&
+                    WEVENT(status) == PTRACE_EVENT_FORK) {
+                    long child_pid;
+                    ptrace(PTRACE_GETEVENTMSG, pid, 0, &child_pid);
+                    LOGD("zygisk: init forked %ld\n", child_pid);
+                }
+                if (WIFSTOPPED(status)) {
+                    ptrace(PTRACE_CONT, pid, 0,
+                           (WEVENT(status) == 0) ? WSTOPSIG(status) : 0);
+                }
+                continue;
+            }
+
+            auto state = process.find(pid);
+            if (state == process.end()) {
+                LOGD("zygisk: attached pid=%d\n", pid);
+                process.emplace(pid);
+                ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACEEXEC);
+                ptrace(PTRACE_CONT, pid, 0, 0);
+                continue;
+            }
+
+            if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP &&
+                WEVENT(status) == PTRACE_EVENT_EXEC) {
+                auto program = get_program(pid);
+                LOGD("zygisk: pid=[%d] [%s]\n", pid, program.c_str());
+
+                if (program == "/system/bin/app_process64" ||
+                    program == "/system/bin/app_process32") {
+                    if (!stop_tracing.load()) {
+                        inject_zygote(pid);
+                    }
+                }
+                process.erase(state);
+                if (WIFSTOPPED(status)) {
+                    ptrace(PTRACE_DETACH, pid, 0, 0);
+                }
+            } else {
+                process.erase(state);
+                if (WIFSTOPPED(status)) {
+                    ptrace(PTRACE_DETACH, pid, 0, 0);
+                }
+            }
+        }
+    }
+
+done:
+    LOGI("zygisk: init_monitor exited\n");
+    return nullptr;
+}
+
+extern "C" void start_zygisk_monitor() {
+    LOGI("zygisk: starting init_monitor\n");
+    new_daemon_thread(reinterpret_cast<thread_entry>(&init_monitor));
+}

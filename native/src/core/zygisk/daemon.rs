@@ -58,11 +58,13 @@ impl ZygiskState {
     pub fn reset(&mut self, restore: bool) {
         if restore {
             self.start_count = 1;
+            crate::ffi::set_zygisk_stop_tracing(false);
         } else {
             self.sockets = (None, None);
             self.start_count += 1;
             if self.start_count > 3 {
                 warn!("zygote crashed too many times, stop injecting");
+                crate::ffi::set_zygisk_stop_tracing(true);
             }
         }
     }

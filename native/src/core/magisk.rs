@@ -323,7 +323,14 @@ fn zygisk_main(subcmd: &str, args: &[String]) -> i32 {
                 }
             }
         }
+    } else if subcmd == "trace_zygote" && args.len() >= 2 {
+        let pid: i32 = args[0].parse().unwrap_or(-1);
+        if pid > 0 {
+            if unsafe { crate::ffi::trace_zygote(pid, &args[1]) } {
+                return 0;
+            }
+            unsafe { libc::kill(pid, libc::SIGKILL); }
+        }
     }
-    // trace_zygote is now handled by C++ deny/ptrace.cpp directly
     -1
 }
