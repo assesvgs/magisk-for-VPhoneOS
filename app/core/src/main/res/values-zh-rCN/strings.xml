@@ -140,6 +140,7 @@
     <string name="settings_update_beta">测试版</string>
     <string name="settings_update_custom">自定义通道</string>
     <string name="settings_update_custom_msg">自定义通道网址</string>
+    <string name="settings_zygisk_summary">在 Zygote 守护进程中运行 Magisk 的部分功能</string>
     <string name="settings_denylist_title">实现 MagiskHide</string>
     <string name="settings_denylist_summary">隐藏列表中的进程将恢复所有 Magisk 修改</string>
     <string name="settings_denylist_config_title">配置 MagiskHide</string>

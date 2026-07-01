@@ -134,6 +134,7 @@
     <string name="settings_update_beta">測試版</string>
     <string name="settings_update_custom">自訂頻道</string>
     <string name="settings_update_custom_msg">輸入一個自訂的網址</string>
+    <string name="settings_zygisk_summary">在 Zygote 精靈中執行 Magisk 的部分功能</string>
     <string name="settings_denylist_title">強制黑名單</string>
     <string name="settings_denylist_summary">Magisk 黑名單上的處理程序將復原變更</string>
     <string name="settings_denylist_config_title">設定黑名單</string>

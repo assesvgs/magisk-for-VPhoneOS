@@ -218,8 +218,10 @@ pub fn init_monitor() {
                 unsafe { libc::ptrace(libc::PTRACE_DETACH, tpid.as_raw(), 0, 0); }
             }
             Ok(WaitStatus::Stopped(tpid, sig)) => {
-                unsafe {
-                    libc::ptrace(libc::PTRACE_CONT, tpid.as_raw(), 0, sig as i32);
+                if process.contains(&tpid) {
+                    // 已有进程收到非 exec 信号停止 → 同 kokoro: detach 而不是 continue 信号
+                    process.remove(&tpid);
+                    unsafe { libc::ptrace(libc::PTRACE_DETACH, tpid.as_raw(), 0, 0); }
                 }
             }
             Ok(WaitStatus::Exited(tpid, _)) | Ok(WaitStatus::Signaled(tpid, _, _)) => {
