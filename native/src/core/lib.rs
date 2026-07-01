@@ -146,7 +146,6 @@ pub mod ffi {
         type Utf8CStrRef<'a> = base::Utf8CStrRef<'a>;
 
         include!("include/core.hpp");
-        include!("zygisk/zygisk.hpp");
 
         #[cxx_name = "get_magisk_tmp_rs"]
         fn get_magisk_tmp() -> Utf8CStrRef<'static>;

@@ -101,6 +101,12 @@ void mount_mirrors() {
     LOGD("mount_mirrors: placeholder\n");
 }
 
+// Wrapper for cxx bridge: trace_zygote takes rust::Str, convert to const char*
+bool trace_zygote(int pid, rust::Str libpath) {
+    bool trace_zygote(int pid, const char *libpath);
+    return trace_zygote(pid, libpath.data());
+}
+
 void update_deny_flags(int uid, rust::Str process, uint32_t &flags) {
     flags = 0;
     if (is_deny_target(uid, process.data(), 0)) {

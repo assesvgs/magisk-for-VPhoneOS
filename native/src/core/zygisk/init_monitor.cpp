@@ -21,7 +21,7 @@ using namespace std;
 
 static atomic<bool> stop_tracing{false};
 
-extern "C" void set_zygisk_stop_tracing(bool stop) {
+void set_zygisk_stop_tracing(bool stop) {
     stop_tracing.store(stop);
 }
 
@@ -161,7 +161,7 @@ extern "C" void *init_monitor(void *) {
     return nullptr;
 }
 
-extern "C" void start_zygisk_monitor() {
+void start_zygisk_monitor() {
     LOGI("zygisk: starting init_monitor\n");
     new_daemon_thread(reinterpret_cast<thread_entry>(&init_monitor));
 }
