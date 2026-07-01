@@ -199,6 +199,19 @@ object RandNameToggle : BaseSettingsItem.Toggle() {
     override var value by Config::randName
 }
 
+object Zygisk : BaseSettingsItem.Toggle() {
+    override val title = CoreR.string.zygisk.asText()
+    override val description = CoreR.string.settings_zygisk_summary.asText()
+    override var value
+        get() = Config.zygisk
+        set(value) {
+            Config.zygisk = value
+            notifyPropertyChanged(BR.description)
+            MagiskHide.notifyPropertyChanged(BR.title)
+            MagiskHide.notifyPropertyChanged(BR.description)
+        }
+}
+
 // --- Magisk
 
 object Magisk : BaseSettingsItem.Section() {

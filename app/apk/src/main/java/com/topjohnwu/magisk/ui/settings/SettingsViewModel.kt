@@ -64,7 +64,7 @@ class SettingsViewModel : BaseViewModel(), BaseSettingsItem.Handler {
                 SystemlessHosts
             ))
             if (Const.Version.atLeast_24_0()) {
-                list.addAll(listOf(MagiskHide, SuList, DenyListConfig))
+                list.addAll(listOf(Zygisk, MagiskHide, SuList, DenyListConfig))
             }
         }
 

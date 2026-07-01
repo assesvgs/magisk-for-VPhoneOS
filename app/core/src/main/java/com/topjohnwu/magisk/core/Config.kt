@@ -23,6 +23,7 @@ object Config : PreferenceConfig, DBConfig {
         const val SU_BIOMETRIC = "su_biometric"
         const val BOOTLOOP = "bootloop"
         const val SU_MANAGER = "requester"
+        const val ZYGISK = "zygisk"
         const val KEYSTORE = "keystore"
 
         // prefs
@@ -100,6 +101,7 @@ object Config : PreferenceConfig, DBConfig {
     @JvmField var recovery = false
     var denyList = false
     var sulist = false
+    var zygisk by dbSettings(Key.ZYGISK, false)
 
     var askedHome by preference(Key.ASKED_HOME, false)
     var bootloop by dbSettings(Key.BOOTLOOP, 0)

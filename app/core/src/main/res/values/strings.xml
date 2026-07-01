@@ -137,6 +137,7 @@
     <string name="settings_update_debug">Debug</string>
     <string name="settings_update_custom">Custom</string>
     <string name="settings_update_custom_msg">Insert a custom channel URL</string>
+    <string name="settings_zygisk_summary">Run parts of Magisk in the zygote daemon</string>
     <string name="settings_denylist_title">Enforce MagiskHide</string>
     <string name="settings_denylist_summary">Processes on the hidelist will have all Magisk modifications reverted</string>
     <string name="settings_denylist_config_title">Configure MagiskHide</string>

@@ -4,6 +4,7 @@
     <!-- Static strings -->
     <string name="magisk" translatable="false">Magisk</string>
     <string name="empty" translatable="false"/>
+    <string name="zygisk" translatable="false">Zygisk</string>
 
     <string name="paypal" translatable="false">PayPal</string>
     <string name="patreon" translatable="false">Patreon</string>
