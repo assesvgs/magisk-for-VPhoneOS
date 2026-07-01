@@ -46,26 +46,7 @@ static void gen_rand_str(char *buf, size_t len) {
     }
 }
 
-static int xopen(const char *path, int flags, mode_t mode) {
-    int fd = open(path, flags, mode);
-    if (fd < 0) {
-        PLOGE("open %s", path);
-    }
-    return fd;
-}
 
-static void xmount(const char *source, const char *target,
-                   const char *type, unsigned long flags, const void *data) {
-    if (mount(source, target, type, flags, data) < 0) {
-        PLOGE("mount %s -> %s", source, target);
-    }
-}
-
-static void rm_rf(const char *path) {
-    char cmd[256];
-    ssprintf(cmd, sizeof(cmd), "rm -rf %s", path);
-    system(cmd);
-}
 
 static bool inject_on_main(int pid, const char *lib_path) {
     struct user_regs_struct regs{}, backup{};

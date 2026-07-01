@@ -223,7 +223,7 @@ void *push_string(int pid, struct user_regs_struct &regs, const char *str) {
 uintptr_t remote_call(int pid, struct user_regs_struct &regs, uintptr_t func_addr, uintptr_t return_addr,
                  std::vector<long> &args) {
     align_stack(regs);
-    ZLOGD("call %d args\n", args.size());
+    ZLOGD("call %zu args\n", args.size());
     for (auto &a: args) {
         ZLOGD("arg %p\n", (void *) a);
     }
