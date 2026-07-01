@@ -89,25 +89,23 @@ extern "C" void *init_monitor(void *) {
 
     if (ptrace(PTRACE_SEIZE, 1, 0, PTRACE_O_TRACEFORK) == -1) {
         LOGW("zygisk: PTRACE_SEIZE init(1) failed, falling back to polling\n");
-        // VPhoneOS fallback
-        while (!stop_tracing.load()) {
-            if (find_zygote_by_polling())
-                break;
+        // VPhoneOS fallback: keep running, check stop_tracing before injection
+        while (true) {
+            if (!stop_tracing.load()) {
+                if (find_zygote_by_polling())
+                    break;
+            }
             sleep(1);
         }
-        goto done;
+        LOGI("zygisk: init_monitor polling path exited\n");
+        return nullptr;
     }
 
     LOGI("zygisk: start tracing init\n");
 
     while (true) {
         int pid;
-        while ((pid = waitpid(-1, &status, __WALL | __WNOTHREAD)) != 0) {
-            if (stop_tracing.load()) goto done;
-
-            if (pid < 0)
-                goto done;
-
+        while ((pid = waitpid(-1, &status, __WALL | __WNOTHREAD)) > 0) {
             if (pid == 1) {
                 if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP &&
                     WEVENT(status) == PTRACE_EVENT_FORK) {
@@ -153,9 +151,12 @@ extern "C" void *init_monitor(void *) {
                 }
             }
         }
+        if (errno == ECHILD) {
+            struct timespec ts = { .tv_sec = INT_MAX, .tv_nsec = 0 };
+            nanosleep(&ts, nullptr);
+        }
     }
 
-done:
     LOGI("zygisk: init_monitor exited\n");
     return nullptr;
 }
