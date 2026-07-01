@@ -192,7 +192,7 @@ static void check_zygote(){
                 // Use PTRACE_SEIZE-based injection instead of PTRACE_ATTACH
                 LOGI("proc_monitor: injecting zygisk into PID=[%d]\n", zygote_list[i]);
                 char libpath[128];
-                snprintf(libpath, sizeof(libpath), "%s/zygisk.so", get_magisk_tmp());
+                ssprintf(libpath, sizeof(libpath), "%s/zygisk.so", get_magisk_tmp());
                 if (trace_zygote(zygote_list[i], libpath)) {
                     struct stat st;
                     if (read_ns(zygote_list[i], &st) == 0)

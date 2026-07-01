@@ -63,7 +63,7 @@ static void xmount(const char *source, const char *target,
 
 static void rm_rf(const char *path) {
     char cmd[256];
-    snprintf(cmd, sizeof(cmd), "rm -rf %s", path);
+    ssprintf(cmd, sizeof(cmd), "rm -rf %s", path);
     system(cmd);
 }
 
