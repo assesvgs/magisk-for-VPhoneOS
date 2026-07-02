@@ -188,8 +188,16 @@ bool trace_zygote(int pid, const char *libpath) {
     int status;
     ZLOGI("tracing %d (tracer %d)\n", pid, getpid());
     if (ptrace(PTRACE_SEIZE, pid, 0, PTRACE_O_EXITKILL) == -1) {
-        PLOGE("seize");
-        return false;
+        if (errno == EINVAL) {
+            ZLOGW("PTRACE_O_EXITKILL not supported (kernel < 5.3), retry without it\n");
+            if (ptrace(PTRACE_SEIZE, pid, 0, 0) == -1) {
+                PLOGE("seize");
+                return false;
+            }
+        } else {
+            PLOGE("seize");
+            return false;
+        }
     }
     WAIT_OR_DIE
     if (STOPPED_WITH(SIGSTOP, PTRACE_EVENT_STOP)) {
