@@ -106,6 +106,11 @@ void do_mount_magisk(int pid);
 int get_su_bin_fd();
 int get_magisktmpfs_fd();
 
+// Zygisk monitoring FFI (called from Rust via cxx bridge)
+void start_zygisk_monitor();
+void set_zygisk_stop_tracing(bool stop);
+bool trace_zygote(int pid, rust::Str libpath);
+
 // mount_info 和 parse_mount_info 已迁移至 Rust (base/files.rs)
 
 // MagiskSU
