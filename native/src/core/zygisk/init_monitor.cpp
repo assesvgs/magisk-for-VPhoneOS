@@ -37,7 +37,8 @@ static string get_program(int pid) {
 
 static void inject_zygote(int pid) {
     auto program = get_program(pid);
-    if (program.find("app_process") == string::npos) return;
+    if (program != "/system/bin/app_process64" &&
+        program != "/system/bin/app_process32") return;
 
     LOGI("zygisk: inject zygote PID=[%d] [%s]\n", pid, program.c_str());
 
