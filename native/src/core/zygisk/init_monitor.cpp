@@ -70,11 +70,22 @@ static void inject_zygote(int pid) {
 
 static bool find_zygote_by_polling() {
     // VPhoneOS fallback when PTRACE_SEIZE init(1) fails
+    // Nobody is tracing this process (no TRACEFORK inheritance).
+    // Just fork+execl → magisk → trace_zygote() handles SEIZE+inject.
     for (int pid = 1; pid < 10000; pid++) {
         auto program = get_program(pid);
         if (program == "/system/bin/app_process64" ||
             program == "/system/bin/app_process32") {
-            inject_zygote(pid);
+            LOGI("zygisk: polling found zygote PID=[%d]\n", pid);
+            auto tracer = string(get_magisk_tmp()) + "/magisk";
+            auto pid_str = to_string(pid);
+            auto p = fork_dont_care();
+            if (p == 0) {
+                execl(tracer.c_str(), "", "zygisk", "trace_zygote",
+                      pid_str.c_str(), tracer.c_str(), nullptr);
+                PLOGE("failed to exec");
+                exit(1);
+            }
             return true;
         }
     }
