@@ -73,8 +73,13 @@ static void inject_zygote(int pid) {
 static bool find_zygote_by_polling() {
     // VPhoneOS fallback when PTRACE_SEIZE init(1) fails
     // Nobody is tracing this process (no TRACEFORK inheritance).
-    // Just fork+execl → magisk → trace_zygote() handles SEIZE+inject.
-    for (int pid = 1; pid < 10000; pid++) {
+    // Use readdir(/proc) to scan all PIDs, analogous to crawl_procfs.
+    auto dir = xopen_dir("/proc");
+    if (!dir) return false;
+    dirent *dp;
+    while ((dp = xreaddir(dir.get()))) {
+        int pid = parse_int(dp->d_name);
+        if (pid <= 0) continue;
         auto program = get_program(pid);
         if (program == "/system/bin/app_process" ||
             program == "/system/bin/app_process32" ||
@@ -88,6 +93,9 @@ static bool find_zygote_by_polling() {
                       pid_str.c_str(), tracer.c_str(), nullptr);
                 PLOGE("failed to exec");
                 exit(1);
+            } else if (p == -1) {
+                PLOGE("failed to fork");
+                continue;
             }
             return true;
         }
