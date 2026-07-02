@@ -37,8 +37,9 @@ static string get_program(int pid) {
 
 static void inject_zygote(int pid) {
     auto program = get_program(pid);
-    if (program != "/system/bin/app_process64" &&
-        program != "/system/bin/app_process32") return;
+    if (program != "/system/bin/app_process" &&
+        program != "/system/bin/app_process32" &&
+        program != "/system/bin/app_process64") return;
 
     LOGI("zygisk: inject zygote PID=[%d] [%s]\n", pid, program.c_str());
 
@@ -75,8 +76,9 @@ static bool find_zygote_by_polling() {
     // Just fork+execl → magisk → trace_zygote() handles SEIZE+inject.
     for (int pid = 1; pid < 10000; pid++) {
         auto program = get_program(pid);
-        if (program == "/system/bin/app_process64" ||
-            program == "/system/bin/app_process32") {
+        if (program == "/system/bin/app_process" ||
+            program == "/system/bin/app_process32" ||
+            program == "/system/bin/app_process64") {
             LOGI("zygisk: polling found zygote PID=[%d]\n", pid);
             auto tracer = string(get_magisk_tmp()) + "/magisk";
             auto pid_str = to_string(pid);
@@ -146,8 +148,9 @@ extern "C" void *init_monitor(void *) {
                 auto program = get_program(pid);
                 LOGD("zygisk: pid=[%d] [%s]\n", pid, program.c_str());
 
-                if (program == "/system/bin/app_process64" ||
-                    program == "/system/bin/app_process32") {
+                if (program == "/system/bin/app_process" ||
+                    program == "/system/bin/app_process32" ||
+                    program == "/system/bin/app_process64") {
                     if (!stop_tracing.load()) {
                         inject_zygote(pid);
                     }
