@@ -225,6 +225,9 @@ void revert_daemon(int pid, int client) {
         } else if (client == -1) {
             // send resume signal
             kill(pid, SIGCONT);
+        } else if (client == -2) {
+            // Sulist 禁用路径：发送 resume 信号
+            kill(pid, SIGCONT);
         }
         _exit(0);
     }

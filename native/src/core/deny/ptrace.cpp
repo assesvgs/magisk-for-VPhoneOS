@@ -118,7 +118,9 @@ static bool is_zygote_done() {
 static inline bool read_file(const char *file, char *buf, int count){
     FILE *fp = fopen(file, "re");
     if (!fp) return false;
-    fread(buf, count, 1, fp);
+    if (fread(buf, count, 1, fp) != 1) {
+        buf[0] = '\0';
+    }
     fclose(fp);
     return true;
 }
@@ -545,9 +547,7 @@ void proc_monitor() {
                 break;
             case PTRACE_EVENT_EXIT:
                 PTRACE_LOG("zygote exited with status: [%lu]\n", msg);
-                [
-                    [fallthrough]
-                ];
+                [[fallthrough]];
             default:
                 zygote_map.erase(pid);
                 DETACH_AND_CONT;
