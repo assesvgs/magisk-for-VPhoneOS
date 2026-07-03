@@ -235,6 +235,5 @@ pub fn recv_fd(socket: RawFd) -> RawFd {
 pub fn recv_fds(socket: RawFd) -> Vec<RawFd> {
     let mut socket = ManuallyDrop::new(unsafe { UnixStream::from_raw_fd(socket) });
     let fds = socket.recv_fds().log().unwrap_or(Vec::new());
-    // SAFETY: OwnedFd and RawFd has the same layout
-    unsafe { std::mem::transmute(fds) }
+    fds.into_iter().map(|fd| fd.into_raw_fd()).collect()
 }

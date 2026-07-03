@@ -715,6 +715,13 @@ impl MagiskD {
         let modules = collect_modules();
         exec_module_scripts(cstr!("post-fs-data"), &modules);
 
+        // Close any fds from the previous round before recollecting
+        for m in &modules {
+            if m.z32 >= 0 { unsafe { libc::close(m.z32); } }
+            if m.z64 >= 0 { unsafe { libc::close(m.z64); } }
+        }
+        drop(modules);
+
         // Recollect modules (module scripts could remove itself)
         let modules = collect_modules();
         self.apply_modules(&modules);

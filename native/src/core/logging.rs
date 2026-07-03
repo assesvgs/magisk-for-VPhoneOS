@@ -19,7 +19,7 @@ use std::fs::File;
 use std::io::{IoSlice, Read, Write};
 use std::os::fd::IntoRawFd;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicI32, Ordering};
+
 use std::sync::nonpoison::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{fs, io};
@@ -71,7 +71,7 @@ pub fn magisk_logging() {
     update_logger(|logger| logger.write = magisk_log_write);
 }
 
-static ZYGISK_LOGD: AtomicI32 = AtomicI32::new(-1);
+static ZYGISK_LOGD: Mutex<Option<(std::fs::File, i32)>> = Mutex::new(None);
 
 pub fn zygisk_logging() {
     fn write(level: LogLevel, msg: &Utf8CStr) {
@@ -84,35 +84,37 @@ pub fn zygisk_logging() {
 }
 
 pub fn zygisk_close_logd() {
-    let fd = ZYGISK_LOGD.swap(-1, Ordering::Relaxed);
-    if fd >= 0 {
-        unsafe { libc::close(fd); }
-    }
+    let _ = ZYGISK_LOGD.lock().unwrap().take();
 }
 
 pub fn zygisk_get_logd() -> i32 {
-    let mut fd = ZYGISK_LOGD.load(Ordering::Relaxed);
-    if fd >= 0 {
-        return fd;
+    // Fast path: check outside lock first
+    {
+        let guard = ZYGISK_LOGD.lock().unwrap();
+        if let Some((_, fd)) = *guard {
+            return fd;
+        }
     }
+    // Lock released before zygisk_logging(), avoiding reentrant deadlock
     zygisk_logging();
     let log_pipe = cstr::buf::default()
         .join_path(get_magisk_tmp())
         .join_path(cstr!("log_pipe"));
-    fd = unsafe { libc::open(log_pipe.as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
-    if fd >= 0 {
-        ZYGISK_LOGD.store(fd, Ordering::Relaxed);
+    let fd = unsafe { libc::open(log_pipe.as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
+    if fd < 0 { return -1; }
+    let file = unsafe { File::from_raw_fd(fd) };
+    let mut guard = ZYGISK_LOGD.lock().unwrap();
+    if guard.is_none() {
+        *guard = Some((file, fd));
     }
     fd
 }
 
 fn zygisk_log_to_pipe(prio: i32, msg: &Utf8CStr) {
-    let fd = ZYGISK_LOGD.load(Ordering::Relaxed);
-    if fd < 0 {
-        return;
+    let guard = ZYGISK_LOGD.lock().unwrap();
+    if let Some((ref file, _)) = *guard {
+        let _ = write_log_to_pipe(file, prio, msg);
     }
-    let file = std::mem::ManuallyDrop::new(unsafe { File::from_raw_fd(fd) });
-    let _ = write_log_to_pipe(&file, prio, msg);
 }
 
 #[derive(Copy, Clone, Pod, Zeroable)]

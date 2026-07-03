@@ -178,11 +178,12 @@ impl MagiskD {
             .join_path(get_magisk_tmp())
             .join_path(cstr!("zygisk.so"));
         if !zygisk_link.exists() {
-            unsafe {
-                libc::symlink(
+            if unsafe { libc::symlink(
                     cstr!("/proc/self/exe").as_ptr(),
                     zygisk_link.as_ptr(),
-                );
+                ) } != 0
+            {
+                log_err!("failed to create zygisk.so symlink");
             }
         }
 

@@ -334,7 +334,11 @@ unsafe extern "C" fn sql_exec_for_cxx(
     exec_cookie: *mut c_void,
 ) -> i32 {
     unsafe {
-        MAGISKD.get().unwrap_unchecked().with_db(|db| {
+        let daemon = MAGISKD.get();
+        if daemon.is_none() {
+            return -1;
+        }
+        daemon.unwrap_unchecked().with_db(|db| {
             sql_exec_impl(
                 db,
                 sql,
