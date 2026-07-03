@@ -118,11 +118,12 @@ static bool is_zygote_done() {
 static inline bool read_file(const char *file, char *buf, int count){
     FILE *fp = fopen(file, "re");
     if (!fp) return false;
-    if (fread(buf, count, 1, fp) != 1) {
+    bool ok = (fread(buf, count, 1, fp) == 1);
+    fclose(fp);
+    if (!ok) {
         buf[0] = '\0';
     }
-    fclose(fp);
-    return true;
+    return ok;
 }
 
 static bool check_process(int pid, const char *process, const char *context, const char *exe) {
