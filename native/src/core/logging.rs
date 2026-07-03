@@ -104,9 +104,7 @@ pub fn zygisk_get_logd() -> i32 {
     if fd < 0 { return -1; }
     let file = unsafe { File::from_raw_fd(fd) };
     let mut guard = ZYGISK_LOGD.lock().unwrap();
-    if guard.is_none() {
-        *guard = Some((file, fd));
-    }
+    *guard = Some((file, fd));
     fd
 }
 
