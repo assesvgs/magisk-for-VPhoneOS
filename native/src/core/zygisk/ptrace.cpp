@@ -97,11 +97,12 @@ static bool inject_on_main(int pid, const char *lib_path) {
     }
 
     uintptr_t break_addr = (-0x05ec1cff & ~1) | ((uintptr_t) entry_addr & 1);
-    if (!write_proc(pid, (uintptr_t *) addr_of_entry_addr, &break_addr, sizeof(break_addr))) return false;
+    if (write_proc(pid, (uintptr_t *) addr_of_entry_addr, &break_addr, sizeof(break_addr)) <= 0) return false;
     ptrace(PTRACE_CONT, pid, 0, 0);
     int status;
     if (!wait_for_trace(pid, &status, __WALL)) {
-        write_proc(pid, (uintptr_t *) addr_of_entry_addr, &entry_addr, sizeof(entry_addr));
+        if (write_proc(pid, (uintptr_t *) addr_of_entry_addr, &entry_addr, sizeof(entry_addr)) <= 0)
+            return false;
         return false;
     }
     if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSEGV) {
@@ -111,7 +112,7 @@ static bool inject_on_main(int pid, const char *lib_path) {
             return false;
         }
         ZLOGD("stopped at entry\n");
-        if (!write_proc(pid, (uintptr_t *) addr_of_entry_addr, &entry_addr, sizeof(entry_addr))) return false;
+        if (write_proc(pid, (uintptr_t *) addr_of_entry_addr, &entry_addr, sizeof(entry_addr)) <= 0) return false;
         memcpy(&backup, &regs, sizeof(regs));
         map = Scan_proc(std::to_string(pid));
         auto local_map = Scan_proc();

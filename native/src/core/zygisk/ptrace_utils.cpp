@@ -215,7 +215,7 @@ void *push_string(int pid, struct user_regs_struct &regs, const char *str) {
     regs.REG_SP -= len;
     align_stack(regs);
     auto addr = reinterpret_cast<uintptr_t *>(regs.REG_SP);
-    if (!write_proc(pid, addr, str, len)) {
+    if (write_proc(pid, addr, str, len) <= 0) {
         ZLOGE("failed to write string %s\n", str);
     }
     ZLOGD("pushed string %p\n", addr);
@@ -240,12 +240,12 @@ uintptr_t remote_call(int pid, struct user_regs_struct &regs, uintptr_t func_add
     if (args.size() > 6) {
         auto remain = (args.size() - 6) * sizeof(long);
         align_stack(regs, remain);
-        if (!write_proc(pid, (uintptr_t *) regs.REG_SP, args.data(), remain)) {
+        if (write_proc(pid, (uintptr_t *) regs.REG_SP, args.data(), remain) <= 0) {
             ZLOGE("failed to push arguments\n");
         }
     }
     regs.REG_SP -= sizeof(long);
-    if (!write_proc(pid, (uintptr_t *) regs.REG_SP, &return_addr, sizeof(return_addr))) {
+    if (write_proc(pid, (uintptr_t *) regs.REG_SP, &return_addr, sizeof(return_addr)) <= 0) {
         ZLOGE("failed to write return addr\n");
         return 0;
     }
@@ -254,13 +254,13 @@ uintptr_t remote_call(int pid, struct user_regs_struct &regs, uintptr_t func_add
     if (args.size() > 0) {
         auto remain = (args.size()) * sizeof(long);
         align_stack(regs, remain);
-        if (!write_proc(pid, (uintptr_t *)regs.REG_SP, args.data(), remain)) {
+        if (write_proc(pid, (uintptr_t *)regs.REG_SP, args.data(), remain) <= 0) {
             ZLOGE("failed to push arguments\n");
             return 0;
         }
     }
     regs.REG_SP -= sizeof(long);
-    if (!write_proc(pid, (uintptr_t*) regs.REG_SP, &return_addr, sizeof(return_addr))) {
+    if (write_proc(pid, (uintptr_t*) regs.REG_SP, &return_addr, sizeof(return_addr)) <= 0) {
         ZLOGE("failed to write return addr\n");
         return 0;
     }
@@ -272,7 +272,7 @@ uintptr_t remote_call(int pid, struct user_regs_struct &regs, uintptr_t func_add
     if (args.size() > 8) {
         auto remain = (args.size() - 8) * sizeof(long);
         align_stack(regs, remain);
-        if (!write_proc(pid, (uintptr_t *)regs.REG_SP, args.data(), remain)) {
+        if (write_proc(pid, (uintptr_t *)regs.REG_SP, args.data(), remain) <= 0) {
             ZLOGE("failed to push arguments\n");
             return 0;
         }
@@ -286,7 +286,7 @@ uintptr_t remote_call(int pid, struct user_regs_struct &regs, uintptr_t func_add
     if (args.size() > 4) {
         auto remain = (args.size() - 4) * sizeof(long);
         align_stack(regs, remain);
-        if (!write_proc(pid, (uintptr_t *)regs.REG_SP, args.data(), remain)) {
+        if (write_proc(pid, (uintptr_t *)regs.REG_SP, args.data(), remain) <= 0) {
             ZLOGE("failed to push arguments\n");
             return 0;
         }
