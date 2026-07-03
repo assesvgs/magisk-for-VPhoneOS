@@ -50,17 +50,23 @@ static bool inject_on_main(int pid, const char *lib_path) {
     if (!get_regs(pid, regs)) return false;
     auto arg = reinterpret_cast<uintptr_t *>(regs.REG_SP);
     ZLOGD("kernel argument %p %s\n", arg, get_addr_mem_region(map, arg).c_str());
-    int argc;
+    long argc = 0;
     auto argv = reinterpret_cast<char **>(reinterpret_cast<uintptr_t *>(arg) + 1);
     ZLOGD("argv %p\n", argv);
-    read_proc(pid, arg, &argc, sizeof(argc));
+    if (read_proc(pid, arg, &argc, sizeof(argc)) != sizeof(argc)) {
+        ZLOGE("failed to read argc\n");
+        return false;
+    }
+    ZLOGD("argc %ld\n", argc);
     ZLOGD("argc %d\n", argc);
     auto envp = argv + argc + 1;
     ZLOGD("envp %p\n", envp);
     auto p = envp;
-    while (true) {
-        uintptr_t *buf;
-        read_proc(pid, (uintptr_t *) p, &buf, sizeof(buf));
+    int envp_limit = 4096;
+    while (envp_limit-- > 0) {
+        uintptr_t *buf = nullptr;
+        if (read_proc(pid, (uintptr_t *) p, &buf, sizeof(buf)) != sizeof(buf))
+            break;
         if (buf != nullptr) ++p;
         else break;
     }
@@ -70,9 +76,11 @@ static bool inject_on_main(int pid, const char *lib_path) {
     auto v = auxv;
     void *entry_addr = nullptr;
     void *addr_of_entry_addr = nullptr;
-    while (true) {
-        ElfW(auxv_t) buf;
-        read_proc(pid, (uintptr_t *) v, &buf, sizeof(buf));
+    int auxv_limit = 512;
+    while (auxv_limit-- > 0) {
+        ElfW(auxv_t) buf = {};
+        if (read_proc(pid, (uintptr_t *) v, &buf, sizeof(buf)) != sizeof(buf))
+            break;
         if (buf.a_type == AT_ENTRY) {
             entry_addr = reinterpret_cast<void *>(buf.a_un.a_val);
             addr_of_entry_addr = reinterpret_cast<char *>(v) + offsetof(ElfW(auxv_t), a_un);
@@ -201,11 +209,11 @@ bool trace_zygote(int pid, const char *libpath) {
     }
     WAIT_OR_DIE
     if (STOPPED_WITH(SIGSTOP, PTRACE_EVENT_STOP)) {
-        char rstr[25] = { 0 };
+        char rstr[26] = { 0 };
         ssprintf(rstr, sizeof(rstr), "/dev/");
 
         do {
-            gen_rand_str(rstr + 5, sizeof(rstr) - 5);
+            gen_rand_str(rstr + 5, sizeof(rstr) - 6);
         } while (access(rstr, F_OK) == 0);
         close(xopen(rstr, O_RDONLY | O_CREAT | O_CLOEXEC, 0));
         xmount(libpath, rstr, nullptr, MS_BIND, nullptr);

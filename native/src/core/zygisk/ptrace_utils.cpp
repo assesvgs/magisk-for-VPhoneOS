@@ -77,7 +77,8 @@ ssize_t write_proc(int pid, uintptr_t *remote_addr, const void *buf, size_t len)
     if (l == -1) {
         PLOGE("process_vm_writev");
     } else if (l != len) {
-        ZLOGW("not fully written: %zu, excepted %zu\n", l, len);
+        ZLOGW("not fully written: %zu, expected %zu\n", l, len);
+        l = -1;
     }
     return l;
 }
@@ -95,7 +96,8 @@ ssize_t read_proc(int pid, uintptr_t *remote_addr, void *buf, size_t len) {
     if (l == -1) {
         PLOGE("process_vm_readv");
     } else if (l != len) {
-        ZLOGW("not fully read: %zu, excepted %zu\n", l, len);
+        ZLOGW("not fully read: %zu, expected %zu\n", l, len);
+        l = -1;
     }
     return l;
 }
@@ -222,6 +224,7 @@ void *push_string(int pid, struct user_regs_struct &regs, const char *str) {
 
 uintptr_t remote_call(int pid, struct user_regs_struct &regs, uintptr_t func_addr, uintptr_t return_addr,
                  std::vector<long> &args) {
+    auto backup = regs;
     align_stack(regs);
     ZLOGD("call %zu args\n", args.size());
     for (auto &a: args) {
@@ -304,7 +307,12 @@ uintptr_t remote_call(int pid, struct user_regs_struct &regs, uintptr_t func_add
     }
     ptrace(PTRACE_CONT, pid, 0, 0);
     int status;
-    if (!wait_for_trace(pid, &status, __WALL)) return 0;
+    if (!wait_for_trace(pid, &status, __WALL)) {
+        set_regs(pid, backup);
+        ptrace(PTRACE_DETACH, pid, 0, 0);
+        kill(pid, SIGKILL);
+        return 0;
+    }
     if (!get_regs(pid, regs)) {
         ZLOGE("failed to get regs after call\n");
         return 0;
