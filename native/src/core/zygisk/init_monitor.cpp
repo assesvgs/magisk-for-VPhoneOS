@@ -132,7 +132,10 @@ extern "C" void *init_monitor(void *) {
                 if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP &&
                     WEVENT(status) == PTRACE_EVENT_FORK) {
                     long child_pid;
-                    ptrace(PTRACE_GETEVENTMSG, pid, 0, &child_pid);
+                    if (ptrace(PTRACE_GETEVENTMSG, pid, 0, &child_pid) == -1) {
+                        PLOGE("PTRACE_GETEVENTMSG");
+                        child_pid = -1;
+                    }
                     LOGD("zygisk: init forked %ld\n", child_pid);
                 }
                 if (WIFSTOPPED(status)) {
@@ -146,7 +149,12 @@ extern "C" void *init_monitor(void *) {
             if (state == process.end()) {
                 LOGD("zygisk: attached pid=%d\n", pid);
                 process.emplace(pid);
-                ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACEEXEC);
+                if (ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACEEXEC) == -1) {
+                    PLOGE("PTRACE_SETOPTIONS");
+                    process.erase(pid);
+                    ptrace(PTRACE_DETACH, pid, 0, 0);
+                    continue;
+                }
                 ptrace(PTRACE_CONT, pid, 0, 0);
                 continue;
             }

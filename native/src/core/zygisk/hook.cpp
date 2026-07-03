@@ -357,6 +357,8 @@ bool HookContext::plt_hook_commit() {
     {
         mutex_guard lock(hook_info_lock);
         plt_hook_process_regex();
+        for (auto &reg : register_info) regfree(&reg.regex);
+        for (auto &ign : ignore_info) regfree(&ign.regex);
         register_info.clear();
         ignore_info.clear();
     }
@@ -508,6 +510,7 @@ void HookContext::sanitize_fds() {
 }
 
 void HookContext::run_modules_pre(const vector<int> &fds) {
+    modules.reserve(modules.size() + fds.size());
     for (int i = 0; i < fds.size(); ++i) {
         struct stat s{};
         if (fstat(fds[i], &s) != 0 || !S_ISREG(s.st_mode)) {

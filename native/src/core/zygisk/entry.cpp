@@ -224,8 +224,17 @@ static void mount_magisk_to_remote(int client, const sock_cred *cred) {
 
 static int get_clean_ns(pid_t pid) {
     int pipe_fd[2];
-    pipe(pipe_fd);
+    if (pipe(pipe_fd) == -1) {
+        PLOGE("pipe");
+        return -1;
+    }
     int child = xfork();
+    if (child == -1) {
+        PLOGE("xfork");
+        close(pipe_fd[0]);
+        close(pipe_fd[1]);
+        return -1;
+    }
     if (!child) {
         switch_mnt_ns(pid);
         xunshare(CLONE_NEWNS);
