@@ -53,7 +53,6 @@ static void inject_zygote(int pid) {
 
     if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP && (status >> 16) == 0) {
         ptrace(PTRACE_DETACH, pid, 0, SIGSTOP);
-        status = 0;
         auto p = fork_dont_care();
         if (p == 0) {
             execl(tracer.c_str(), "", "zygisk", "trace_zygote",

@@ -100,8 +100,7 @@ static bool inject_on_main(int pid, const char *lib_path) {
     ptrace(PTRACE_CONT, pid, 0, 0);
     int status;
     if (!wait_for_trace(pid, &status, __WALL)) {
-        if (write_proc(pid, (uintptr_t *) addr_of_entry_addr, &entry_addr, sizeof(entry_addr)) <= 0)
-            return false;
+        write_proc(pid, (uintptr_t *) addr_of_entry_addr, &entry_addr, sizeof(entry_addr));
         return false;
     }
     if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSEGV) {

@@ -437,7 +437,8 @@ void HookContext::fork_pre() {
     auto dir = xopen_dir("/proc/self/fd");
     for (dirent *entry; (entry = xreaddir(dir.get()));) {
         int fd = parse_int(entry->d_name);
-        if (fd < 0 || fd >= MAX_FD_SIZE) {
+        if (fd < 0) continue;
+        if (fd >= MAX_FD_SIZE) {
             close(fd);
             continue;
         }
@@ -536,8 +537,9 @@ void HookContext::run_modules_pre(const vector<int> &fds) {
             if (strstr(info.path.data(), "/memfd:jit-zygisk-cache") == nullptr &&
                 strstr(info.path.data(), "/modules/") == nullptr)
                 continue;
-            ZLOGD("hide_remap: addr=[%p-%p]\n", 
-                info.start, info.end, info.dev, info.inode, info.path.data());
+            ZLOGD("hide_remap: addr=[%p-%p] dev=%lu ino=%lu path=%s\n", 
+                reinterpret_cast<void *>(info.start), reinterpret_cast<void *>(info.end),
+                info.dev, info.inode, info.path.data());
             void *addr = reinterpret_cast<void *>(info.start);
             size_t size = info.end - info.start;
             void *copy = mmap(nullptr, size, PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
@@ -546,10 +548,18 @@ void HookContext::run_modules_pre(const vector<int> &fds) {
                 return;
             }
             if ((info.perms & PROT_READ) == 0) {
-                mprotect(addr, size, PROT_READ);
+                if (mprotect(addr, size, PROT_READ) == -1) {
+                    LOGE("mprotect failed: %d\n", errno);
+                    munmap(copy, size);
+                    return;
+                }
             }
             memcpy(copy, addr, size);
-            mremap(copy, size, size, MREMAP_MAYMOVE | MREMAP_FIXED, addr);
+            if (mremap(copy, size, size, MREMAP_MAYMOVE | MREMAP_FIXED, addr) == MAP_FAILED) {
+                LOGE("mremap failed: %d\n", errno);
+                munmap(copy, size);
+                return;
+            }
             mprotect(addr, size, info.perms);
         }
     }

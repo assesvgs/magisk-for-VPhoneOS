@@ -242,6 +242,7 @@ uintptr_t remote_call(int pid, struct user_regs_struct &regs, uintptr_t func_add
         align_stack(regs, remain);
         if (write_proc(pid, (uintptr_t *) regs.REG_SP, args.data(), remain) <= 0) {
             ZLOGE("failed to push arguments\n");
+            return 0;
         }
     }
     regs.REG_SP -= sizeof(long);

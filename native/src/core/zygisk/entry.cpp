@@ -114,7 +114,10 @@ static void connect_companion(int client, bool is_64_bit) {
     }
     if (zygiskd_socket < 0) {
         int fds[2];
-        socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds);
+        if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds) == -1) {
+            PLOGE("socketpair");
+            return;
+        }
         zygiskd_socket = fds[0];
         if (fork_dont_care() == 0) {
             char exe[64];
