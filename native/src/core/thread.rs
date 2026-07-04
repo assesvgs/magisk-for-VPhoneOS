@@ -85,7 +85,11 @@ impl ThreadPool {
                 0_usize
             };
             unsafe {
-                new_daemon_thread(pool_loop_raw, is_core_thread);
+                if new_daemon_thread(pool_loop_raw, is_core_thread) != 0 {
+                    info.total_threads -= 1;
+                    info.task.take();
+                    warn!("failed to create daemon thread");
+                }
             }
         } else {
             self.task_is_some.notify_one();

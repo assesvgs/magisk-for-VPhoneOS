@@ -79,5 +79,5 @@ mod ffi {
 // signature of all *mut c_void to usize for new_daemon_thread.
 pub type ThreadEntry = extern "C" fn(usize) -> usize;
 unsafe extern "C" {
-    pub fn new_daemon_thread(entry: ThreadEntry, arg: usize);
+    pub fn new_daemon_thread(entry: ThreadEntry, arg: usize) -> i32;
 }

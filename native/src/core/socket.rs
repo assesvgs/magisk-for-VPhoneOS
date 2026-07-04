@@ -215,6 +215,7 @@ impl UnixSocketExt for UnixStream {
 }
 
 pub fn send_fd(socket: RawFd, fd: RawFd) -> bool {
+    if socket < 0 { return false; }
     let mut socket = ManuallyDrop::new(unsafe { UnixStream::from_raw_fd(socket) });
     if fd < 0 {
         socket.send_fds(&[]).log().is_ok()
@@ -224,6 +225,7 @@ pub fn send_fd(socket: RawFd, fd: RawFd) -> bool {
 }
 
 pub fn recv_fd(socket: RawFd) -> RawFd {
+    if socket < 0 { return -1; }
     let mut socket = ManuallyDrop::new(unsafe { UnixStream::from_raw_fd(socket) });
     socket
         .recv_fd()
@@ -233,6 +235,7 @@ pub fn recv_fd(socket: RawFd) -> RawFd {
 }
 
 pub fn recv_fds(socket: RawFd) -> Vec<RawFd> {
+    if socket < 0 { return Vec::new(); }
     let mut socket = ManuallyDrop::new(unsafe { UnixStream::from_raw_fd(socket) });
     let fds = socket.recv_fds().log().unwrap_or(Vec::new());
     fds.into_iter().map(|fd| fd.into_raw_fd()).collect()
