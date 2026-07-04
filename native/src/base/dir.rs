@@ -439,7 +439,7 @@ impl TryFrom<OwnedFd> for Directory {
             unsafe { libc::close(raw) };
             return Err(e);
         }
-        Ok(Directory { inner: dirp })
+        Ok(Directory { inner: unsafe { NonNull::new_unchecked(dirp) } })
     }
 }
 
