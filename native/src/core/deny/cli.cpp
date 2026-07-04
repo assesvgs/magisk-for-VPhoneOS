@@ -144,9 +144,9 @@ int denylist_cli(rust::Vec<rust::String> &args) {
     // Send request
     int fd = connect_daemon(RequestCode::DENYLIST);
     write_int(fd, req);
-    if (req == DenyRequest::ADD || req == DenyRequest::REMOVE) {
+    if ((req == DenyRequest::ADD || req == DenyRequest::REMOVE) && argc >= 2) {
         write_string(fd, argv[1]);
-        write_string(fd, argv[2] ? argv[2] : "");
+        write_string(fd, argc >= 3 && argv[2] ? argv[2] : "");
     }
 
     // Get response
@@ -187,7 +187,7 @@ int denylist_cli(rust::Vec<rust::String> &args) {
     case DenyResponse::OK:
         break;
     default:
-        __builtin_unreachable();
+        return -1;
     }
 
     if (req == DenyRequest::LIST) {

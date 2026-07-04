@@ -42,8 +42,8 @@ bool is_rootfs()
 #define TST_TMPFS_MAGIC    0x01021994
 #define TST_OVERLAYFS_MAGIC 0x794c7630
     const char *path= "/";
-    struct statfs s;
-    statfs(path, &s);
+    struct statfs s{};
+    if (statfs(path, &s) != 0) return false;
 
     switch (s.f_type) {
     case TST_TMPFS_MAGIC:
@@ -211,8 +211,10 @@ void do_mount_magisk(int pid) {
 void mount_magisk_to_pid(int pid) {
     if (fork_dont_care() == 0) {
         do_mount_magisk(pid);
-        // send resume signal
-        kill(pid, SIGCONT);
+        // Verify PID still exists before sending resume signal
+        if (kill(pid, 0) == 0) {
+            kill(pid, SIGCONT);
+        }
         _exit(0);
     }
 }
@@ -223,8 +225,9 @@ void revert_daemon(int pid, int client) {
         if (client >= 0) {
             write_int(client, DenyResponse::OK);
         } else if (client < 0) {
-            // Sulist 禁用或无 client 路径：发送 resume 信号
-            kill(pid, SIGCONT);
+            if (kill(pid, 0) == 0) {
+                kill(pid, SIGCONT);
+            }
         }
         _exit(0);
     }

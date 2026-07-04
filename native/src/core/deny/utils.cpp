@@ -85,11 +85,9 @@ static void update_app_id(int app_id, const string &pkg, bool remove) {
     }
 }
 
-// Leave /proc fd opened as we're going to read from it repeatedly
-static DIR *procfp;
-
 void crawl_procfs(const std::function<bool(int)> &fn) {
-    rewinddir(procfp);
+    DIR *procfp = opendir("/proc");
+    if (!procfp) return;
     dirent *dp;
     int pid;
     while ((dp = readdir(procfp))) {
@@ -97,6 +95,7 @@ void crawl_procfs(const std::function<bool(int)> &fn) {
         if (pid > 0 && !fn(pid))
             break;
     }
+    closedir(procfp);
 }
 
 static bool str_eql(string_view a, string_view b) { return a == b; }
@@ -338,6 +337,7 @@ void ls_list(int client) {
         mutex_guard lock(data_lock);
         if (!ensure_data()) {
             write_int(client, static_cast<int>(DenyResponse::ERROR));
+            close(client);
             return;
         }
 

@@ -384,6 +384,7 @@ static int check_pid(int pid) {
 
     LOGI("proc_monitor: [%s] PID=[%d] UID=[%d]\n", cmdline, pid, uid);
     detach_pid(pid);
+    if (kill(pid, 0) == -1 && errno == ESRCH) return 0;
     kill(pid, SIGSTOP);
 
     {
