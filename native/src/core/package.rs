@@ -156,7 +156,7 @@ fn find_apk_path(pkg: &str) -> LoggedResult<Utf8CString> {
             return Ok(Skip);
         }
         let name_bytes = e.name().as_bytes();
-        if name_bytes.starts_with(pkg.as_bytes()) && name_bytes[pkg.len()] == b'-' {
+        if name_bytes.starts_with(pkg.as_bytes()) && name_bytes.get(pkg.len()) == Some(&b'-') {
             // Found the APK path, we can abort now
             e.resolve_path(&mut buf)?;
             return Ok(Abort);

@@ -68,6 +68,7 @@ void enable_mount_su() {
     if (su_bin_fd < 0) {
         LOGI("* Mount MagiskSU\n");
         su_bin_fd = mount_su();
+        if (su_bin_fd < 0) return;
 
         char buf[128];
         ssprintf(buf, sizeof(buf), "/proc/self/fd/%d", su_bin_fd);

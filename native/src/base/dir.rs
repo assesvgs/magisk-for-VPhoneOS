@@ -432,8 +432,12 @@ impl TryFrom<OwnedFd> for Directory {
     type Error = OsError<'static>;
 
     fn try_from(fd: OwnedFd) -> OsResult<'static, Self> {
-        let dirp = unsafe { libc::fdopendir(fd.into_raw_fd()) };
-        let dirp = dirp.into_os_result("fdopendir", None, None)?;
+        let raw = fd.into_raw_fd();
+        let dirp = unsafe { libc::fdopendir(raw) };
+        if dirp.is_null() {
+            unsafe { libc::close(raw) };
+            return unsafe { Err(OsError::last_os_error("fdopendir")) };
+        }
         Ok(Directory { inner: dirp })
     }
 }

@@ -249,6 +249,9 @@ impl Utf8CStr {
 
     #[allow(clippy::unnecessary_cast)]
     pub fn read_link(&self, buf: &mut dyn Utf8CStrBuf) -> OsResult<'_, ()> {
+        if buf.capacity() == 0 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "buffer too small").into());
+        }
         buf.clear();
         unsafe {
             let r = libc::readlink(self.as_ptr(), buf.as_mut_ptr(), buf.capacity() - 1)

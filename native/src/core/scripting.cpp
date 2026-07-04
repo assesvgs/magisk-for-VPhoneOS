@@ -23,7 +23,9 @@ static const char *bbpath() {
 static void set_script_env() {
     setenv("ASH_STANDALONE", "1", 1);
     char new_path[4096];
-    ssprintf(new_path, sizeof(new_path), "%s:%s", getenv("PATH"), get_magisk_tmp());
+    const char *path = getenv("PATH");
+    if (!path) path = "";
+    ssprintf(new_path, sizeof(new_path), "%s:%s", path, get_magisk_tmp());
     setenv("PATH", new_path, 1);
 
 };

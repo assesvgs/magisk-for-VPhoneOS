@@ -90,9 +90,9 @@ unsafe extern "C" {
 struct SysProp {
     set: unsafe extern "C" fn(CharPtr, CharPtr) -> i32,
     find: unsafe extern "C" fn(CharPtr) -> Option<&'static PropInfo>,
-    read_callback: unsafe extern "C" fn(&PropInfo, ReadCallback, &mut PropReader) -> i32,
+    read_callback: unsafe extern "C" fn(&PropInfo, ReadCallback, &mut PropReader),
     foreach: unsafe extern "C" fn(ForEachCallback, &mut PropReader) -> i32,
-    wait: unsafe extern "C" fn(Option<&PropInfo>, u32, &mut u32, *const timespec) -> i32,
+    wait: unsafe extern "C" fn(Option<&PropInfo>, u32, &mut u32, *const timespec) -> bool,
 }
 
 // Safe abstractions over raw C APIs
