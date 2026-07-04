@@ -314,7 +314,10 @@ impl MagiskD {
             }
             writer.write_encodable(&out).log_ok();
         };
-        self.db_exec_with_rows(&sql, &[], &mut output_fn);
+        let rc = self.db_exec_with_rows(&sql, &[], &mut output_fn);
+        if rc != 0 {
+            writer.write_encodable(&format!("ERROR: sqlite3 error {rc}")).log_ok();
+        }
         writer.write_encodable("").log()
     }
 }
@@ -334,11 +337,10 @@ unsafe extern "C" fn sql_exec_for_cxx(
     exec_cookie: *mut c_void,
 ) -> i32 {
     unsafe {
-        let daemon = MAGISKD.get();
-        if daemon.is_none() {
+        let Some(daemon) = MAGISKD.get() else {
             return -1;
-        }
-        daemon.unwrap_unchecked().with_db(|db| {
+        };
+        daemon.with_db(|db| {
             sql_exec_impl(
                 db,
                 sql,

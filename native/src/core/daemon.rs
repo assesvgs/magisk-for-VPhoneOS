@@ -70,7 +70,7 @@ pub struct MagiskD {
 
 impl MagiskD {
     pub fn get() -> &'static MagiskD {
-        unsafe { MAGISKD.get().unwrap_unchecked() }
+        MAGISKD.get().expect("MagiskD not initialized")
     }
 
     pub fn sdk_int(&self) -> i32 {
@@ -187,13 +187,16 @@ impl MagiskD {
         let mut context = cstr::buf::new::<256>();
         unsafe {
             let mut len: libc::socklen_t = context.capacity().as_();
-            libc::getsockopt(
+            if libc::getsockopt(
                 client.as_raw_fd(),
                 libc::SOL_SOCKET,
                 libc::SO_PEERSEC,
                 context.as_mut_ptr().cast(),
                 &mut len,
-            );
+            ) != 0
+            {
+                return;
+            }
         }
         context.rebuild().ok();
 
@@ -375,7 +378,6 @@ fn daemon_entry() {
     // Remount rootfs as read-only if requested
     if std::env::var_os("REMOUNT_ROOT").is_some() {
         cstr!("/").remount_mount_flags(MsFlags::MS_RDONLY).log_ok();
-        unsafe { std::env::remove_var("REMOUNT_ROOT") };
     }
 
     // Remove all pre-init overlay files to free-up memory
