@@ -103,8 +103,15 @@ pub fn zygisk_get_logd() -> i32 {
     let fd = unsafe { libc::open(log_pipe.as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
     if fd < 0 { return -1; }
     let file = unsafe { File::from_raw_fd(fd) };
+    // Re-acquire lock; another thread may have initialized in the window
     let mut guard = ZYGISK_LOGD.lock().unwrap();
-    *guard = Some((file, fd));
+    if guard.is_none() {
+        *guard = Some((file, fd));
+    } else {
+        drop(file);
+        let (_, existing_fd) = guard.as_ref().unwrap();
+        return *existing_fd;
+    }
     fd
 }
 

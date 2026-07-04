@@ -58,7 +58,6 @@ static bool inject_on_main(int pid, const char *lib_path) {
         return false;
     }
     ZLOGD("argc %ld\n", argc);
-    ZLOGD("argc %d\n", argc);
     auto envp = argv + argc + 1;
     ZLOGD("envp %p\n", envp);
     auto p = envp;
@@ -151,8 +150,11 @@ static bool inject_on_main(int pid, const char *lib_path) {
             if (dlerror_len <= 0) return false;
             std::string err;
             err.resize(dlerror_len + 1, 0);
-            read_proc(pid, (uintptr_t*) dlerror_str_addr, err.data(), dlerror_len);
-            ZLOGE("dlerror info %s\n", err.c_str());
+            if (read_proc(pid, (uintptr_t*) dlerror_str_addr, err.data(), dlerror_len) != dlerror_len) {
+                ZLOGE("failed to read dlerror string\n");
+            } else {
+                ZLOGE("dlerror info %s\n", err.c_str());
+            }
             return false;
         }
 
