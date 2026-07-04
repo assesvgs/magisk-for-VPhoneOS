@@ -368,9 +368,6 @@ int enable_deny() {
             return DenyResponse::NO_NS;
         }
 
-        if (procfp == nullptr && (procfp = opendir("/proc")) == nullptr)
-            return DenyResponse::ERROR;
-
         LOGI("* Enable MagiskHide\n");
 
         if (!ensure_data())
