@@ -318,7 +318,7 @@ fn zygisk_main(subcmd: &str, args: &[String]) -> i32 {
             if let Ok(fd) = fd_str.parse::<i32>() {
                 if fd >= 0 {
                     // 路由到 C++ zygiskd() 进行模块伴侣加载（android_dlopen_ext）
-                    unsafe { crate::ffi::zygiskd_companion_entry(fd); }
+                    crate::ffi::zygiskd_companion_entry(fd);
                     return 0;
                 }
             }
@@ -326,7 +326,7 @@ fn zygisk_main(subcmd: &str, args: &[String]) -> i32 {
     } else if subcmd == "trace_zygote" && args.len() >= 2 {
         let pid: i32 = args[0].parse().unwrap_or(-1);
         if pid > 0 {
-            if unsafe { crate::ffi::trace_zygote(pid, &args[1]) } {
+            if crate::ffi::trace_zygote(pid, &args[1]) {
                 return 0;
             }
             unsafe { libc::kill(pid, libc::SIGKILL); }

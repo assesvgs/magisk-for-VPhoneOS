@@ -84,18 +84,16 @@ pub fn zygisk_logging() {
 }
 
 pub fn zygisk_close_logd() {
-    let _ = ZYGISK_LOGD.lock().unwrap().take();
+    let _ = ZYGISK_LOGD.lock().take();
 }
 
 pub fn zygisk_get_logd() -> i32 {
-    // Fast path: check outside lock first
     {
-        let guard = ZYGISK_LOGD.lock().unwrap();
+        let guard = ZYGISK_LOGD.lock();
         if let Some((_, fd)) = *guard {
             return fd;
         }
     }
-    // Lock released before zygisk_logging(), avoiding reentrant deadlock
     zygisk_logging();
     let log_pipe = cstr::buf::default()
         .join_path(get_magisk_tmp())
@@ -103,20 +101,19 @@ pub fn zygisk_get_logd() -> i32 {
     let fd = unsafe { libc::open(log_pipe.as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
     if fd < 0 { return -1; }
     let file = unsafe { File::from_raw_fd(fd) };
-    // Re-acquire lock; another thread may have initialized in the window
-    let mut guard = ZYGISK_LOGD.lock().unwrap();
+    let mut guard = ZYGISK_LOGD.lock();
     if guard.is_none() {
         *guard = Some((file, fd));
+        fd
     } else {
         drop(file);
         let (_, existing_fd) = guard.as_ref().unwrap();
-        return *existing_fd;
+        *existing_fd
     }
-    fd
 }
 
 fn zygisk_log_to_pipe(prio: i32, msg: &Utf8CStr) {
-    let guard = ZYGISK_LOGD.lock().unwrap();
+    let guard = ZYGISK_LOGD.lock();
     if let Some((ref file, _)) = *guard {
         let _ = write_log_to_pipe(file, prio, msg);
     }
