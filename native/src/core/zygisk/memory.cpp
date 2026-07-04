@@ -24,16 +24,16 @@ static uint8_t *alloc_area() {
     return static_cast<uint8_t *>(p);
 }
 
+static std::atomic<uint8_t *> _area = nullptr;
 static std::atomic<uint8_t *> _curr = nullptr;
 
 void *memory_block::allocate(size_t sz) {
-    static uint8_t *const area = alloc_area();
-    if (!area) return nullptr;
-
-    uint8_t *old = _curr.load(std::memory_order_relaxed);
-    if (!old) {
+    uint8_t *area = _area.load(std::memory_order_acquire);
+    if (!area) {
+        area = alloc_area();
+        if (!area) return nullptr;
+        _area.store(area, std::memory_order_release);
         _curr.store(area, std::memory_order_release);
-        old = area;
     }
 
     size_t aligned = align_to(sz, ALIGN);
@@ -47,10 +47,10 @@ void *memory_block::allocate(size_t sz) {
 }
 
 void memory_block::release() {
-    uint8_t *area = _curr.load();
+    uint8_t *area = _area.exchange(nullptr);
     if (area) {
-        munmap(area, CAPACITY);
         _curr = nullptr;
+        munmap(area, CAPACITY);
     }
 }
 
