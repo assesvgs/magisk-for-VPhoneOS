@@ -222,11 +222,8 @@ void revert_daemon(int pid, int client) {
         revert_unmount(pid);
         if (client >= 0) {
             write_int(client, DenyResponse::OK);
-        } else if (client == -1) {
-            // send resume signal
-            kill(pid, SIGCONT);
-        } else if (client == -2) {
-            // Sulist 禁用路径：发送 resume 信号
+        } else if (client < 0) {
+            // Sulist 禁用或无 client 路径：发送 resume 信号
             kill(pid, SIGCONT);
         }
         _exit(0);
