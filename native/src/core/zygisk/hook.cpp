@@ -510,7 +510,6 @@ void HookContext::sanitize_fds() {
 }
 
 void HookContext::run_modules_pre(const vector<int> &fds) {
-    modules.reserve(modules.size() + fds.size());
     for (int i = 0; i < fds.size(); ++i) {
         struct stat s{};
         if (fstat(fds[i], &s) != 0 || !S_ISREG(s.st_mode)) {
