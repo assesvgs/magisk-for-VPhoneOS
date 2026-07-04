@@ -5,7 +5,7 @@ use crate::mount::setup_module_mount;
 use crate::resetprop::load_prop_file;
 use base::{
     DirEntry, Directory, FsPathBuilder, LoggedResult, OsResult, ResultExt, SilentLogExt, Utf8CStr,
-    Utf8CStrBuf, Utf8CString, WalkResult, clone_attr, cstr, debug, error, info, warn,
+    Utf8CStrBuf, Utf8CString, WalkResult, clone_attr, cstr, debug, error, info, libc, warn,
 };
 use nix::fcntl::OFlag;
 use nix::mount::MsFlags;
