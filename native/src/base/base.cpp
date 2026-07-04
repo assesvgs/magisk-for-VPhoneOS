@@ -42,7 +42,8 @@ rust::Vec<size_t> byte_data::patch(byte_view from, byte_view to) const {
         if (p == nullptr)
             return v;
         memset(p, 0, from.size());
-        memcpy(p, to.data(), to.size());
+        size_t copy_size = std::min(to.size(), static_cast<size_t>(eof - p));
+        memcpy(p, to.data(), copy_size);
         v.push_back(p - ptr);
         p += from.size();
     }
@@ -189,7 +190,7 @@ uint32_t parse_uint32_hex(string_view s) {
 int switch_mnt_ns(int pid) {
     int ret = -1;
     int fd = syscall(__NR_pidfd_open, pid, 0);
-    if (fd > 0) {
+    if (fd >= 0) {
         ret = setns(fd, CLONE_NEWNS);
         close(fd);
     }
@@ -347,8 +348,9 @@ void write_zero(int fd, size_t size) {
     size_t len;
     while (size > 0) {
         len = sizeof(buf) > size ? size : sizeof(buf);
-        write(fd, buf, len);
-        size -= len;
+        ssize_t written = write(fd, buf, len);
+        if (written <= 0) break;
+        size -= written;
     }
 }
 

@@ -253,6 +253,9 @@ impl<'a> Utf8CStrBufRef<'a> {
 
 impl<'a> From<&'a mut [u8]> for Utf8CStrBufRef<'a> {
     fn from(buf: &'a mut [u8]) -> Utf8CStrBufRef<'a> {
+        if buf.is_empty() {
+            return Utf8CStrBufRef { used: 0, buf };
+        }
         buf[0] = b'\0';
         Utf8CStrBufRef { used: 0, buf }
     }
