@@ -6,7 +6,7 @@
 #include <string>
 #include <set>
 #include <map>
-#include <bitset>
+#include <unordered_map>
 #include <string>
 #include <cinttypes>
 #include <poll.h>
@@ -39,6 +39,7 @@ static inline long xptrace(int request, pid_t pid, void *addr, uintptr_t data) {
 pthread_t monitor_thread;
 static int inotify_fd = -1;
 static int data_system_wd = -1;
+static volatile sig_atomic_t check_zygote_pending = 0;
 
 static int parse_ppid(int pid);
 static bool check_process(int pid, const char *process = 0, const char *context = 0, const char *exe = 0);
@@ -49,24 +50,13 @@ static void new_zygote(int pid);
  * Data structures
  ******************/
 
-#define PID_MAX 32768
-struct pid_set {
-    bitset<PID_MAX>::const_reference operator[](size_t pos) const { return set[pos - 1]; }
-    bitset<PID_MAX>::reference operator[](size_t pos) { return set[pos - 1]; }
-    void reset() { set.reset(); }
-private:
-    bitset<PID_MAX> set;
-};
-
 // zygote pid -> mnt ns
 static map<int, struct stat> zygote_map;
 
-// attaches set
-static pid_set attaches;
-
-// other set
-static pid_set allowed;
-static pid_set checked;
+// PID tracking sets (using hashmap to avoid stack-allocated bitset bounds)
+static unordered_map<int, bool> attaches;
+static unordered_map<int, bool> allowed;
+static unordered_map<int, bool> checked;
 
 /********
  * Utils
@@ -324,11 +314,12 @@ static void inotify_event(int) {
 static void term_thread(int) {
     LOGD("proc_monitor: cleaning up\n");
     zygote_map.clear();
-    attaches.reset();
-    checked.reset();
-    allowed.reset();
-    close(inotify_fd);
+    attaches.clear();
+    checked.clear();
+    allowed.clear();
+    int old_fd = inotify_fd;
     inotify_fd = -1;
+    close(old_fd);
     monitor_thread = -1;
     // Restore all signal handlers that was set
     sigset_t set;
@@ -463,9 +454,9 @@ void proc_monitor() {
 
     // Reset cached result
     zygote_map.clear();
-    attaches.reset();
-    checked.reset();
-    allowed.reset();
+    attaches.clear();
+    checked.clear();
+    allowed.clear();
 
     // Backup original mask
     sigset_t orig_mask;
@@ -492,8 +483,9 @@ void proc_monitor() {
     sigaction(SIGTERMTHRD, & act, nullptr);
     act.sa_handler = inotify_event;
     sigaction(SIGIO, & act, nullptr);
+    check_zygote_pending = 0;
     act.sa_handler = [](int) {
-        check_zygote();
+        check_zygote_pending = 1;
     };
     sigaction(SIGALRM, & act, nullptr);
 
@@ -518,6 +510,11 @@ void proc_monitor() {
         const int pid = waitpid(-1, & status, __WALL | __WNOTHREAD);
         if (pid < 0) {
             if (errno == ECHILD) {
+                // Check if a periodic scan was requested via signal
+                if (check_zygote_pending) {
+                    check_zygote_pending = 0;
+                    check_zygote();
+                }
                 // Nothing to wait yet, sleep and wait till signal interruption
                 LOGD("proc_monitor: nothing to monitor, wait for signal\n");
                 struct timespec ts = {
@@ -530,6 +527,11 @@ void proc_monitor() {
         }
 
         pthread_sigmask(SIG_SETMASK, & orig_mask, nullptr);
+
+        if (check_zygote_pending) {
+            check_zygote_pending = 0;
+            check_zygote();
+        }
 
         if (!WIFSTOPPED(status) /* Ignore if not ptrace-stop */ )
             DETACH_AND_CONT;
