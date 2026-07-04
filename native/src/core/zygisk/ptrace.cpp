@@ -47,7 +47,10 @@ static void gen_rand_str(char *buf, size_t len) {
 static bool inject_on_main(int pid, const char *lib_path) {
     struct user_regs_struct regs{}, backup{};
     auto map = Scan_proc(std::to_string(pid));
-    if (!get_regs(pid, regs)) return false;
+    if (!get_regs(pid, regs)) {
+        ZLOGD("inject: get_regs failed\n");
+        return false;
+    }
     auto arg = reinterpret_cast<uintptr_t *>(regs.REG_SP);
     ZLOGD("kernel argument %p %s\n", arg, get_addr_mem_region(map, arg).c_str());
     long argc = 0;
@@ -96,21 +99,31 @@ static bool inject_on_main(int pid, const char *lib_path) {
     }
 
     uintptr_t break_addr = (-0x05ec1cff & ~1) | ((uintptr_t) entry_addr & 1);
-    if (write_proc(pid, (uintptr_t *) addr_of_entry_addr, &break_addr, sizeof(break_addr)) <= 0) return false;
+    if (write_proc(pid, (uintptr_t *) addr_of_entry_addr, &break_addr, sizeof(break_addr)) <= 0) {
+        ZLOGD("inject: write break_addr failed\n");
+        return false;
+    }
     ptrace(PTRACE_CONT, pid, 0, 0);
     int status;
     if (!wait_for_trace(pid, &status, __WALL)) {
+        ZLOGD("inject: wait_for_trace after breakpoint failed\n");
         write_proc(pid, (uintptr_t *) addr_of_entry_addr, &entry_addr, sizeof(entry_addr));
         return false;
     }
     if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSEGV) {
-        if (!get_regs(pid, regs)) return false;
+        if (!get_regs(pid, regs)) {
+            ZLOGD("inject: get_regs after SIGSEGV failed\n");
+            return false;
+        }
         if ((regs.REG_IP & ~1) != (break_addr & ~1)) {
             ZLOGE("stopped at unknown addr %p\n", (void *) regs.REG_IP);
             return false;
         }
         ZLOGD("stopped at entry\n");
-        if (write_proc(pid, (uintptr_t *) addr_of_entry_addr, &entry_addr, sizeof(entry_addr)) <= 0) return false;
+        if (write_proc(pid, (uintptr_t *) addr_of_entry_addr, &entry_addr, sizeof(entry_addr)) <= 0) {
+            ZLOGD("inject: restore entry_addr failed\n");
+            return false;
+        }
         memcpy(&backup, &regs, sizeof(regs));
         map = Scan_proc(std::to_string(pid));
         auto local_map = Scan_proc();
@@ -118,7 +131,10 @@ static bool inject_on_main(int pid, const char *lib_path) {
         ZLOGD("libc return addr %p\n", libc_return_addr);
 
         auto dlopen_addr = find_func_addr(local_map, map, "libdl.so", "dlopen");
-        if (dlopen_addr == nullptr) return false;
+        if (dlopen_addr == nullptr) {
+            ZLOGD("inject: dlopen not found\n");
+            return false;
+        }
         std::vector<long> args;
         auto str = push_string(pid, regs, lib_path);
         args.clear();
@@ -158,7 +174,10 @@ static bool inject_on_main(int pid, const char *lib_path) {
         }
 
         auto dlsym_addr = find_func_addr(local_map, map, "libdl.so", "dlsym");
-        if (dlsym_addr == nullptr) return false;
+        if (dlsym_addr == nullptr) {
+            ZLOGD("inject: dlsym not found\n");
+            return false;
+        }
         args.clear();
         str = push_string(pid, regs, "zygisk_inject_entry");
         args.push_back(remote_handle);
@@ -176,7 +195,10 @@ static bool inject_on_main(int pid, const char *lib_path) {
 
         backup.REG_IP = (long) entry_addr;
         ZLOGD("invoke entry\n");
-        if (!set_regs(pid, backup)) return false;
+        if (!set_regs(pid, backup)) {
+            ZLOGD("inject: set_regs failed\n");
+            return false;
+        }
         return true;
     } else {
         ZLOGE("stopped by other reason: %s\n", parse_status(status).c_str());
@@ -188,7 +210,12 @@ static bool inject_on_main(int pid, const char *lib_path) {
 
 bool trace_zygote(int pid, const char *libpath) {
     ZLOGI("start tracing %d\n", pid);
-#define WAIT_OR_DIE if (!wait_for_trace(pid, &status, __WALL)) { ptrace(PTRACE_DETACH, pid, 0, 0); return false; }
+#define WAIT_OR_DIE \
+    if (!wait_for_trace(pid, &status, __WALL)) { \
+        ZLOGD("trace: wait_for_trace failed (line %d)\n", __LINE__); \
+        ptrace(PTRACE_DETACH, pid, 0, 0); \
+        return false; \
+    }
 #define CONT_OR_DIE \
     if (ptrace(PTRACE_CONT, pid, 0, 0) == -1) { \
         PLOGE("cont"); \

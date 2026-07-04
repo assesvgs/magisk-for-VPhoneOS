@@ -324,6 +324,11 @@ fn zygisk_main(subcmd: &str, args: &[String]) -> i32 {
             }
         }
     } else if subcmd == "trace_zygote" && args.len() >= 2 {
+        // trace_zygote 运行在 execl'd 独立进程中，Rust Logger 默认空操作
+        // 启用 logcat 日志使所有 ZLOGE/PLOGE 输出到 AndroidLog.log.dec
+        // 使用 android_logging() 而非 kmsg：trace_zygote 运行时 logd 已就绪，
+        // __android_log_write 安全失败，复用现有 Rust FFI 日志链，与上游一致
+        crate::logging::android_logging();
         let pid: i32 = args[0].parse().unwrap_or(-1);
         if pid > 0 {
             if crate::ffi::trace_zygote(pid, &args[1]) {
