@@ -435,8 +435,9 @@ impl TryFrom<OwnedFd> for Directory {
         let raw = fd.into_raw_fd();
         let dirp = unsafe { libc::fdopendir(raw) };
         if dirp.is_null() {
+            let e = OsError::last_os_error("fdopendir", None, None);
             unsafe { libc::close(raw) };
-            return unsafe { Err(OsError::last_os_error("fdopendir")) };
+            return Err(e);
         }
         Ok(Directory { inner: dirp })
     }

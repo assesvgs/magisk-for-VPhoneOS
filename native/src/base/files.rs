@@ -250,7 +250,7 @@ impl Utf8CStr {
     #[allow(clippy::unnecessary_cast)]
     pub fn read_link(&self, buf: &mut dyn Utf8CStrBuf) -> OsResult<'_, ()> {
         if buf.capacity() == 0 {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "buffer too small").into());
+            return Err(OsError::new(Errno::EINVAL, "readlink", Some(self), None));
         }
         buf.clear();
         unsafe {
