@@ -383,8 +383,10 @@ static int check_pid(int pid) {
     }
 
     LOGI("proc_monitor: [%s] PID=[%d] UID=[%d]\n", cmdline, pid, uid);
-    detach_pid(pid);
+    // Check PID liveness before detach: kill(pid, 0) works even on ptrace-stopped processes.
+    // This avoids signaling a recycled PID between detach and SIGSTOP.
     if (kill(pid, 0) == -1 && errno == ESRCH) return 0;
+    detach_pid(pid);
     kill(pid, SIGSTOP);
 
     {
