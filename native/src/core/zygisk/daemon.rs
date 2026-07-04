@@ -30,7 +30,8 @@ impl ZygiskState {
         if let Some(s) = slot.as_ref() {
             let fd = s.as_raw_fd();
             let mut pfd = libc::pollfd { fd, events: 0, revents: 0 };
-            if unsafe { libc::poll(&mut pfd, 1, 0) } != 0 || pfd.revents != 0 {
+            let poll_ret = unsafe { libc::poll(&mut pfd, 1, 0) };
+            if poll_ret == -1 || pfd.revents != 0 {
                 *slot = None;
             }
         }
@@ -194,7 +195,7 @@ impl MagiskD {
         let module_list = self.module_list.get()?;
         Some(module_list.iter().map(|m| {
             let fd = if is_64_bit { m.z64 } else { m.z32 };
-            if fd < 0 { base::libc::STDOUT_FILENO } else { fd }
+            if fd < 0 { -1 } else { fd }
         }).collect())
     }
 

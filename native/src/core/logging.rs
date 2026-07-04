@@ -3,8 +3,8 @@ use crate::ffi::get_magisk_tmp;
 use crate::logging::LogFile::{Actual, Buffer};
 use base::const_format::concatcp;
 use base::{
-    FsPathBuilder, LogLevel, LoggedResult, ReadExt, ResultExt, Utf8CStr, Utf8CStrBuf, WriteExt,
-    cstr, libc, new_daemon_thread, raw_cstr, update_logger,
+    FsPathBuilder, LogLevel, LoggedResult, ReadExt, ResultExt, Utf8CStr, Utf8CStrBuf, Utf8CString,
+    WriteExt, cstr, libc, new_daemon_thread, raw_cstr, update_logger,
 };
 use bytemuck::{Pod, Zeroable, bytes_of, write_zeroes};
 use libc::{PIPE_BUF, c_char, localtime_r, time_t, tm};
@@ -88,12 +88,14 @@ pub fn zygisk_close_logd() {
 }
 
 pub fn zygisk_get_logd() -> i32 {
+    // Fast path: check outside lock first
     {
         let guard = ZYGISK_LOGD.lock();
         if let Some((_, fd)) = *guard {
             return fd;
         }
     }
+    // Lock released before zygisk_logging(), avoiding reentrant deadlock
     zygisk_logging();
     let log_pipe = cstr::buf::default()
         .join_path(get_magisk_tmp())
@@ -291,7 +293,7 @@ pub fn start_log_daemon() {
         0
     }
 
-    let _ = || -> LoggedResult<()> {
+    if let Err(e) = (|| -> LoggedResult<()> {
         path.mkfifo(0o666).log_ok();
         chown(path.as_utf8_cstr(), Some(Uid::from(0)), Some(Gid::from(0)))?;
         let read = path.open(OFlag::O_RDWR | OFlag::O_CLOEXEC)?;
@@ -301,5 +303,8 @@ pub fn start_log_daemon() {
             new_daemon_thread(logfile_writer_thread, read.into_raw_fd() as usize);
         }
         Ok(())
-    }();
+    })() {
+        let msg = Utf8CString::from(format!("start_log_daemon failed: {e}"));
+        android_log_write(LogLevel::Error, &msg);
+    }
 }
