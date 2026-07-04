@@ -2,7 +2,7 @@ use crate::consts::MODULEROOT;
 use crate::daemon::MagiskD;
 use crate::ffi::{ZygiskRequest, ZygiskStateFlags};
 use crate::socket::{IpcRead, IpcWrite, UnixSocketExt};
-use base::{Directory, FsPathBuilder, ResultExt, Utf8CStr, WriteExt, cstr, libc, raw_cstr, warn};
+use base::{Directory, FsPathBuilder, ResultExt, WriteExt, cstr, libc, raw_cstr, warn};
 use std::fmt::Write;
 use std::os::fd::AsRawFd;
 use std::os::unix::net::UnixStream;

@@ -183,7 +183,7 @@ impl MagiskD {
                     zygisk_link.as_ptr(),
                 ) } != 0
             {
-                log_err!("failed to create zygisk.so symlink");
+                error!("failed to create zygisk.so symlink");
             }
         }
 
