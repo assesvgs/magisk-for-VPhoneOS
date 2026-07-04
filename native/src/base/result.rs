@@ -14,7 +14,7 @@ use std::ptr::NonNull;
 //
 // To log an error with more information, use `ResultExt::log_with_msg()`.
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct LoggedError {}
 pub type LoggedResult<T> = Result<T, LoggedError>;
 

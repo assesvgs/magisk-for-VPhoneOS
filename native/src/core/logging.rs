@@ -304,7 +304,7 @@ pub fn start_log_daemon() {
         }
         Ok(())
     })() {
-        let msg = Utf8CString::from(format!("start_log_daemon failed: {e}"));
+        let msg = Utf8CString::from(format!("start_log_daemon failed: {e:?}"));
         android_log_write(LogLevel::Error, &msg);
     }
 }
