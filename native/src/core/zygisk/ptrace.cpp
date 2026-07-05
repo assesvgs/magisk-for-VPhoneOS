@@ -34,6 +34,9 @@ static void trace_log(const char *fmt, ...) {
     static int fd = -1;
     if (fd < 0) {
         fd = open("/cache/zygisk_trace.log", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+        if (fd < 0) {
+            fd = open("/data/local/tmp/zygisk_trace.log", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+        }
     }
     if (fd < 0) return;
     va_list ap;
@@ -248,6 +251,7 @@ static bool inject_on_main(int pid, const char *lib_path) {
 
 bool trace_zygote(int pid, const char *libpath) {
     ZLOGI("start tracing %d\n", pid);
+    TRACELOGW("trace: start tracing pid=%d\n", pid);
 #define WAIT_OR_DIE \
     if (!wait_for_trace(pid, &status, __WALL)) { \
         ZLOGD("trace: wait_for_trace failed (line %d)\n", __LINE__); \
