@@ -1003,3 +1003,154 @@ libdl.so    ← dlopen/dlsym
 
 **当前状态："在正常路径完美运行，异常路径有间接自愈保障。"**
 
+---
+
+## 14. 新增分析：Zygisk 移植对比与 3 次开机根因（追加于 2026-07-05，基于 commit `3d8daf2`）
+
+> 本节内容基于对 kokoro-no-kitsune-27001b、Magisk 30.7、本项目的三向对比分析。
+
+### 14.1 三项目 Zygisk 架构对比
+
+| 维度 | Magisk 30.7 | kokoro-no-kitsune | 本项目 |
+|------|------------|------------------|--------|
+| **注入方式** | NativeBridge（无 ptrace） | ptrace (proc_monitor) | ptrace (init_monitor) |
+| **守护进程** | Rust (daemon.rs) | C++ (main.cpp) | Rust (daemon.rs) — 同 30.7 |
+| **注入调度 (trace_zygote)** | 不存在 | C++ main.cpp | Rust magisk.rs |
+| **JNI hook** | NativeBridgeRuntimeCallbacks | env->functions 表替换 | env->functions 表替换 |
+| **模块 API 版本** | v1-v5 | v1-v4 | v1-v4 |
+| **错误处理哲学** | N/A | tracer exit → zygote 继续 | return false → SIGKILL zygote |
+
+### 14.2 关键差异：错误处理哲学
+
+这是最影响行为的差异，也是本项目 3 次开机问题的直接原因。
+
+**kokoro 的做法**（`ptrace_utils.cpp`）：
+```cpp
+// wait_for_trace 失败 → tracer 进程 exit(1)
+// zygote 继续运行（不带 Zygisk）
+void wait_for_trace(int pid, int* status, int flags) {
+    while (true) {
+        auto result = waitpid(pid, status, flags);
+        if (result == -1) {
+            if (errno == EINTR) continue;
+            PLOGE("wait %d failed", pid);
+            exit(1);     // ← 杀死 tracer，不碰 zygote
+        }
+    }
+}
+```
+
+**本项目**：
+```cpp
+// wait_for_trace 失败 → return false
+// → WAIT_OR_DIE → trace_zygote return false
+// → magisk.rs → kill(pid, SIGKILL)
+bool wait_for_trace(int pid, int* status, int flags) {
+    while (true) {
+        auto result = waitpid(pid, status, flags);
+        if (result == -1) {
+            if (errno == EINTR) continue;
+            return false;  // ← 返回 false，后续会 SIGKILL zygote
+        }
+    }
+}
+```
+
+**差异总结**：
+
+| 失败场景 | kokoro 行为 | 本项目行为 |
+|---------|-----------|-----------|
+| PTRACE_SEIZE 失败 | tracer exit, zygote 继续 | SIGKILL zygote |
+| wait_for_trace 失败 | tracer exit, zygote 继续 | SIGKILL zygote |
+| process_vm 部分写入 | 返回部分长度，调用方自行处理 | 转为 -1 视为完全失败 |
+| `write_proc` 部分写入 | 返回实际写入字节数 | 视为失败（`l = -1`） |
+
+**影响**：如果 VPhoneOS 内核 4.14.42-super 对 ptrace 或 process_vm 有任何限制，kokoro 上无感开机；本项目上 zygote 被杀，进入重启循环。
+
+### 14.3 3 次开机卡死的真实机制
+
+**主导机制不是 `start_count`，而是 `boot_cnt`（持久化数据库计数器）**。
+
+`boot_cnt` 存在 `/data` 的 Magisk 数据库中（跨越 force-stop 持久化）：
+
+```rust
+// bootstages.rs:142-149
+let boot_cnt = self.get_db_setting(DbEntryKey::BootloopCount);
+self.set_db_setting(DbEntryKey::BootloopCount, boot_cnt + 1);
+let safe_mode = boot_cnt >= 2
+    || get_prop(cstr!("persist.sys.safemode")) == "1"
+    || get_prop(cstr!("ro.sys.safemode")) == "1"
+    || check_key_combo();
+```
+
+| 启动 | boot_cnt | safe_mode | Zygisk | 结果 |
+|------|---------|-----------|--------|------|
+| 第 1 次 | 0 | false | 开启 | 注入失败 → 卡 19%，force-stop |
+| 第 2 次 | 1 | false | 开启 | 注入失败 → 卡 9%，force-stop |
+| 第 3 次 | 2 | **true** | **关闭** | 正常开机 |
+
+而 `start_count` / `stop_tracing`（`daemon.rs:59-71`）是同一轮开机内 zygote 反复 crash 时的熔断机制，跨 force-stop 后重置（在内存中），不跨开机持久化。
+
+### 14.4 协议不匹配风险
+
+对比 kokoro 的 C++ 守护进程与本项目的 Rust 守护进程，发现以下差异：
+
+#### 14.4.1 `zygisk_should_load_module` 与 `should_load_modules` 不一致
+
+**C++ 客户端**（`entry.cpp:31-33`）：
+```cpp
+static inline bool should_load_modules(uint32_t flags) {
+    return (flags & PROCESS_IS_MAGISK_APP) != PROCESS_IS_MAGISK_APP;
+    // 所有非 Magisk App 的进程都期望接收 fd
+}
+```
+
+**Rust 服务端**（`daemon.rs:14-17`）：
+```rust
+pub fn zygisk_should_load_module(flags: u32) -> bool {
+    flags & UNMOUNT_MASK != UNMOUNT_MASK
+        && flags & ZygiskStateFlags::ProcessIsMagiskApp.repr == 0
+    // 拒绝 denylist 进程接收 fd！
+}
+```
+
+**问题**：当 denylist 启用时，C++ 客户端调用 `recv_fds(fd)` 阻塞等待，Rust 服务端认为无需发送 fd，**客户端永久挂起**。但同轮开机首次 crash 发生时 denylist 尚未启用（`enforced=0`），因此不是首次 crash 的根因。
+
+#### 14.4.2 `get_process_info` 中 system_server 读取协议不一致
+
+**C++ 客户端**发送：`slots(int)` + `slots * unsigned long`
+
+**Rust 服务端**读取：`Vec<i32>`（长度前缀编码）
+
+协议不匹配可能导致 socket 反序列化失败或阻塞。
+
+### 14.5 `trace_log` 调试日志演进记录
+
+为诊断注入失败原因，经历了三次方案迭代：
+
+| commit | 方案 | 结果 | 原因 |
+|--------|------|------|------|
+| `a4da22c` | `android_logging()` → logcat | ❌ | VPhoneOS 不捕获 logcat |
+| `f62ed3f` | `kmsg_logging()` → `/dev/kmsg` | ❌ | SELinux 阻止 magisk 写 kmsg |
+| `66dfb31` | 自定义文件 `/cache/zygisk_trace.log` | ❌ | VPhoneOS 不导出自定义文件 |
+| `3d8daf2` | `O_APPEND` 追加到 `/cache/magisk.log` | ⏳ | 待验证 |
+
+### 14.6 当前状态与建议
+
+#### 已知未修复的问题
+
+| 严重度 | 问题 | 影响 |
+|--------|------|------|
+| **高** | `zygisk_should_load_module` 与 `should_load_modules` 不一致 | denylist 进程在 `recv_fds` 上永久挂起 |
+| **高** | system_server 的 `get_process_info` 协议不匹配 | socket 反序列化可能失败 |
+| **中** | 无 32/64 位 tracer 区分（统一用 `magisk`） | 多架构场景可能兼容性问题 |
+| **中** | `zygisk_utils.hpp` 的 `dynamic_bitset` API 与 C++ 不兼容 | 模块 bitset 序列化可能出错 |
+| **低** | `find_zygote_by_polling` 中未检查 `stop_tracing` | 轮询路径可能忽略熔断 |
+| **低** | `boot_cnt` 无重置机制 | 每次使用 Magisk Manager 后启动都累加，触发安全模式后手动重置麻烦 |
+
+#### 下一步建议
+
+1. **验证 `trace_log`**：运行 `3d8daf2` 构建的 debug 版本，检查 `/cache/magisk.log` 中是否有 `E inject:` 或 `W trace:` 前缀的行
+2. **修复协议不匹配**：统一 `zygisk_should_load_module` 和 `should_load_modules` 的判定逻辑
+3. **对齐错误处理哲学**：考虑是否要将 `wait_for_trace` 等关键路径改为 kokoro 的 `exit(1)` 风格（静默失败，zygote 继续运行但不带 Zygisk）
+

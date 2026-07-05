@@ -53,14 +53,25 @@ static void inject_zygote(int pid) {
 
     if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP && (status >> 16) == 0) {
         ptrace(PTRACE_DETACH, pid, 0, SIGSTOP);
-        auto p = fork_dont_care();
+        auto p = xfork();
         if (p == 0) {
             execl(tracer.c_str(), "", "zygisk", "trace_zygote",
                   pid_str.c_str(), tracer.c_str(), nullptr);
             PLOGE("failed to exec");
             kill(pid, SIGKILL);
-            exit(1);
-        } else if (p == -1) {
+            _exit(1);
+        } else if (p > 0) {
+            int child_status;
+            waitpid(p, &child_status, 0);
+            if (WIFEXITED(child_status)) {
+                int code = WEXITSTATUS(child_status);
+                if (code != 0) {
+                    LOGW("zygisk: trace_zygote failed for PID %d (exit=%d)\n", pid, code);
+                }
+            } else if (WIFSIGNALED(child_status)) {
+                LOGW("zygisk: trace_zygote PID %d killed (sig=%d)\n", pid, WTERMSIG(child_status));
+            }
+        } else {
             PLOGE("failed to fork");
             kill(pid, SIGKILL);
         }
@@ -86,13 +97,20 @@ static bool find_zygote_by_polling() {
             LOGI("zygisk: polling found zygote PID=[%d]\n", pid);
             auto tracer = string(get_magisk_tmp()) + "/magisk";
             auto pid_str = to_string(pid);
-            auto p = fork_dont_care();
+            auto p = xfork();
             if (p == 0) {
                 execl(tracer.c_str(), "", "zygisk", "trace_zygote",
                       pid_str.c_str(), tracer.c_str(), nullptr);
                 PLOGE("failed to exec");
-                exit(1);
-            } else if (p == -1) {
+                _exit(1);
+            } else if (p > 0) {
+                int child_status;
+                waitpid(p, &child_status, 0);
+                if (WIFEXITED(child_status) && WEXITSTATUS(child_status) != 0) {
+                    LOGW("zygisk: poll tracer failed for PID %d (exit=%d)\n",
+                         pid, WEXITSTATUS(child_status));
+                }
+            } else {
                 PLOGE("failed to fork");
                 continue;
             }
