@@ -33,10 +33,7 @@ using namespace std;
 static void trace_log(const char *fmt, ...) {
     static int fd = -1;
     if (fd < 0) {
-        fd = open("/cache/zygisk_trace.log", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
-        if (fd < 0) {
-            fd = open("/data/local/tmp/zygisk_trace.log", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
-        }
+        fd = open("/cache/magisk.log", O_WRONLY | O_APPEND | O_CLOEXEC);
     }
     if (fd < 0) return;
     va_list ap;
