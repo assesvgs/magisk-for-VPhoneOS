@@ -29,7 +29,6 @@ using namespace std;
 #endif
 
 #include <flags.h>
-#include <cstdarg>
 #if MAGISK_DEBUG
 static void trace_log(const char *fmt, ...) {
     static int fd = -1;
@@ -37,15 +36,11 @@ static void trace_log(const char *fmt, ...) {
         fd = open("/cache/zygisk_trace.log", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
     }
     if (fd < 0) return;
-    char buf[1024];
     va_list ap;
     va_start(ap, fmt);
-    int len = vsnprintf(buf, sizeof(buf), fmt, ap);
+    vdprintf(fd, fmt, ap);
     va_end(ap);
-    if (len > 0) {
-        write(fd, buf, min(len, (int)sizeof(buf)));
-        fsync(fd);
-    }
+    fsync(fd);
 }
 #define TRACELOGE(...) trace_log("E " __VA_ARGS__)
 #define TRACELOGW(...) trace_log("W " __VA_ARGS__)

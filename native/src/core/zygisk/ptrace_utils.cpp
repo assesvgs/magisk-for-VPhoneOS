@@ -14,7 +14,6 @@
 #include <sys/mman.h>
 #include <sys/wait.h>
 #include <cstdlib>
-#include <cstdio>
 #include <dlfcn.h>
 #include <signal.h>
 #include <sstream>
@@ -24,6 +23,7 @@
 #include <lsplt.hpp>
 #include "ptrace_utils.hpp"
 #include "zygisk.hpp"
+#include <cstdio>
 
 std::vector<lsplt::MapInfo> Scan_proc(const std::string& pid) {
     constexpr static auto kPermLength = 5;

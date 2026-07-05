@@ -13,9 +13,8 @@
 #include <sys/syscall.h>
 #include <sys/inotify.h>
 #include <errno.h>
-#include <cstdio>
-
 #include <core.hpp>
+#include <cstdio>
 
 #include "deny.hpp"
 #include <sys/ptrace.h>
