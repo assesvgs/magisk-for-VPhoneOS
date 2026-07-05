@@ -23,8 +23,6 @@ use std::sync::Arc;
 use std::sync::nonpoison::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{fs, io};
-use std::mem::ManuallyDrop;
-
 #[allow(dead_code, non_camel_case_types)]
 #[derive(FromPrimitive, ToPrimitive)]
 #[repr(i32)]
@@ -279,50 +277,6 @@ pub fn setup_logfile() {
         };
         (&mut logd).write_pod(&meta)
     });
-}
-
-static KMSG_FD: Mutex<Option<RawFd>> = Mutex::new(None);
-
-pub fn kmsg_logging() {
-    let fd = open_kmsg();
-    if fd < 0 {
-        return;
-    }
-    // 关闭 printk 限速，确保消息不被内核丢弃
-    unsafe {
-        let rate = libc::open(
-            raw_cstr!("/proc/sys/kernel/printk_devkmsg"),
-            libc::O_WRONLY | libc::O_CLOEXEC,
-        );
-        if rate >= 0 {
-            libc::write(rate, "on\n\0".as_ptr() as *const libc::c_void, 3);
-            libc::close(rate);
-        }
-    }
-    *KMSG_FD.lock() = Some(fd);
-
-    fn kmsg_write(_level: LogLevel, msg: &Utf8CStr) {
-        let guard = KMSG_FD.lock();
-        if let Some(fd) = *guard {
-            let prefix = b"zygisk-tz: ";
-            let io1 = IoSlice::new(prefix);
-            let io2 = IoSlice::new(msg.as_bytes());
-            let mut kmsg = ManuallyDrop::new(unsafe { File::from_raw_fd(fd) });
-            let _ = kmsg.write_vectored(&[io1, io2]).ok();
-        }
-    }
-
-    update_logger(|logger| logger.write = kmsg_write);
-}
-
-fn open_kmsg() -> RawFd {
-    unsafe {
-        let fd = libc::open(raw_cstr!("/dev/kmsg"), libc::O_WRONLY | libc::O_CLOEXEC);
-        if fd >= 0 {
-            return fd;
-        }
-        libc::open(raw_cstr!("/kmsg"), libc::O_WRONLY | libc::O_CLOEXEC)
-    }
 }
 
 pub fn start_log_daemon() {

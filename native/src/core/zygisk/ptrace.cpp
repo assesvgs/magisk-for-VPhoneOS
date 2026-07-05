@@ -28,6 +28,32 @@ using namespace std;
 #define PLOGE(fmt, ...) LOGE("ptrace: " fmt ": %s\n", ##__VA_ARGS__, strerror(errno))
 #endif
 
+#include <flags.h>
+#include <cstdarg>
+#if MAGISK_DEBUG
+static void trace_log(const char *fmt, ...) {
+    static int fd = -1;
+    if (fd < 0) {
+        fd = open("/cache/zygisk_trace.log", O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+    }
+    if (fd < 0) return;
+    char buf[1024];
+    va_list ap;
+    va_start(ap, fmt);
+    int len = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (len > 0) {
+        write(fd, buf, min(len, (int)sizeof(buf)));
+        fsync(fd);
+    }
+}
+#define TRACELOGE(...) trace_log("E " __VA_ARGS__)
+#define TRACELOGW(...) trace_log("W " __VA_ARGS__)
+#else
+#define TRACELOGE(...) ((void)0)
+#define TRACELOGW(...) ((void)0)
+#endif
+
 
 
 static void gen_rand_str(char *buf, size_t len) {
@@ -49,6 +75,7 @@ static bool inject_on_main(int pid, const char *lib_path) {
     auto map = Scan_proc(std::to_string(pid));
     if (!get_regs(pid, regs)) {
         ZLOGD("inject: get_regs failed\n");
+        TRACELOGE("inject: get_regs failed\n");
         return false;
     }
     auto arg = reinterpret_cast<uintptr_t *>(regs.REG_SP);
@@ -58,6 +85,7 @@ static bool inject_on_main(int pid, const char *lib_path) {
     ZLOGD("argv %p\n", argv);
     if (read_proc(pid, arg, &argc, sizeof(argc)) != sizeof(argc)) {
         ZLOGE("failed to read argc\n");
+        TRACELOGE("inject: read argc failed\n");
         return false;
     }
     ZLOGD("argc %ld\n", argc);
@@ -95,33 +123,39 @@ static bool inject_on_main(int pid, const char *lib_path) {
     }
     if (entry_addr == nullptr) {
         ZLOGE("failed to get entry\n");
+        TRACELOGE("inject: failed to get entry\n");
         return false;
     }
 
     uintptr_t break_addr = (-0x05ec1cff & ~1) | ((uintptr_t) entry_addr & 1);
     if (write_proc(pid, (uintptr_t *) addr_of_entry_addr, &break_addr, sizeof(break_addr)) <= 0) {
         ZLOGD("inject: write break_addr failed\n");
+        TRACELOGE("inject: write break_addr failed\n");
         return false;
     }
     ptrace(PTRACE_CONT, pid, 0, 0);
     int status;
     if (!wait_for_trace(pid, &status, __WALL)) {
         ZLOGD("inject: wait_for_trace after breakpoint failed\n");
+        TRACELOGE("inject: wait_for_trace after breakpoint failed\n");
         write_proc(pid, (uintptr_t *) addr_of_entry_addr, &entry_addr, sizeof(entry_addr));
         return false;
     }
     if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSEGV) {
         if (!get_regs(pid, regs)) {
             ZLOGD("inject: get_regs after SIGSEGV failed\n");
+            TRACELOGE("inject: get_regs after SIGSEGV failed\n");
             return false;
         }
         if ((regs.REG_IP & ~1) != (break_addr & ~1)) {
             ZLOGE("stopped at unknown addr %p\n", (void *) regs.REG_IP);
+            TRACELOGE("inject: stopped at unknown addr %p\n", (void *) regs.REG_IP);
             return false;
         }
         ZLOGD("stopped at entry\n");
         if (write_proc(pid, (uintptr_t *) addr_of_entry_addr, &entry_addr, sizeof(entry_addr)) <= 0) {
             ZLOGD("inject: restore entry_addr failed\n");
+            TRACELOGE("inject: restore entry_addr failed\n");
             return false;
         }
         memcpy(&backup, &regs, sizeof(regs));
@@ -133,6 +167,7 @@ static bool inject_on_main(int pid, const char *lib_path) {
         auto dlopen_addr = find_func_addr(local_map, map, "libdl.so", "dlopen");
         if (dlopen_addr == nullptr) {
             ZLOGD("inject: dlopen not found\n");
+            TRACELOGE("inject: dlopen not found\n");
             return false;
         }
         std::vector<long> args;
@@ -144,9 +179,11 @@ static bool inject_on_main(int pid, const char *lib_path) {
         ZLOGD("remote handle %p\n", (void *) remote_handle);
         if (remote_handle == 0) {
             ZLOGE("handle is null\n");
+            TRACELOGE("inject: remote dlopen handle is null\n");
             auto dlerror_addr = find_func_addr(local_map, map, "libdl.so", "dlerror");
             if (dlerror_addr == nullptr) {
                 ZLOGE("find dlerror\n");
+                TRACELOGE("inject: dlerror addr not found\n");
                 return false;
             }
             args.clear();
@@ -169,13 +206,16 @@ static bool inject_on_main(int pid, const char *lib_path) {
                 ZLOGE("failed to read dlerror string\n");
             } else {
                 ZLOGE("dlerror info %s\n", err.c_str());
+                TRACELOGE("inject: dlerror: %s\n", err.c_str());
             }
+            TRACELOGE("inject: remote dlopen failed\n");
             return false;
         }
 
         auto dlsym_addr = find_func_addr(local_map, map, "libdl.so", "dlsym");
         if (dlsym_addr == nullptr) {
             ZLOGD("inject: dlsym not found\n");
+            TRACELOGE("inject: dlsym not found\n");
             return false;
         }
         args.clear();
@@ -186,6 +226,7 @@ static bool inject_on_main(int pid, const char *lib_path) {
         ZLOGD("injector entry %p\n", (void*) injector_entry);
         if (injector_entry == 0) {
             ZLOGE("injector entry is null\n");
+            TRACELOGE("inject: injector entry is null\n");
             return false;
         }
 
@@ -197,11 +238,13 @@ static bool inject_on_main(int pid, const char *lib_path) {
         ZLOGD("invoke entry\n");
         if (!set_regs(pid, backup)) {
             ZLOGD("inject: set_regs failed\n");
+            TRACELOGE("inject: set_regs failed\n");
             return false;
         }
         return true;
     } else {
         ZLOGE("stopped by other reason: %s\n", parse_status(status).c_str());
+        TRACELOGE("inject: stopped by other reason: %s\n", parse_status(status).c_str());
     }
     return false;
 }
@@ -213,12 +256,14 @@ bool trace_zygote(int pid, const char *libpath) {
 #define WAIT_OR_DIE \
     if (!wait_for_trace(pid, &status, __WALL)) { \
         ZLOGD("trace: wait_for_trace failed (line %d)\n", __LINE__); \
+        TRACELOGE("trace: wait_for_trace failed (line %d)\n", __LINE__); \
         ptrace(PTRACE_DETACH, pid, 0, 0); \
         return false; \
     }
 #define CONT_OR_DIE \
     if (ptrace(PTRACE_CONT, pid, 0, 0) == -1) { \
         PLOGE("cont"); \
+        TRACELOGE("trace: cont failed (line %d)\n", __LINE__); \
         ptrace(PTRACE_DETACH, pid, 0, 0); \
         return false; \
     }
@@ -229,10 +274,12 @@ bool trace_zygote(int pid, const char *libpath) {
             ZLOGW("PTRACE_O_EXITKILL not supported (kernel < 5.3), retry without it\n");
             if (ptrace(PTRACE_SEIZE, pid, 0, 0) == -1) {
                 PLOGE("seize");
+                TRACELOGE("trace: seize (no EXITKILL) failed: %s\n", strerror(errno));
                 return false;
             }
         } else {
             PLOGE("seize");
+            TRACELOGE("trace: seize failed: %s\n", strerror(errno));
             return false;
         }
     }
@@ -252,12 +299,14 @@ bool trace_zygote(int pid, const char *libpath) {
 
         if (!is_injected) {
             ZLOGE("failed to inject\n");
+            TRACELOGE("trace: inject_on_main returned false\n");
             ptrace(PTRACE_DETACH, pid, 0, 0);
             return false;
         }
         ZLOGD("inject done, continue process\n");
         if (kill(pid, SIGCONT)) {
             PLOGE("kill");
+            TRACELOGE("trace: kill SIGCONT failed\n");
             ptrace(PTRACE_DETACH, pid, 0, 0);
             return false;
         }
@@ -272,11 +321,13 @@ bool trace_zygote(int pid, const char *libpath) {
             }
         } else {
             ZLOGE("unknown state %s, not SIGTRAP + EVENT_STOP\n", parse_status(status).c_str());
+            TRACELOGE("trace: unknown state after SIGCONT: %s\n", parse_status(status).c_str());
             ptrace(PTRACE_DETACH, pid, 0, 0);
             return false;
         }
     } else {
         ZLOGE("unknown state %s, not SIGSTOP + EVENT_STOP\n", parse_status(status).c_str());
+        TRACELOGE("trace: unknown initial state: %s\n", parse_status(status).c_str());
         ptrace(PTRACE_DETACH, pid, 0, 0);
         return false;
     }

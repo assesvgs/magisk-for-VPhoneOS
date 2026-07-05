@@ -324,10 +324,6 @@ fn zygisk_main(subcmd: &str, args: &[String]) -> i32 {
             }
         }
     } else if subcmd == "trace_zygote" && args.len() >= 2 {
-        // trace_zygote 运行在 execl'd 独立进程中，Rust Logger 默认空操作
-        // 启用 kmsg 日志使所有 ZLOGE/PLOGE 输出到 AndroidLog.log.dec
-        // logcat 在此 VPhoneOS 环境中不被收集，故写入内核日志
-        crate::logging::kmsg_logging();
         let pid: i32 = args[0].parse().unwrap_or(-1);
         if pid > 0 {
             if crate::ffi::trace_zygote(pid, &args[1]) {
