@@ -251,23 +251,18 @@ static bool inject_on_main(int pid, const char *lib_path) {
 
 #define STOPPED_WITH(sig, event) (WIFSTOPPED(status) && WSTOPSIG(status) == (sig) && (status >> 16) == (event))
 
+// 退出码意义：2=seize, 3=wait_first, 4=bad_sigstop, 5=inject,
+// 6=kill_sigcont, 7=wait_sigtrap, 8=wait_final, 9=bad_sigtrap, 10=bad_final
+#define TRACE_FAIL(pid_, code_) do { \
+    TRACELOGE("trace: step %d\n", code_); \
+    ptrace(PTRACE_DETACH, pid_, 0, 0); \
+    kill(pid_, SIGKILL); \
+    _exit(code_); \
+} while(0)
+
 bool trace_zygote(int pid, const char *libpath) {
     ZLOGI("start tracing %d\n", pid);
     TRACELOGW("trace: start tracing pid=%d\n", pid);
-#define WAIT_OR_DIE \
-    if (!wait_for_trace(pid, &status, __WALL)) { \
-        ZLOGD("trace: wait_for_trace failed (line %d)\n", __LINE__); \
-        TRACELOGE("trace: wait_for_trace failed (line %d)\n", __LINE__); \
-        ptrace(PTRACE_DETACH, pid, 0, 0); \
-        return false; \
-    }
-#define CONT_OR_DIE \
-    if (ptrace(PTRACE_CONT, pid, 0, 0) == -1) { \
-        PLOGE("cont"); \
-        TRACELOGE("trace: cont failed (line %d)\n", __LINE__); \
-        ptrace(PTRACE_DETACH, pid, 0, 0); \
-        return false; \
-    }
     int status;
     ZLOGI("tracing %d (tracer %d)\n", pid, getpid());
     if (ptrace(PTRACE_SEIZE, pid, 0, PTRACE_O_EXITKILL) == -1) {
@@ -276,15 +271,17 @@ bool trace_zygote(int pid, const char *libpath) {
             if (ptrace(PTRACE_SEIZE, pid, 0, 0) == -1) {
                 PLOGE("seize");
                 TRACELOGE("trace: seize (no EXITKILL) failed: %s\n", strerror(errno));
-                return false;
+                TRACE_FAIL(pid, 2);
             }
         } else {
             PLOGE("seize");
             TRACELOGE("trace: seize failed: %s\n", strerror(errno));
-            return false;
+            TRACE_FAIL(pid, 2);
         }
     }
-    WAIT_OR_DIE
+    if (!wait_for_trace(pid, &status, __WALL)) {
+        TRACE_FAIL(pid, 3);
+    }
     if (STOPPED_WITH(SIGSTOP, PTRACE_EVENT_STOP)) {
         char rstr[26] = { 0 };
         ssprintf(rstr, sizeof(rstr), "/dev/");
@@ -301,21 +298,29 @@ bool trace_zygote(int pid, const char *libpath) {
         if (!is_injected) {
             ZLOGE("failed to inject\n");
             TRACELOGE("trace: inject_on_main returned false\n");
-            ptrace(PTRACE_DETACH, pid, 0, 0);
-            return false;
+            TRACE_FAIL(pid, 5);
         }
         ZLOGD("inject done, continue process\n");
         if (kill(pid, SIGCONT)) {
             PLOGE("kill");
             TRACELOGE("trace: kill SIGCONT failed\n");
-            ptrace(PTRACE_DETACH, pid, 0, 0);
-            return false;
+            TRACE_FAIL(pid, 6);
         }
-        CONT_OR_DIE
-        WAIT_OR_DIE
+        if (ptrace(PTRACE_CONT, pid, 0, 0) == -1) {
+            PLOGE("cont");
+            TRACE_FAIL(pid, 7);
+        }
+        if (!wait_for_trace(pid, &status, __WALL)) {
+            TRACE_FAIL(pid, 7);
+        }
         if (STOPPED_WITH(SIGTRAP, PTRACE_EVENT_STOP)) {
-            CONT_OR_DIE
-            WAIT_OR_DIE
+            if (ptrace(PTRACE_CONT, pid, 0, 0) == -1) {
+                PLOGE("cont");
+                TRACE_FAIL(pid, 8);
+            }
+            if (!wait_for_trace(pid, &status, __WALL)) {
+                TRACE_FAIL(pid, 8);
+            }
             if (STOPPED_WITH(SIGCONT, 0)) {
                 ZLOGD("received SIGCONT\n");
                 ptrace(PTRACE_DETACH, pid, 0, SIGCONT);
@@ -323,14 +328,12 @@ bool trace_zygote(int pid, const char *libpath) {
         } else {
             ZLOGE("unknown state %s, not SIGTRAP + EVENT_STOP\n", parse_status(status).c_str());
             TRACELOGE("trace: unknown state after SIGCONT: %s\n", parse_status(status).c_str());
-            ptrace(PTRACE_DETACH, pid, 0, 0);
-            return false;
+            TRACE_FAIL(pid, 9);
         }
     } else {
         ZLOGE("unknown state %s, not SIGSTOP + EVENT_STOP\n", parse_status(status).c_str());
         TRACELOGE("trace: unknown initial state: %s\n", parse_status(status).c_str());
-        ptrace(PTRACE_DETACH, pid, 0, 0);
-        return false;
+        TRACE_FAIL(pid, 4);
     }
     return true;
 }

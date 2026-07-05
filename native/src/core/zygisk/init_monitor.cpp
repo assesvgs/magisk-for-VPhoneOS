@@ -67,8 +67,10 @@ static void inject_zygote(int pid) {
                 if (ret == p) {
                     if (WIFEXITED(child_status)) {
                         int code = WEXITSTATUS(child_status);
-                        if (code != 0) {
-                            LOGW("zygisk: trace_zygote failed for PID %d (exit=%d)\n", pid, code);
+                        if (code == 0) {
+                            LOGI("zygisk: trace_zygote done for PID %d\n", pid);
+                        } else {
+                            LOGW("zygisk: trace_zygote PID %d fail step=%d\n", pid, code);
                         }
                     } else if (WIFSIGNALED(child_status)) {
                         LOGW("zygisk: trace_zygote PID %d killed (sig=%d)\n", pid, WTERMSIG(child_status));
@@ -116,9 +118,11 @@ static bool find_zygote_by_polling() {
                 for (int i = 0; i < 50; i++) {
                     int ret = waitpid(p, &child_status, WNOHANG);
                     if (ret == p) {
-                        if (WIFEXITED(child_status) && WEXITSTATUS(child_status) != 0) {
-                            LOGW("zygisk: poll tracer failed for PID %d (exit=%d)\n",
-                                 pid, WEXITSTATUS(child_status));
+                        if (WIFEXITED(child_status)) {
+                            int code = WEXITSTATUS(child_status);
+                            if (code != 0) {
+                                LOGW("zygisk: poll tracer PID %d fail step=%d\n", pid, code);
+                            }
                         }
                         goto poll_done;
                     }
