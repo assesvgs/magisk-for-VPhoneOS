@@ -1154,3 +1154,122 @@ pub fn zygisk_should_load_module(flags: u32) -> bool {
 2. **修复协议不匹配**：统一 `zygisk_should_load_module` 和 `should_load_modules` 的判定逻辑
 3. **对齐错误处理哲学**：考虑是否要将 `wait_for_trace` 等关键路径改为 kokoro 的 `exit(1)` 风格（静默失败，zygote 继续运行但不带 Zygisk）
 
+---
+
+## 15. kokoro-no-kitsune-27001b vs 本项目 Zygisk 代码全量差异（追加于 2026-07-05）
+
+> 基于 `0197fa0` vs kokoro `27001b`，Zygisk 相关 C++ 文件逐文件对比。
+
+### 15.1 架构概览
+
+| 层面 | kokoro | 本项目 |
+|------|--------|--------|
+| 守护进程 | 纯 C++（`daemon.cpp`） | C++ + Rust 混合（`daemon.rs` + 部分 main.cpp） |
+| 注入监控 | `proc_monitor.cpp` | `init_monitor.cpp`（重写版） |
+| 跟踪器二进制 | `magisk64` / `magisk32` | `magisk`（统一单二进制） |
+| zygote 匹配 | 仅 `app_process32/64` | `app_process`、`app_process32/64` |
+| 错误处理 | `exit(1)` → 静默终止 tracer | `return false` → `SIGKILL` zygote |
+| 部分写入检查 | 宽松（传递部分长度） | 严格（转为 -1 视为失败） |
+| 崩溃检测 | C++ `reset_zygisk()` | Rust `ZygiskState::reset()` |
+
+### 15.2 文件级差异
+
+#### 15.2.1 proc_monitor.cpp → init_monitor.cpp
+
+| 差异点 | kokoro | 本项目 | 影响 |
+|--------|--------|--------|------|
+| `sulist` 支持 | 完整（`unmount_zygote`、`wait_unmount`） | 已移除 | 无直接影响 |
+| init 回退 | 无（`goto abandon` 退出线程） | 轮询 `/proc` 回退 | ✅ 提升 |
+| zygote 匹配 | 仅 `32/64` | 也匹配 `app_process` | **可能引入问题** |
+| tracer 路径 | `magisk64` / `magisk32` | `magisk` | 架构兼容性 |
+| fork 方式 | `fork_dont_care()` 不等待 | `xfork()` + waitpid 轮询 5s | ✅ 改进 |
+| ECHILD 处理 | 无 | `nanosleep(INT_MAX)` | ✅ 改进 |
+
+#### 15.2.2 ptrace.cpp
+
+| 差异点 | kokoro | 本项目 | 影响 |
+|--------|--------|--------|------|
+| `PTRACE_O_EXITKILL` 降级 | 无 | EINVAL 时降级重试 | ✅ 更兼容 |
+| `inject_on_main` argc 检查 | 无 | 检查 `read_proc` 返回值 | ✅ 更安全 |
+| envp/auxv 循环保护 | 无限循环 | 4096/512 上限保护 | ✅ 防死循环 |
+| 远程调用失败恢复 | 无 | aarch64/arm 备份恢复 | ✅ 改进 |
+| 调试日志 (TRACELOGE) | 无 | `MAGISK_DEBUG` 条件编译 | 诊断用 |
+
+#### 15.2.3 ptrace_utils.cpp
+
+```cpp
+// kokoro: 部分写入返回实际长度
+write_proc: l != len → ZLOGW → return l (部分长度)
+调用方: if (!write_proc(...)) → 非零视为成功
+
+// 本项目: 部分写入转为 -1 视为失败
+write_proc: l != len → ZLOGW → l = -1
+调用方: if (write_proc(...) <= 0) → -1 视为失败
+```
+
+| 差异点 | kokoro | 本项目 | 影响 |
+|--------|--------|--------|------|
+| `wait_for_trace` 签名 | `void` → 失败 `exit(1)` | `bool` → 失败 `return false` | **关键差异** |
+| `write_proc` 部分写入 | 返回 `l`（部分长度） | 返回 `-1`（转为失败） | **关键差异** |
+| `read_proc` 部分读取 | 返回 `l` | 返回 `-1` | **关键差异** |
+| `remote_call` 栈写检查 | 忽略写入失败 | `if (write_proc(...) <= 0) return 0` | ✅ 安全 |
+
+#### 15.2.4 entry.cpp
+
+| 差异点 | kokoro | 本项目 | 影响 |
+|--------|--------|--------|------|
+| `native_bridge` 全局变量 | 存在 | 删除 | 无影响 |
+| `stop_trace_zygote` 全局变量 | 存在 | 删除（改用 atomic） | 架构调整 |
+| `remote_get_info` is_64bit | 无 | 发送 `write_int(fd, is_64bit)` | 协议同步 |
+| `reset_zygisk()` | 存在（C++） | 删除（移到 Rust 侧） | **功能等效但实现不同** |
+| `zygisk_handler()` | 活动 | 保留为死代码（由 Rust 处理） | 维护负担 |
+
+#### 15.2.5 hook.cpp
+
+| 差异点 | kokoro | 本项目 |
+|--------|--------|--------|
+| `plt_hook_commit` regex 释放 | 泄漏 | 调用 `regfree()` ✅ |
+| `run_modules_pre` mmap 检查 | 无 | `MAP_FAILED` 检查 ✅ |
+| `run_modules_pre` mremap 检查 | 无 | 失败时 `munmap` 清理 ✅ |
+| `fork_pre` fd < 0 处理 | `close(fd)` | `continue` ✅ |
+
+#### 15.2.6 main.cpp（zygiskd）
+
+```cpp
+// kokoro:
+} else if (argc == 4 && argv[1] == "trace_zygote"sv) {
+    pid_t pid = parse_int(argv[2]);
+    if (!trace_zygote(pid, argv[3])) kill(pid, SIGKILL);
+}
+
+// 本项目：C++ main.cpp 中没有 trace_zygote 处理！
+// → 在 Rust magisk.rs:zygisk_main() 中处理
+```
+
+#### 15.2.7 module.hpp
+
+**完全相同** — 无任何差异。
+
+#### 15.2.8 zygisk.hpp
+
+| 差异点 | kokoro | 本项目 |
+|--------|--------|--------|
+| `ZygiskRequest` 枚举 | 内联定义 | 已移除（来自 Rust FFI） |
+| `connect_daemon` 调用 | `+RequestCode::ZYGISK` | `RequestCode::ZYGISK` |
+
+### 15.3 导致 3 次开机问题的差异（按可能性排序）
+
+| 排名 | 差异 | 文件 | 可能机制 | 概率 |
+|------|------|------|---------|------|
+| **1** | 单二进制 `magisk` vs `magisk64/32` | `init_monitor.cpp` | VPhoneOS 上 32 位 zygote 被单二进制 ptrace，跨架构操作失败 | ⭐⭐⭐ |
+| **2** | `write_proc` 部分写入转为失败 | `ptrace_utils.cpp` | VPhone 内核 `process_vm_writev` 如返回部分长度，视为失败 | ⭐⭐⭐ |
+| **3** | 匹配 bare `app_process` | `init_monitor.cpp` | 如果有裸 `app_process`（无后缀），注入它可能炸 | ⭐⭐ |
+| **4** | `wait_for_trace` 失败杀 zygote | `ptrace_utils.cpp` | kokoro 静默退出，本项目 SIGKILL | ⭐⭐ |
+| **5** | `reset_zygisk` 移到了 Rust | `entry.cpp` → `daemon.rs` | 崩溃计数行为可能存在差异 | ⭐ |
+
+### 15.4 建议验证步骤
+
+1. 跑 `0197fa0` 的 debug 构建，看 `magisk.log` 中 `zygisk: trace_zygote failed` 行——确认注入确实失败
+2. 如确认失败，将 tracer 路径从 `"magisk"` 改为 `"magisk64"`（`__LP64__` 条件编译），测试架构匹配
+3. 如仍失败，将 `ptrace_utils.cpp:78` 的 `l = -1` 改为 kokoro 风格（不转为失败）
+
