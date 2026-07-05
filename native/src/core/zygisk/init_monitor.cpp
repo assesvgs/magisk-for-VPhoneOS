@@ -62,15 +62,23 @@ static void inject_zygote(int pid) {
             _exit(1);
         } else if (p > 0) {
             int child_status;
-            waitpid(p, &child_status, 0);
-            if (WIFEXITED(child_status)) {
-                int code = WEXITSTATUS(child_status);
-                if (code != 0) {
-                    LOGW("zygisk: trace_zygote failed for PID %d (exit=%d)\n", pid, code);
+            for (int i = 0; i < 50; i++) {
+                int ret = waitpid(p, &child_status, WNOHANG);
+                if (ret == p) {
+                    if (WIFEXITED(child_status)) {
+                        int code = WEXITSTATUS(child_status);
+                        if (code != 0) {
+                            LOGW("zygisk: trace_zygote failed for PID %d (exit=%d)\n", pid, code);
+                        }
+                    } else if (WIFSIGNALED(child_status)) {
+                        LOGW("zygisk: trace_zygote PID %d killed (sig=%d)\n", pid, WTERMSIG(child_status));
+                    }
+                    goto inject_done;
                 }
-            } else if (WIFSIGNALED(child_status)) {
-                LOGW("zygisk: trace_zygote PID %d killed (sig=%d)\n", pid, WTERMSIG(child_status));
+                usleep(100000);
             }
+            LOGW("zygisk: trace_zygote timeout for PID %d\n", pid);
+        inject_done:;
         } else {
             PLOGE("failed to fork");
             kill(pid, SIGKILL);
@@ -105,11 +113,19 @@ static bool find_zygote_by_polling() {
                 _exit(1);
             } else if (p > 0) {
                 int child_status;
-                waitpid(p, &child_status, 0);
-                if (WIFEXITED(child_status) && WEXITSTATUS(child_status) != 0) {
-                    LOGW("zygisk: poll tracer failed for PID %d (exit=%d)\n",
-                         pid, WEXITSTATUS(child_status));
+                for (int i = 0; i < 50; i++) {
+                    int ret = waitpid(p, &child_status, WNOHANG);
+                    if (ret == p) {
+                        if (WIFEXITED(child_status) && WEXITSTATUS(child_status) != 0) {
+                            LOGW("zygisk: poll tracer failed for PID %d (exit=%d)\n",
+                                 pid, WEXITSTATUS(child_status));
+                        }
+                        goto poll_done;
+                    }
+                    usleep(100000);
                 }
+                LOGW("zygisk: poll tracer timeout for PID %d\n", pid);
+                poll_done:;
             } else {
                 PLOGE("failed to fork");
                 continue;
