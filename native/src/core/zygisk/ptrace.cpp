@@ -70,13 +70,14 @@ static void gen_rand_str(char *buf, size_t len) {
 
 
 
-static bool inject_on_main(int pid, const char *lib_path) {
+// 返回值：0=成功，1+=失败步骤
+static int inject_on_main(int pid, const char *lib_path) {
     struct user_regs_struct regs{}, backup{};
     auto map = Scan_proc(std::to_string(pid));
     if (!get_regs(pid, regs)) {
         ZLOGD("inject: get_regs failed\n");
         TRACELOGE("inject: get_regs failed\n");
-        return false;
+        return 1;
     }
     auto arg = reinterpret_cast<uintptr_t *>(regs.REG_SP);
     ZLOGD("kernel argument %p %s\n", arg, get_addr_mem_region(map, arg).c_str());
@@ -86,7 +87,7 @@ static bool inject_on_main(int pid, const char *lib_path) {
     if (read_proc(pid, arg, &argc, sizeof(argc)) != sizeof(argc)) {
         ZLOGE("failed to read argc\n");
         TRACELOGE("inject: read argc failed\n");
-        return false;
+        return 2;
     }
     ZLOGD("argc %ld\n", argc);
     auto envp = argv + argc + 1;
@@ -124,14 +125,14 @@ static bool inject_on_main(int pid, const char *lib_path) {
     if (entry_addr == nullptr) {
         ZLOGE("failed to get entry\n");
         TRACELOGE("inject: failed to get entry\n");
-        return false;
+        return 3;
     }
 
     uintptr_t break_addr = (-0x05ec1cff & ~1) | ((uintptr_t) entry_addr & 1);
     if (write_proc(pid, (uintptr_t *) addr_of_entry_addr, &break_addr, sizeof(break_addr)) <= 0) {
         ZLOGD("inject: write break_addr failed\n");
         TRACELOGE("inject: write break_addr failed\n");
-        return false;
+        return 4;
     }
     ptrace(PTRACE_CONT, pid, 0, 0);
     int status;
@@ -139,24 +140,24 @@ static bool inject_on_main(int pid, const char *lib_path) {
         ZLOGD("inject: wait_for_trace after breakpoint failed\n");
         TRACELOGE("inject: wait_for_trace after breakpoint failed\n");
         write_proc(pid, (uintptr_t *) addr_of_entry_addr, &entry_addr, sizeof(entry_addr));
-        return false;
+        return 5;
     }
     if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSEGV) {
         if (!get_regs(pid, regs)) {
             ZLOGD("inject: get_regs after SIGSEGV failed\n");
             TRACELOGE("inject: get_regs after SIGSEGV failed\n");
-            return false;
+            return 6;
         }
         if ((regs.REG_IP & ~1) != (break_addr & ~1)) {
             ZLOGE("stopped at unknown addr %p\n", (void *) regs.REG_IP);
             TRACELOGE("inject: stopped at unknown addr %p\n", (void *) regs.REG_IP);
-            return false;
+            return 7;
         }
         ZLOGD("stopped at entry\n");
         if (write_proc(pid, (uintptr_t *) addr_of_entry_addr, &entry_addr, sizeof(entry_addr)) <= 0) {
             ZLOGD("inject: restore entry_addr failed\n");
             TRACELOGE("inject: restore entry_addr failed\n");
-            return false;
+            return 8;
         }
         memcpy(&backup, &regs, sizeof(regs));
         map = Scan_proc(std::to_string(pid));
@@ -168,7 +169,7 @@ static bool inject_on_main(int pid, const char *lib_path) {
         if (dlopen_addr == nullptr) {
             ZLOGD("inject: dlopen not found\n");
             TRACELOGE("inject: dlopen not found\n");
-            return false;
+            return 9;
         }
         std::vector<long> args;
         auto str = push_string(pid, regs, lib_path);
@@ -184,22 +185,22 @@ static bool inject_on_main(int pid, const char *lib_path) {
             if (dlerror_addr == nullptr) {
                 ZLOGE("find dlerror\n");
                 TRACELOGE("inject: dlerror addr not found\n");
-                return false;
+                return 10;
             }
             args.clear();
             auto dlerror_str_addr = remote_call(pid, regs, (uintptr_t) dlerror_addr, (uintptr_t) libc_return_addr, args);
             ZLOGD("dlerror str %p\n", (void*) dlerror_str_addr);
-            if (dlerror_str_addr == 0) return false;
+            if (dlerror_str_addr == 0) return 10;
             auto strlen_addr = find_func_addr(local_map, map, "libc.so", "strlen");
             if (strlen_addr == nullptr) {
                 ZLOGE("find strlen\n");
-                return false;
+                return 10;
             }
             args.clear();
             args.push_back(dlerror_str_addr);
             auto dlerror_len = remote_call(pid, regs, (uintptr_t) strlen_addr, (uintptr_t) libc_return_addr, args);
             ZLOGD("dlerror len %ld\n", dlerror_len);
-            if (dlerror_len <= 0) return false;
+            if (dlerror_len <= 0) return 10;
             std::string err;
             err.resize(dlerror_len + 1, 0);
             if (read_proc(pid, (uintptr_t*) dlerror_str_addr, err.data(), dlerror_len) != dlerror_len) {
@@ -209,14 +210,14 @@ static bool inject_on_main(int pid, const char *lib_path) {
                 TRACELOGE("inject: dlerror: %s\n", err.c_str());
             }
             TRACELOGE("inject: remote dlopen failed\n");
-            return false;
+            return 10;
         }
 
         auto dlsym_addr = find_func_addr(local_map, map, "libdl.so", "dlsym");
         if (dlsym_addr == nullptr) {
             ZLOGD("inject: dlsym not found\n");
             TRACELOGE("inject: dlsym not found\n");
-            return false;
+            return 11;
         }
         args.clear();
         str = push_string(pid, regs, "zygisk_inject_entry");
@@ -227,7 +228,7 @@ static bool inject_on_main(int pid, const char *lib_path) {
         if (injector_entry == 0) {
             ZLOGE("injector entry is null\n");
             TRACELOGE("inject: injector entry is null\n");
-            return false;
+            return 12;
         }
 
         args.clear();
@@ -239,14 +240,14 @@ static bool inject_on_main(int pid, const char *lib_path) {
         if (!set_regs(pid, backup)) {
             ZLOGD("inject: set_regs failed\n");
             TRACELOGE("inject: set_regs failed\n");
-            return false;
+            return 13;
         }
-        return true;
+        return 0;
     } else {
         ZLOGE("stopped by other reason: %s\n", parse_status(status).c_str());
         TRACELOGE("inject: stopped by other reason: %s\n", parse_status(status).c_str());
     }
-    return false;
+    return 14;
 }
 
 #define STOPPED_WITH(sig, event) (WIFSTOPPED(status) && WSTOPSIG(status) == (sig) && (status >> 16) == (event))
@@ -291,14 +292,14 @@ bool trace_zygote(int pid, const char *libpath) {
         } while (access(rstr, F_OK) == 0);
         close(xopen(rstr, O_RDONLY | O_CREAT | O_CLOEXEC, 0));
         xmount(libpath, rstr, nullptr, MS_BIND, nullptr);
-        bool is_injected = inject_on_main(pid, rstr);
+        int inject_result = inject_on_main(pid, rstr);
         umount2(rstr, MNT_DETACH);
         rm_rf(rstr);
 
-        if (!is_injected) {
-            ZLOGE("failed to inject\n");
-            TRACELOGE("trace: inject_on_main returned false\n");
-            TRACE_FAIL(pid, 5);
+        if (inject_result != 0) {
+            ZLOGE("failed to inject (step %d)\n", inject_result);
+            TRACELOGE("trace: inject_on_main step %d\n", inject_result);
+            TRACE_FAIL(pid, 50 + inject_result);
         }
         ZLOGD("inject done, continue process\n");
         if (kill(pid, SIGCONT)) {
