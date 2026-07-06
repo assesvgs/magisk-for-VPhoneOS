@@ -60,7 +60,7 @@ static void inject_zygote(int pid) {
         }
         auto p = xfork();
         if (p == 0) {
-            execl(tracer.c_str(), "", "zygisk", "trace_zygote",
+            execl(tracer.c_str(), "magisk", "--zygisk", "trace_zygote",
                   pid_str.c_str(), tracer.c_str(), nullptr);
             LOGE("zygisk: exec %s failed: %s\n", tracer.c_str(), strerror(errno));
             kill(pid, SIGKILL);

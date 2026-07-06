@@ -40,8 +40,8 @@ int main(int argc, char *argv[]) {
                 return app.fn(argc, argv);
             }
         }
-        fprintf(stderr, "%s: applet not found\n", argv[0]);
-        return 1;
+        // Route through magisk_main for execl'd subcommands (e.g., trace_zygote)
+        return magisk_main(argc, argv);
     }
 
     if (argv0 == "magisk" || argv0 == "magisk32" || argv0 == "magisk64") {
