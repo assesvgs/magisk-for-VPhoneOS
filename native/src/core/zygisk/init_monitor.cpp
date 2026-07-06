@@ -53,6 +53,11 @@ static void inject_zygote(int pid) {
 
     if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP && (status >> 16) == 0) {
         ptrace(PTRACE_DETACH, pid, 0, SIGSTOP);
+        // 调试：检查 tracer 路径是否可执行
+        LOGI("zygisk: tracer path=[%s]\n", tracer.c_str());
+        if (access(tracer.c_str(), X_OK) == -1) {
+            LOGE("zygisk: tracer %s not accessible: %s\n", tracer.c_str(), strerror(errno));
+        }
         auto p = xfork();
         if (p == 0) {
             execl(tracer.c_str(), "", "zygisk", "trace_zygote",
