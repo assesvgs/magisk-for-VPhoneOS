@@ -57,7 +57,7 @@ static void inject_zygote(int pid) {
         if (p == 0) {
             execl(tracer.c_str(), "", "zygisk", "trace_zygote",
                   pid_str.c_str(), tracer.c_str(), nullptr);
-            PLOGE("failed to exec");
+            LOGE("zygisk: exec %s failed: %s\n", tracer.c_str(), strerror(errno));
             kill(pid, SIGKILL);
             _exit(1);
         } else if (p > 0) {

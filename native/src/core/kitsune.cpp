@@ -105,6 +105,8 @@ void mount_mirrors() {
 // Wrapper for cxx bridge: trace_zygote takes rust::Str, convert to const char*
 bool trace_zygote(int pid, rust::Str libpath) {
     bool trace_zygote(int pid, const char *libpath);
+    // 探针 71: CXX bridge 入口确认
+    _exit(71);
     return trace_zygote(pid, libpath.data());
 }
 
