@@ -306,6 +306,10 @@ pub fn magisk_main(argc: i32, argv: *mut *mut c_char) -> i32 {
         exit(1);
     }
     let mut cmds = CmdArgs::new(argc, argv.cast()).0;
+    // trace_zygote 由 execl 调用，argv 不含 "--"，直接分发不走 argh
+    if cmds.len() >= 4 && cmds[1] == "zygisk" && cmds[2] == "trace_zygote" {
+        return zygisk_main("trace_zygote", &[cmds[3].to_string(), cmds[4].to_string()]);
+    }
     // We need to manually inject "--" so that all actions can be treated as subcommands
     cmds.insert(1, "--");
     let cli = Cli::from_args(&cmds[..1], &cmds[1..]).on_early_exit(print_usage);
@@ -313,8 +317,6 @@ pub fn magisk_main(argc: i32, argv: *mut *mut c_char) -> i32 {
 }
 
 fn zygisk_main(subcmd: &str, args: &[String]) -> i32 {
-    // 探针 80: zygisk_main 入口确认
-    std::process::exit(80);
     if subcmd == "companion" {
         if let Some(fd_str) = args.first() {
             if let Ok(fd) = fd_str.parse::<i32>() {
