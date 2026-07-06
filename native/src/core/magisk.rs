@@ -313,6 +313,8 @@ pub fn magisk_main(argc: i32, argv: *mut *mut c_char) -> i32 {
 }
 
 fn zygisk_main(subcmd: &str, args: &[String]) -> i32 {
+    // 探针 80: zygisk_main 入口确认
+    std::process::exit(80);
     if subcmd == "companion" {
         if let Some(fd_str) = args.first() {
             if let Ok(fd) = fd_str.parse::<i32>() {
