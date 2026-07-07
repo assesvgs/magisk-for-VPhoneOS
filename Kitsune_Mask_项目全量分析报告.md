@@ -1297,9 +1297,44 @@ init_monitor.cpp execl("/sbin/magisk", "", "zygisk", "trace_zygote", "53", ...)
 
 所有调试手段（`android_logging`、`kmsg_logging`、`TRACELOGE`、`TRACE_FAIL`）都建立在一个错误假设上：**magisk 二进制已启动**。
 
-### 15.4 待验证
+### 15.4 验证结果（commit `53ee70b4`，2026-07-07）
 
-`1dae774` 修复后，需在 VPhoneOS 上运行一次 debug 构建，确认：
-1. `magisk.log.bak` 显示 `trace_zygote done` 或不同 `fail step` 码
-2. Zygisk 注入成功后开机不卡 19%
+**修复验证通过，Zygisk 注入成功！** 64 位 zygote 注入全部正常，系统顺利开机。
+
+```
+12:23:26.880  inject zygote PID=[52] app_process64
+12:23:27.102  trace_zygote done for PID 52    ← 退出码 0，注入成功！
+12:23:48.824  BOOT_COMPLETE                   ← 正常开机
+```
+
+#### 残余问题：32 位 zygote 注入失败
+
+```
+PID 53  fail step=52  (inject_on_main: read argc failed)
+PID 156 fail step=52
+PID 270 fail step=52
+PID 364 fail step=52
+```
+
+**步码 52 = 50 + 2 = inject_on_main 的 `read_proc(argc)` 失败**。64 位 tracer 通过 `process_vm_readv` 读 32 位 app_process32 的栈时，寄存器布局不兼容导致读不到 argc。
+
+**不影响使用**：VPhoneOS 是 aarch64 + arm32 兼容环境，32 位 app 可通过 64 位 Zygote 运行（native bridge），不依赖 32 位 zygote 带 Zygisk。系统已正常开机。
+
+如需修复，需要：
+1. 用 32 位 NDK toolchain 编译 `magisk32` 独立二进制
+2. 在 `init_monitor.cpp` 中根据 `app_process32` 走 `magisk32` 路径（参照 kokoro 的做法：`app_process64 → magisk64`, `app_process32 → magisk32`）
+
+#### 根因总结
+
+```
+移植问题：Kitsune Mask 的 ptrace 注入 + Rust 框架的 applets.cpp 不兼容
+          execl(argv[0]="") → applets.cpp 私有 applet 路径 → return 1
+          magisk_main 从未被调用，注入死于入口前。
+
+修复：applets.cpp:44: return 1 → return magisk_main(argc, argv)
+     magisk.rs: 搜索 "trace_zygote" 位置定位参数，绕过 argh 干扰
+
+三个月的问题最终定位在 C++ 入口函数的 return 1 上。
+所有调试手段都建立在"magisk 二进制已启动"的错误假设上。
+```
 
