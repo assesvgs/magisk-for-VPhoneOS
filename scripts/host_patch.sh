@@ -77,20 +77,28 @@ echo "PREINITDEVICE=$(./magisk --preinit-device)" >> config
 cat config
 
 ./magiskboot compress=xz magisk magisk.xz
+[ -f magisk32 ] && ./magiskboot compress=xz magisk32 magisk32.xz
+[ -f magisk64 ] && ./magiskboot compress=xz magisk64 magisk64.xz
 ./magiskboot compress=xz stub.apk stub.xz
 ./magiskboot compress=xz init-ld init-ld.xz
 
-./magiskboot cpio ramdisk.cpio \
-"add 0750 init magiskinit" \
-"mkdir 0750 overlay.d" \
-"mkdir 0750 overlay.d/sbin" \
-"add 0644 overlay.d/sbin/magisk.xz magisk.xz" \
-"add 0644 overlay.d/sbin/stub.xz stub.xz" \
-"add 0644 overlay.d/sbin/init-ld.xz init-ld.xz" \
-"patch" \
-"backup ramdisk.cpio.orig" \
-"mkdir 000 .backup" \
-"add 000 .backup/.magisk config"
+CPIO_ARGS=(
+  "add 0750 init magiskinit"
+  "mkdir 0750 overlay.d"
+  "mkdir 0750 overlay.d/sbin"
+  "add 0644 overlay.d/sbin/magisk.xz magisk.xz"
+)
+[ -f magisk32.xz ] && CPIO_ARGS+=("add 0644 overlay.d/sbin/magisk32.xz magisk32.xz")
+[ -f magisk64.xz ] && CPIO_ARGS+=("add 0644 overlay.d/sbin/magisk64.xz magisk64.xz")
+CPIO_ARGS+=(
+  "add 0644 overlay.d/sbin/stub.xz stub.xz"
+  "add 0644 overlay.d/sbin/init-ld.xz init-ld.xz"
+  "patch"
+  "backup ramdisk.cpio.orig"
+  "mkdir 000 .backup"
+  "add 000 .backup/.magisk config"
+)
+./magiskboot cpio ramdisk.cpio "${CPIO_ARGS[@]}"
 
 rm -f ramdisk.cpio.orig config *.xz
 if $IS_RAMDISK; then
