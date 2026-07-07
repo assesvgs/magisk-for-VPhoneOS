@@ -58,6 +58,12 @@ for file in lib*.so; do
   mv "$file" "${file:3:${#file}-6}"
 done
 
+if $IS64BIT; then
+  unzip -oj magisk.apk "lib/$ABI32/libmagisk32.so"
+  mv libmagisk32.so magisk32
+  chmod 755 magisk32
+fi
+
 if $IS_RAMDISK; then
   ./magiskboot decompress "$TARGET_FILE" ramdisk.cpio
 else

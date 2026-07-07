@@ -160,6 +160,8 @@ fun Project.setupCoreLib() {
                 include(abiList.map { "$it/libbusybox.so" })
                 onlyIf {
                     if (inputs.sourceFiles.files.size != abiList.size * 7)
+                        // 7 = 4 common (magiskboot, magiskinit, magiskpolicy, libinit-ld.so)
+                        //   + magisk + magisk32/magisk64 + busybox per ABI
                         throw StopExecutionException("Please build binaries first! (./build.py binary)")
                     true
                 }
