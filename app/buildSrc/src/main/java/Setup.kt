@@ -159,10 +159,7 @@ fun Project.setupCoreLib() {
                 from(zipTree(downloadFile(BUSYBOX_DOWNLOAD_URL, BUSYBOX_ZIP_CHECKSUM)))
                 include(abiList.map { "$it/libbusybox.so" })
                 onlyIf {
-                    val expectedCount = abiList.sumOf { abi ->
-                        if (abi in listOf("armeabi-v7a", "x86")) 6 else 6
-                    }
-                    if (inputs.sourceFiles.files.size != expectedCount)
+                    if (inputs.sourceFiles.files.size != abiList.size * 6)
                         throw StopExecutionException("Please build binaries first! (./build.py binary)")
                     true
                 }
