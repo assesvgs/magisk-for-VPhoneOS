@@ -155,7 +155,7 @@ void do_mount_magisk(int pid) {
         tmpfs_mount("magisk", MAGISKTMP.data());
     }
 
-    for (auto file : {"magisk32", "magisk64", "magisk", "magiskpolicy"}) {
+    for (auto file : {"magisk", "magisk32", "magisk64", "magiskpolicy"}) {
         auto src = "/proc/self/fd/"s + to_string(magisktmpfs_fd) + "/"s + file;
         auto dest = MAGISKTMP + "/"s + file;
         if (access(src.data(),F_OK) == 0){

@@ -113,6 +113,10 @@ static bool find_zygote_by_polling() {
         if (program == "/system/bin/app_process" ||
             program == "/system/bin/app_process32" ||
             program == "/system/bin/app_process64") {
+            if (stop_tracing.load()) {
+                LOGI("zygisk: stop_tracing set, skip polling injection PID %d\n", pid);
+                return false;
+            }
             LOGI("zygisk: polling found zygote PID=[%d]\n", pid);
             auto tracer = string(get_magisk_tmp()) + "/magisk";
             if (program == "/system/bin/app_process32")

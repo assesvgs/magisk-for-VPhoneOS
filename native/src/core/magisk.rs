@@ -184,7 +184,7 @@ struct DenyList {
 struct PreInitDevice {}
 
 #[derive(FromArgs)]
-#[argh(subcommand, name = "zygisk")]
+#[argh(subcommand, name = "--zygisk")]
 struct ZygiskCmd {
     #[argh(positional)]
     subcmd: String,
