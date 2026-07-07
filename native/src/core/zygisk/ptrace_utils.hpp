@@ -25,6 +25,11 @@
 #define user_regs_struct user_regs
 #endif
 
+#include <cstdint>
+#include <type_traits>
+static_assert(sizeof(long) == sizeof(uintptr_t),
+    "long and uintptr_t must match for remote stack parsing");
+
 #define WPTEVENT(x) (x >> 16)
 
 std::vector<lsplt::MapInfo> Scan_proc(const std::string& pid = "self");
