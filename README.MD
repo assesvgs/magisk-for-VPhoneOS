@@ -102,6 +102,77 @@ magisk-for-VPhoneOS/
 
 ## 技术细节
 
+### 架构说明
+
+本项目是一个**缝合体**：
+
+| 组件 | 来源 | 说明 |
+|------|------|------|
+| Root 框架 | Magisk 30.7 | Rust 守护进程（magiskd）、模块系统、Zygisk API |
+| 隐藏特性 | Kitsune Mask (kokoro-no-kitsune) | MagiskHide、SuList、SoList、内存重映射、ptrace 监控 |
+| Zygisk 注入 | Kitsune Mask (kokoro-no-kitsune) | ptrace 方式注入（替代 Magisk 30.7 的 NativeBridge） |
+| 守护进程 | Magisk 30.7 | Rust 重写（C++ 版保留为死代码） |
+
+### Zygisk 注入流程
+
+```
+POST_FS_DATA 阶段
+  → init_monitor 线程启动（magiskd 内）
+  → PTRACE_SEIZE init(1) 带 PTRACE_O_TRACEFORK
+  → 监听 init fork 的所有子进程
+  → 子进程 exec 为 app_process64/32 → inject_zygote():
+    1. kill(SIGSTOP) 暂停 zygote
+    2. PTRACE_DETACH + 保持 SIGSTOP
+    3. xfork() 出子进程
+    4. 子进程 execl("/sbin/magisk", "magisk", "-zygisk", "trace_zygote", pid, libpath)
+    5. 父进程 waitpid(WNOHANG, 5s 超时) 等待退出码
+    6. trace_zygote():
+       - PTRACE_SEIZE(zygote) 附加
+       - EINVAL 降级（kernel < 5.3 无 PTRACE_O_EXITKILL）
+       - inject_on_main(): process_vm_readv/writev 远程注入
+       - dlopen + dlsym("zygisk_inject_entry")
+       - kill(SIGCONT) 恢复 zygote
+    7. 退出码 0 = 成功；2+ = 失败步骤
+```
+
+### 已知根因与修复
+
+**三个月未开机的根因**：`applets.cpp` 的入口分发逻辑与 execl 调用不兼容。
+
+```
+execl /sbin/magisk "" "zygisk" "trace_zygote" <pid> <libpath>
+  → argv[0] == ""（空字符串，execl 约定）
+  → applets.cpp:main() 检测到 argv[0][0] == '\0'
+  → 进入"私有 applet"路径（private_applets）
+  → private_applets 为空 → 找不到 "zygisk"
+  → return 1 → 父进程判定注入失败
+  → magisk_main() 从未被调用
+```
+
+**修复（commit `1dae774`、`53ee70b`）：**
+1. `applets.cpp:44`: `return 1` → `return magisk_main(argc, argv)`
+2. `magisk.rs`: 搜索 `"trace_zygote"` 位置定位参数，绕过 argh 干扰
+
+**验证结果（commit `53ee70b4`）：** 64 位 zygote 注入成功，系统正常开机。32 位 zygote 注入因 `process_vm_readv` 跨架构读栈失败（step=52），不影响使用。
+
+### 32 位兼容性
+
+本项目的 magisk 二进制是 64 位的。`trace_zygote` 中的 `process_vm_readv` 读 32 位 `app_process32` 进程栈时，因寄存器布局差异导致 argc 读取失败（step=52）。如需支持 32 位 Zygisk，需用 32 位 NDK 编译 `magisk32`，并在 `init_monitor.cpp` 中根据架构选择对应二进制。
+
+### 退出码速查表
+
+trace_zygote 失败时通过 `_exit(code)` 通知父进程，父进程记录 `zygisk: trace_zygote PID %d fail step=%d`：
+
+| 退出码 | 含义 |
+|--------|------|
+| 2 | `PTRACE_SEIZE` 失败 |
+| 3 | `wait_for_trace`（等 SIGSTOP）失败 |
+| 4 | 初始 SIGSTOP 状态不对 |
+| 51-64 | `inject_on_main` 内部步骤失败：51=get_regs 52=read_argc 53=get_entry 54=write_break 55=wait_breakpoint ... 64=stopped_other |
+| 6 | `kill(SIGCONT)` 失败 |
+| 7-8 | 后续 ptrace 操作失败 |
+| 9 | SIGTRAP 后状态不对 |
+
 ### 反检测流程
 
 ```
@@ -121,8 +192,20 @@ run_modules_post() — SoList 隐藏
 
 | 方案 | 原理 | 可靠性 | CPU 占用 |
 |------|------|--------|----------|
-| Logcat（原版） | 解析 Android 日志系统 | 可能遗漏 | 较高 |
-| ptrace（本项目） | 附加到 zygote 监控 fork | 不会遗漏 | 低 |
+| Logcat（原版 Magisk） | 解析 Android 日志系统 | 可能遗漏 | 较高 |
+| ptrace（本项目 & Kitsune） | 附加到 init 监控 fork | 不会遗漏 | 低 |
+
+### 调试构建
+
+默认 `./build.py all` 为 debug 构建（`MAGISK_DEBUG=1`）：
+- `ptrace.cpp` 中的 `TRACELOGE`/`TRACELOGW` 宏通过 `trace_log()` 追加到 `/cache/magisk.log`
+- init_monitor 的 `waitpid` 轮询捕获 trace_zygote 退出码
+- 注入成功显示 `trace_zygote done for PID`；失败显示 `fail step=<code>`
+
+Release 构建（`./build.py -r all`）：
+- `TRACELOGE`/`TRACELOGW` 编译为空操作
+- `ZLOGD` 编译为空函数（LTO 优化掉）
+- `LOGE`/`LOGW`/`LOGI` 保留
 
 ## 许可证
 
