@@ -1257,19 +1257,49 @@ write_proc: l != len → ZLOGW → l = -1
 | `ZygiskRequest` 枚举 | 内联定义 | 已移除（来自 Rust FFI） |
 | `connect_daemon` 调用 | `+RequestCode::ZYGISK` | `RequestCode::ZYGISK` |
 
-### 15.3 导致 3 次开机问题的差异（按可能性排序）
+### 15.3 真正根因（追加于 2026-07-06，commit `1dae774`）
 
-| 排名 | 差异 | 文件 | 可能机制 | 概率 |
-|------|------|------|---------|------|
-| **1** | 单二进制 `magisk` vs `magisk64/32` | `init_monitor.cpp` | VPhoneOS 上 32 位 zygote 被单二进制 ptrace，跨架构操作失败 | ⭐⭐⭐ |
-| **2** | `write_proc` 部分写入转为失败 | `ptrace_utils.cpp` | VPhone 内核 `process_vm_writev` 如返回部分长度，视为失败 | ⭐⭐⭐ |
-| **3** | 匹配 bare `app_process` | `init_monitor.cpp` | 如果有裸 `app_process`（无后缀），注入它可能炸 | ⭐⭐ |
-| **4** | `wait_for_trace` 失败杀 zygote | `ptrace_utils.cpp` | kokoro 静默退出，本项目 SIGKILL | ⭐⭐ |
-| **5** | `reset_zygisk` 移到了 Rust | `entry.cpp` → `daemon.rs` | 崩溃计数行为可能存在差异 | ⭐ |
+**经过 4 轮探针定位，根因不在 ptrace、不在 Rust logger、不在 SELinux——在 `applets.cpp`。**
 
-### 15.4 建议验证步骤
+#### 根因链条
 
-1. 跑 `0197fa0` 的 debug 构建，看 `magisk.log` 中 `zygisk: trace_zygote failed` 行——确认注入确实失败
-2. 如确认失败，将 tracer 路径从 `"magisk"` 改为 `"magisk64"`（`__LP64__` 条件编译），测试架构匹配
-3. 如仍失败，将 `ptrace_utils.cpp:78` 的 `l = -1` 改为 kokoro 风格（不转为失败）
+```
+init_monitor.cpp execl("/sbin/magisk", "", "zygisk", "trace_zygote", "53", ...)
+  → 内核加载 magisk 二进制
+  → applets.cpp:main() 调用
+  → argv[0] = ""（空字符串，execl 约定）
+  → applets.cpp:32: argv[0][0] == '\0' → 进入"私有 applet"路径
+  → 私有 applets 表为 EMPTY（constexpr Applet private_applets[] = {};）
+  → 查不到 "zygisk" → fprintf + return 1
+  → EXIT CODE 1 → 父进程 (init_monitor) 看到 exit=1
+  → LOGW("trace_zygote failed") → kill(SIGKILL) zygote → 卡开机
+```
+
+**kokoro 无此问题**：kokoro 的 `zygisk_main()` 直接在 `main.cpp` 中处理 `trace_zygote`，不走 `applets.cpp` 的私有 applet 路径。
+
+**Magisk 30.7 继承问题**：`applets.cpp` 是 Magisk 30.7 的 Rust 框架带来的，适用于 `magisk --post-fs-data` 等 CLI 调用。它用 `argv[0][0] == '\0'` 判断"私有 applet"模式，但 `execl` 传的空字符串 argv[0] 触发了这个分支。
+
+#### 修复
+
+两个改动：
+
+1. **`applets.cpp:43-44`**：`return 1` → `return magisk_main(argc, argv)`（路由到 Rust 侧）
+2. **`magisk.rs:magisk_main()`**：搜索 `"trace_zygote"` 位置定位参数，绕过 argh（`--` 插入干扰子命令识别）
+
+#### 之前的错误推定
+
+| 推定方向 | 原因 | 实际 |
+|---------|------|------|
+| ptrace 被内核拒绝 | `PTRACE_SEIZE` 可能失败 | 代码根本没跑到 |
+| SELinux 拦截 kmsg | `u:r:magisk:s0` 无 kmsg 权限 | 代码没跑到 |
+| logcat 不被捕获 | VPhoneOS 不导出自定义文件 | 代码没跑到 |
+| `write_proc` 部分写入 | 转为 -1 导致失败 | 代码没跑到 |
+
+所有调试手段（`android_logging`、`kmsg_logging`、`TRACELOGE`、`TRACE_FAIL`）都建立在一个错误假设上：**magisk 二进制已启动**。
+
+### 15.4 待验证
+
+`1dae774` 修复后，需在 VPhoneOS 上运行一次 debug 构建，确认：
+1. `magisk.log.bak` 显示 `trace_zygote done` 或不同 `fail step` 码
+2. Zygisk 注入成功后开机不卡 19%
 
