@@ -308,7 +308,7 @@ pub fn magisk_main(argc: i32, argv: *mut *mut c_char) -> i32 {
     let mut cmds = CmdArgs::new(argc, argv.cast()).0;
     // trace_zygote 由 execl 调用，argv 格式不定（applets.cpp 可能已修改）
     // 直接搜索 "trace_zygote" 位置，绕过 argh 和 applets 干扰
-    if let Some(pos) = cmds.iter().position(|s| s == "trace_zygote") {
+    if let Some(pos) = cmds.iter().position(|&s| s == "trace_zygote") {
         if cmds.len() > pos + 2 {
             if let Ok(pid) = cmds[pos + 1].parse::<i32>() {
                 return zygisk_main("trace_zygote", &[cmds[pos + 1].to_string(), cmds[pos + 2].to_string()]);
