@@ -44,6 +44,10 @@ static void inject_zygote(int pid) {
     LOGI("zygisk: inject zygote PID=[%d] [%s]\n", pid, program.c_str());
 
     auto tracer = string(get_magisk_tmp()) + "/magisk";
+    if (program == "/system/bin/app_process32")
+        tracer = string(get_magisk_tmp()) + "/magisk32";
+    else if (program == "/system/bin/app_process64")
+        tracer = string(get_magisk_tmp()) + "/magisk64";
     auto pid_str = to_string(pid);
 
     kill(pid, SIGSTOP);
@@ -111,10 +115,14 @@ static bool find_zygote_by_polling() {
             program == "/system/bin/app_process64") {
             LOGI("zygisk: polling found zygote PID=[%d]\n", pid);
             auto tracer = string(get_magisk_tmp()) + "/magisk";
+            if (program == "/system/bin/app_process32")
+                tracer = string(get_magisk_tmp()) + "/magisk32";
+            else if (program == "/system/bin/app_process64")
+                tracer = string(get_magisk_tmp()) + "/magisk64";
             auto pid_str = to_string(pid);
             auto p = xfork();
             if (p == 0) {
-                execl(tracer.c_str(), "", "zygisk", "trace_zygote",
+                execl(tracer.c_str(), "magisk", "--zygisk", "trace_zygote",
                       pid_str.c_str(), tracer.c_str(), nullptr);
                 PLOGE("failed to exec");
                 _exit(1);

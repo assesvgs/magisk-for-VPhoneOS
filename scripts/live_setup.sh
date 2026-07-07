@@ -66,8 +66,8 @@ for file in lib*.so; do
 done
 
 if $IS64BIT && [ -e "/system/bin/linker" ]; then
-  unzip -oj magisk.apk "lib/$ABI32/libmagisk.so"
-  mv libmagisk.so magisk32
+  unzip -oj magisk.apk "lib/$ABI32/libmagisk32.so"
+  mv libmagisk32.so magisk32
   chmod 755 magisk32
 fi
 
@@ -131,7 +131,8 @@ mkdir /data/adb/modules 2>/dev/null
 mkdir /data/adb/post-fs-data.d 2>/dev/null
 mkdir /data/adb/service.d 2>/dev/null
 
-for file in magisk magisk32 magiskpolicy stub.apk; do
+for file in magisk magisk32 magisk64 magiskpolicy stub.apk; do
+  [ -f ./$file ] || continue
   chmod 755 ./$file
   cp -af ./$file $MAGISKTMP/$file
   cp -af ./$file $MAGISKBIN/$file

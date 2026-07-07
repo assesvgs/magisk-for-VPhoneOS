@@ -168,6 +168,8 @@ def clean_elf():
         cmds.append("--verbose")
     cmds.append("--")
     cmds.extend(glob.glob("native/out/*/magisk"))
+    cmds.extend(glob.glob("native/out/*/magisk32"))
+    cmds.extend(glob.glob("native/out/*/magisk64"))
     cmds.extend(glob.glob("native/out/*/magiskpolicy"))
     run_cargo(cmds)
 
@@ -179,6 +181,13 @@ def collect_ndk_build():
         for source in arch_dir.iterdir():
             target = out_dir / source.name
             mv(source, target)
+        # Rename magisk per architecture: magisk32 for 32-bit, magisk64 for 64-bit
+        magisk_file = out_dir / "magisk"
+        if magisk_file.exists():
+            if arch in ("armeabi-v7a", "x86"):
+                cp(magisk_file, out_dir / "magisk32")
+            elif arch in ("arm64-v8a", "x86_64"):
+                cp(magisk_file, out_dir / "magisk64")
 
 
 def run_ndk_build(cmds: list[str]):

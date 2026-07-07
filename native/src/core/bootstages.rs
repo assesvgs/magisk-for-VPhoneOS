@@ -91,12 +91,17 @@ impl MagiskD {
             .status()
             .log_ok();
 
-        // magisk32 and magiskpolicy are not installed into ramdisk and has to be copied
+        // magisk32, magisk64 and magiskpolicy are not installed into ramdisk and has to be copied
         // from data to magisk tmp
         let magisk32 = cstr!(concatcp!(DATABIN, "/magisk32"));
         if magisk32.exists() {
             let tmp = buf.append_path(get_magisk_tmp()).append_path("magisk32");
             magisk32.copy_to(tmp).log_ok();
+        }
+        let magisk64 = cstr!(concatcp!(DATABIN, "/magisk64"));
+        if magisk64.exists() {
+            let tmp = buf.append_path(get_magisk_tmp()).append_path("magisk64");
+            magisk64.copy_to(tmp).log_ok();
         }
         let magiskpolicy = cstr!(concatcp!(DATABIN, "/magiskpolicy"));
         if magiskpolicy.exists() {

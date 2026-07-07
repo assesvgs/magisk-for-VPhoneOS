@@ -1338,3 +1338,61 @@ PID 364 fail step=52
 所有调试手段都建立在"magisk 二进制已启动"的错误假设上。
 ```
 
+---
+
+## 16. 32 位 Zygote 注入修复 + 三二进制规范化（追加于 2026-07-07，commit `bec7a36`）
+
+> 基于 commit `53ee70b`（64 位注入修复）、`bec7a36`（32 位修复 + 三二进制规范）
+
+### 16.1 根因
+
+`inject_on_main()` 中的 `process_vm_readv` 读 `app_process32` 栈时，64 位 tracer 的 `REG_SP`（`sp`）与 32 位 `user_regs_struct` 布局不匹配，`read_proc(argc)` 返回 -1 → step=52。
+
+### 16.2 修复方案：三二进制规范
+
+参考 27.0 和 kokoro-no-kitsune-27001b 的做法，从构建产出到运行时部署全部采用 `magisk`/`magisk32`/`magisk64` 三二进制规范：
+
+```
+native/out/
+├── armeabi-v7a/magisk          ← 32 位 ARM 主 CLI
+├── armeabi-v7a/magisk32        ← 32 位 ARM tracer（与 magisk 同文件）
+├── arm64-v8a/magisk            ← 64 位 ARM 主 CLI
+├── arm64-v8a/magisk64          ← 64 位 ARM tracer（与 magisk 同文件）
+├── x86/magisk                  ← 32 位 x86 主 CLI
+├── x86/magisk32                ← 32 位 x86 tracer
+├── x86_64/magisk               ← 64 位 x86 主 CLI
+└── x86_64/magisk64             ← 64 位 x86 tracer
+```
+
+### 16.3 改动文件清单
+
+| 文件 | 改动 |
+|------|------|
+| `build.py` | `collect_ndk_build()` 按 arch 输出 `magisk32`/`magisk64`；`clean_elf()` 补新文件名 |
+| `Setup.kt` | per-ABI include 列表：32 位取 `magisk`+`magisk32`，64 位取 `magisk`+`magisk64` |
+| `init_monitor.cpp` | `inject_zygote()` + `find_zygote_by_polling()` 按 `app_process32`/`app_process64` 选择 `magisk32`/`magisk64` tracer |
+| `bootstages.rs` | 补充 `magisk64` 运行时部署（从 `/data/adb/magisk/` 到 `/sbin/`） |
+| `boot_patch.sh` | 条件压缩 + cpio 添加 `magisk32.xz`/`magisk64.xz` |
+| `flash_script.sh` | 32 位 tracer 提取路径更新 |
+| `live_setup.sh` | 32 位 tracer 提取路径更新 + 部署列表补 `magisk64` + 文件存在检查 |
+
+### 16.4 优势
+
+1. **编译器替你做架构适配** — `ptrace_utils.hpp` 的 `REG_SP` 宏由 `__aarch64__`/`__arm__` 预定义宏自动选择，零运行时开销
+2. **不增加运行时分支** — `ptrace.cpp` 所有 `read_proc`、`write_proc`、`remote_call` 不需要 `if (is_32bit)` 判断
+3. **三二进制共享同一份源码** — 编译三遍，产出三个名字，维护成本几乎为零
+4. **主 CLI 入口不变** — `magisk --daemon`、`su` 等命令仍是 `/sbin/magisk`
+5. **与 Magisk 27.0 / kokoro 对齐** — 参考实现验证过的成熟方案
+
+### 16.5 根因总结
+
+```
+三个月的问题终于画上句号。
+
+第 1 个月：applets.cpp: return 1 → magisk_main 从未被调用，64 位注入永远失败。
+第 2 个月：64 位修复 → 系统能开机，32 位 zygote 因跨架构读栈 step=52。
+第 3 个月：三二进制规范化 → 32 位 tracer 走 magisk32，32 位注入修复。
+
+全部修复都建立在同一个原则之上：用编译时多目标替代运行时架构检测。
+```
+

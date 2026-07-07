@@ -124,7 +124,9 @@ POST_FS_DATA 阶段
     1. kill(SIGSTOP) 暂停 zygote
     2. PTRACE_DETACH + 保持 SIGSTOP
     3. xfork() 出子进程
-    4. 子进程 execl("/sbin/magisk", "magisk", "-zygisk", "trace_zygote", pid, libpath)
+    4. 子进程按架构选择 tracer：
+       - app_process64 → execl("/sbin/magisk64", "magisk", "--zygisk", "trace_zygote", pid, libpath)
+       - app_process32 → execl("/sbin/magisk32", "magisk", "--zygisk", "trace_zygote", pid, libpath)
     5. 父进程 waitpid(WNOHANG, 5s 超时) 等待退出码
     6. trace_zygote():
        - PTRACE_SEIZE(zygote) 附加
@@ -157,7 +159,15 @@ execl /sbin/magisk "" "zygisk" "trace_zygote" <pid> <libpath>
 
 ### 32 位兼容性
 
-本项目的 magisk 二进制是 64 位的。`trace_zygote` 中的 `process_vm_readv` 读 32 位 `app_process32` 进程栈时，因寄存器布局差异导致 argc 读取失败（step=52）。如需支持 32 位 Zygisk，需用 32 位 NDK 编译 `magisk32`，并在 `init_monitor.cpp` 中根据架构选择对应二进制。
+本项目采用三二进制规范（参考 Magisk 27.0/kokoro-no-kitsune）：
+
+| 二进制 | 角色 | 架构 |
+|--------|------|------|
+| `magisk` | 主 CLI（daemon、su、--post-fs-data） | 设备主 ABI |
+| `magisk32` | 32 位 Zygisk tracer | 32 位 ABI（arm/x86） |
+| `magisk64` | 64 位 Zygisk tracer | 64 位 ABI（arm64/x86_64，与 magisk 同文件） |
+
+`inject_zygote()` 根据 `app_process32`/`app_process64` 自动选择对应 tracer，64 位 tracer 不再读 32 位进程栈，`step=52` 问题解决。
 
 ### 退出码速查表
 

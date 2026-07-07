@@ -143,7 +143,15 @@ fun Project.setupCoreLib() {
                 for (abi in abiList) {
                     into(abi) {
                         from(rootFile("native/out/$abi")) {
-                            include("magiskboot", "magiskinit", "magiskpolicy", "magisk", "libinit-ld.so")
+                            val archBins = mutableListOf("magiskboot", "magiskinit", "magiskpolicy", "libinit-ld.so")
+                            if (abi in listOf("armeabi-v7a", "x86")) {
+                                archBins.add("magisk")
+                                archBins.add("magisk32")
+                            } else {
+                                archBins.add("magisk")
+                                archBins.add("magisk64")
+                            }
+                            include(archBins)
                             rename { if (it.endsWith(".so")) it else "lib$it.so" }
                         }
                     }
@@ -151,7 +159,10 @@ fun Project.setupCoreLib() {
                 from(zipTree(downloadFile(BUSYBOX_DOWNLOAD_URL, BUSYBOX_ZIP_CHECKSUM)))
                 include(abiList.map { "$it/libbusybox.so" })
                 onlyIf {
-                    if (inputs.sourceFiles.files.size != abiList.size * 6)
+                    val expectedCount = abiList.sumOf { abi ->
+                        if (abi in listOf("armeabi-v7a", "x86")) 6 else 6
+                    }
+                    if (inputs.sourceFiles.files.size != expectedCount)
                         throw StopExecutionException("Please build binaries first! (./build.py binary)")
                     true
                 }
