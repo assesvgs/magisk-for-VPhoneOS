@@ -98,7 +98,7 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v7
         with:
-          name: ${{ github.sha }}
+          name: ${{ env.SHORT_SHA }}
           path: out
 
       - name: Enable KVM group perms
@@ -133,10 +133,13 @@ jobs:
       - name: Check out
         uses: actions/checkout@v6
 
+      - name: Set short SHA
+        run: echo "SHORT_SHA=${GITHUB_SHA::8}" >> $GITHUB_ENV
+
       - name: Download build artifacts
         uses: actions/download-artifact@v7
         with:
-          name: ${{ github.sha }}
+          name: ${{ env.SHORT_SHA }}
           path: out
 
       - name: Enable KVM group perms
@@ -176,10 +179,13 @@ jobs:
       - name: Check out
         uses: actions/checkout@v6
 
+      - name: Set short SHA
+        run: echo "SHORT_SHA=${GITHUB_SHA::8}" >> $GITHUB_ENV
+
       - name: Download build artifacts
         uses: actions/download-artifact@v7
         with:
-          name: ${{ github.sha }}
+          name: ${{ env.SHORT_SHA }}
           path: out
 
       - name: Enable KVM group perms
