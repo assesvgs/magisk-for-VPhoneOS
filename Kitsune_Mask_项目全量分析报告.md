@@ -1396,3 +1396,23 @@ native/out/
 全部修复都建立在同一个原则之上：用编译时多目标替代运行时架构检测。
 ```
 
+### 16.6 后续修复记录（追加于 2026-07-07，commits `5bf2f06` ~ `db27519`）
+
+三二进制改动提交后，经过两轮代码审查，修复了以下问题：
+
+| 问题 | commit | 类型 | 说明 |
+|------|--------|------|------|
+| C7-1: access 失败不阻止 kill zygote | `db27519` | 本次引入 | tracer 不存在时直接跳过注入，避免 kill zygote → 启动循环 |
+| C7-2: 轮询路径缺 stop_tracing 熔断 | `5bf2f06` | 既有债 | `find_zygote_by_polling()` 内部补 `stop_tracing` 检查 |
+| A2-1: argh 子命令名不匹配 | `5bf2f06` | 既有债 | `name = "zygisk"` → `name = "--zygisk"` 与其他子命令一致 |
+| C6-1: setup_magisk_env 不验证就位 | `5bf2f06` | 既有债 | zygisk 开启时补充 tracer 就位 warn 日志 |
+| E10-1: revert.cpp 文件复制顺序 | `5bf2f06` | 既有债 | `magisk` 放第一 |
+| B4-1/B4-2: 缺 static_assert | `831ec85` | 半既有 | 加 `sizeof(long)==sizeof(uintptr_t)` 编译期断言 |
+| boot_patch.sh: eval 引号丢失 | `c7b76a6` | 本次引入 | 数组替代 eval，修复 cpio 参数 |
+| host_patch.sh: 64 位 AVD 缺 magisk32 | `05b4648` | 本次引入 | 补充条件提取（同 live_setup.sh 模式） |
+| Setup.kt: 文件数校验从 `*6` 改 `*7` | `fa46976` | 本次引入 | 适配新增 magisk32/magisk64 |
+
+**代码审查发现统计：** 9 个问题中 4 个为本次改动引入（已全部修复），5 个为既有债（已选择性修复其中 3 个）。
+
+**当前未推送的本地 commits：** `05b4648`、`831ec85`、`5bf2f06`、`db27519`、`2d84c7d`（等待网络恢复后推送）。
+
