@@ -103,16 +103,13 @@ impl MagiskD {
             let tmp = buf.append_path(get_magisk_tmp()).append_path("magisk64");
             magisk64.copy_to(tmp).log_ok();
         }
-        if self.get_db_setting(DbEntryKey::ZygiskEnabled).as_deref() == Some("1") {
-            let tmp = |name: &str| -> std::ffi::CString {
-                let mut buf = cstr::buf::default();
-                buf.append_path(get_magisk_tmp()).append_path(name);
-                buf.into_cstring()
-            };
-            if !tmp("magisk32").exists() {
+        if self.get_db_setting(DbEntryKey::ZygiskConfig) != 0 {
+            let tmp32 = buf.append_path(get_magisk_tmp()).append_path("magisk32");
+            if !tmp32.exists() {
                 warn!("zygisk: magisk32 not deployed, 32-bit Zygisk unavailable");
             }
-            if !tmp("magisk64").exists() {
+            let tmp64 = buf.append_path(get_magisk_tmp()).append_path("magisk64");
+            if !tmp64.exists() {
                 warn!("zygisk: magisk64 not deployed, 64-bit Zygisk unavailable");
             }
         }
