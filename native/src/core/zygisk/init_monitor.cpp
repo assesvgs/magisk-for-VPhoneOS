@@ -50,6 +50,12 @@ static void inject_zygote(int pid) {
         tracer = string(get_magisk_tmp()) + "/magisk64";
     auto pid_str = to_string(pid);
 
+    if (access(tracer.c_str(), X_OK) == -1) {
+        LOGW("zygisk: skip injection PID=%d tracer=%s (%s)\n",
+             pid, tracer.c_str(), strerror(errno));
+        return;
+    }
+
     kill(pid, SIGSTOP);
     ptrace(PTRACE_CONT, pid, 0, 0);
     int status;
@@ -57,11 +63,7 @@ static void inject_zygote(int pid) {
 
     if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP && (status >> 16) == 0) {
         ptrace(PTRACE_DETACH, pid, 0, SIGSTOP);
-        // 调试：检查 tracer 路径是否可执行
         LOGI("zygisk: tracer path=[%s]\n", tracer.c_str());
-        if (access(tracer.c_str(), X_OK) == -1) {
-            LOGE("zygisk: tracer %s not accessible: %s\n", tracer.c_str(), strerror(errno));
-        }
         auto p = xfork();
         if (p == 0) {
             execl(tracer.c_str(), "magisk", "--zygisk", "trace_zygote",
@@ -124,6 +126,11 @@ static bool find_zygote_by_polling() {
             else if (program == "/system/bin/app_process64")
                 tracer = string(get_magisk_tmp()) + "/magisk64";
             auto pid_str = to_string(pid);
+            if (access(tracer.c_str(), X_OK) == -1) {
+                LOGW("zygisk: poll skip injection PID=%d tracer=%s (%s)\n",
+                     pid, tracer.c_str(), strerror(errno));
+                continue;
+            }
             auto p = xfork();
             if (p == 0) {
                 execl(tracer.c_str(), "magisk", "--zygisk", "trace_zygote",
