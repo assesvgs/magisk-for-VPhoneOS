@@ -214,6 +214,9 @@ extern "C" void *init_monitor(void *) {
                     PLOGE("PTRACE_SETOPTIONS");
                     process.erase(pid);
                     ptrace(PTRACE_DETACH, pid, 0, 0);
+                    // waitpid 刚返回 → ptrace 关系已确认存在，双故障概率极低
+                    // 若 DETACH 也失败，进程进入无主 TRACED 状态。
+                    // 概率极低且不可恢复，不加 kill 兜底以免增加代码噪声。
                     continue;
                 }
                 ptrace(PTRACE_CONT, pid, 0, 0);
