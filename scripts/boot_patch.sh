@@ -226,23 +226,21 @@ fi
 ui_print "- Config content:"
 cat config
 
-CPIO_ARGS=(
-  "add 0750 init magiskinit"
-  "mkdir 0750 overlay.d"
-  "mkdir 0750 overlay.d/sbin"
+set -- \
+  "add 0750 init magiskinit" \
+  "mkdir 0750 overlay.d" \
+  "mkdir 0750 overlay.d/sbin" \
   "add 0644 overlay.d/sbin/magisk.xz magisk.xz"
-)
-[ -f magisk32.xz ] && CPIO_ARGS+=("add 0644 overlay.d/sbin/magisk32.xz magisk32.xz")
-[ -f magisk64.xz ] && CPIO_ARGS+=("add 0644 overlay.d/sbin/magisk64.xz magisk64.xz")
-CPIO_ARGS+=(
-  "add 0644 overlay.d/sbin/stub.xz stub.xz"
-  "add 0644 overlay.d/sbin/init-ld.xz init-ld.xz"
-  "patch"
-  "$SKIP_BACKUP backup ramdisk.cpio.orig"
-  "mkdir 000 .backup"
+[ -f magisk32.xz ] && set -- "$@" "add 0644 overlay.d/sbin/magisk32.xz magisk32.xz"
+[ -f magisk64.xz ] && set -- "$@" "add 0644 overlay.d/sbin/magisk64.xz magisk64.xz"
+set -- "$@" \
+  "add 0644 overlay.d/sbin/stub.xz stub.xz" \
+  "add 0644 overlay.d/sbin/init-ld.xz init-ld.xz" \
+  "patch" \
+  "$SKIP_BACKUP backup ramdisk.cpio.orig" \
+  "mkdir 000 .backup" \
   "add 000 .backup/.magisk config"
-)
-./magiskboot cpio "$RAMDISK" "${CPIO_ARGS[@]}" || abort "! Unable to patch ramdisk"
+./magiskboot cpio "$RAMDISK" "$@" || abort "! Unable to patch ramdisk"
 
 rm -f ramdisk.cpio.orig config *.xz
 
