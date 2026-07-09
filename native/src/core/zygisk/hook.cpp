@@ -18,11 +18,10 @@
 #include <consts.hpp>
 
 #include "zygisk.hpp"
-#include "zygisk_utils.hpp"
 #include "memory.hpp"
 #include "module.hpp"
 #include "solist.hpp"
-#include "ptrace_utils.hpp"
+#include "zygisk_utils.hpp"
 
 using namespace std;
 using jni_hook::hash_map;
@@ -358,8 +357,6 @@ bool HookContext::plt_hook_commit() {
     {
         mutex_guard lock(hook_info_lock);
         plt_hook_process_regex();
-        for (auto &reg : register_info) regfree(&reg.regex);
-        for (auto &ign : ignore_info) regfree(&ign.regex);
         register_info.clear();
         ignore_info.clear();
     }
@@ -438,8 +435,7 @@ void HookContext::fork_pre() {
     auto dir = xopen_dir("/proc/self/fd");
     for (dirent *entry; (entry = xreaddir(dir.get()));) {
         int fd = parse_int(entry->d_name);
-        if (fd < 0) continue;
-        if (fd >= MAX_FD_SIZE) {
+        if (fd < 0 || fd >= MAX_FD_SIZE) {
             close(fd);
             continue;
         }
@@ -544,23 +540,11 @@ void HookContext::run_modules_pre(const vector<int> &fds) {
             void *addr = reinterpret_cast<void *>(info.start);
             size_t size = info.end - info.start;
             void *copy = mmap(nullptr, size, PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-            if (copy == MAP_FAILED) {
-                LOGE("mmap failed: %d\n", errno);
-                return;
-            }
             if ((info.perms & PROT_READ) == 0) {
-                if (mprotect(addr, size, PROT_READ) == -1) {
-                    LOGE("mprotect failed: %d\n", errno);
-                    munmap(copy, size);
-                    return;
-                }
+                mprotect(addr, size, PROT_READ);
             }
             memcpy(copy, addr, size);
-            if (mremap(copy, size, size, MREMAP_MAYMOVE | MREMAP_FIXED, addr) == MAP_FAILED) {
-                LOGE("mremap failed: %d\n", errno);
-                munmap(copy, size);
-                return;
-            }
+            mremap(copy, size, size, MREMAP_MAYMOVE | MREMAP_FIXED, addr);
             mprotect(addr, size, info.perms);
         }
     }
@@ -652,7 +636,6 @@ void HookContext::app_specialize_post() {
 void HookContext::server_specialize_pre() {
     vector<int> module_fds;
     int fd = remote_get_info(1000, "system_server", &info_flags, module_fds);
-    TRACELOGW("hook: system_server info_flags=0x%x module_fds=%zu\n", info_flags, module_fds.size());
     if (fd >= 0) {
         if (module_fds.empty()) {
             write_int(fd, 0);
@@ -662,7 +645,7 @@ void HookContext::server_specialize_pre() {
             // Send the bitset of module status back to magiskd from system_server
             dynamic_bitset bits;
             for (const auto &m : modules)
-                bits.set(m.getId(), true);
+                bits[m.getId()] = true;
             write_int(fd, static_cast<int>(bits.slots()));
             for (int i = 0; i < bits.slots(); ++i) {
                 auto l = bits.get_slot(i);
@@ -806,7 +789,6 @@ static void hook_commit() {
     PLT_HOOK_REGISTER_SYM(DEV, INODE, #NAME, NAME)
 
 void hook_functions() {
-    TRACELOGW("hook: hook_functions entered\n");
     default_new(plt_hook_list);
     default_new(jni_hook_list);
     default_new(jni_method_map);
@@ -928,14 +910,11 @@ static void hook_jni_env() {
     }
 
     // Replace the function table in JNIEnv to hook RegisterNatives
-    TRACELOGW("hook: old_functions=%p\n", (void*)env->functions);
     default_new(new_functions);
     memcpy(new_functions, env->functions, sizeof(*new_functions));
     new_functions->RegisterNatives = &env_RegisterNatives;
     old_functions = env->functions;
     env->functions = new_functions;
-    TRACELOGW("hook: new_functions=%p RegisterNatives=%p\n",
-              (void*)new_functions, (void*)new_functions->RegisterNatives);
 }
 
 static void restore_jni_env(JNIEnv *env) {
