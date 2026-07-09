@@ -13,6 +13,7 @@
 #include "zygisk.hpp"
 #include "zygisk_utils.hpp"
 #include "module.hpp"
+#include "ptrace_utils.hpp"
 
 using namespace std;
 
@@ -20,6 +21,7 @@ void *self_handle = nullptr;
 int system_server_fd = -1;
 
 extern "C" [[maybe_unused]] void zygisk_inject_entry(void *handle) {
+    TRACELOGW("hook: zygisk_inject_entry pid=%d\n", getpid());
     self_handle = handle;
     zygisk_logging();
     hook_functions();

@@ -5,6 +5,16 @@
 #include <string>
 #include <sys/ptrace.h>
 #include <lsplt.hpp>
+#include <flags.h>
+
+#if MAGISK_DEBUG
+void trace_log(const char *fmt, ...);
+#define TRACELOGE(...) trace_log("E " __VA_ARGS__)
+#define TRACELOGW(...) trace_log("W " __VA_ARGS__)
+#else
+#define TRACELOGE(...) ((void)0)
+#define TRACELOGW(...) ((void)0)
+#endif
 
 #if defined(__x86_64__)
 #define REG_SP rsp

@@ -22,6 +22,7 @@
 #include "memory.hpp"
 #include "module.hpp"
 #include "solist.hpp"
+#include "ptrace_utils.hpp"
 
 using namespace std;
 using jni_hook::hash_map;
@@ -651,6 +652,7 @@ void HookContext::app_specialize_post() {
 void HookContext::server_specialize_pre() {
     vector<int> module_fds;
     int fd = remote_get_info(1000, "system_server", &info_flags, module_fds);
+    TRACELOGW("hook: system_server info_flags=0x%x module_fds=%zu\n", info_flags, module_fds.size());
     if (fd >= 0) {
         if (module_fds.empty()) {
             write_int(fd, 0);
@@ -804,6 +806,7 @@ static void hook_commit() {
     PLT_HOOK_REGISTER_SYM(DEV, INODE, #NAME, NAME)
 
 void hook_functions() {
+    TRACELOGW("hook: hook_functions entered\n");
     default_new(plt_hook_list);
     default_new(jni_hook_list);
     default_new(jni_method_map);
@@ -925,11 +928,14 @@ static void hook_jni_env() {
     }
 
     // Replace the function table in JNIEnv to hook RegisterNatives
+    TRACELOGW("hook: old_functions=%p\n", (void*)env->functions);
     default_new(new_functions);
     memcpy(new_functions, env->functions, sizeof(*new_functions));
     new_functions->RegisterNatives = &env_RegisterNatives;
     old_functions = env->functions;
     env->functions = new_functions;
+    TRACELOGW("hook: new_functions=%p RegisterNatives=%p\n",
+              (void*)new_functions, (void*)new_functions->RegisterNatives);
 }
 
 static void restore_jni_env(JNIEnv *env) {

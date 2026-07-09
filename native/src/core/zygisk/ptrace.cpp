@@ -29,8 +29,10 @@ using namespace std;
 #endif
 
 #include <flags.h>
+#include <stdarg.h>
+
 #if MAGISK_DEBUG
-static void trace_log(const char *fmt, ...) {
+void trace_log(const char *fmt, ...) {
     static int fd = -1;
     if (fd < 0) {
         fd = open("/data/local/tmp/zygisk_trace.log", O_WRONLY | O_APPEND | O_CLOEXEC);
@@ -45,11 +47,6 @@ static void trace_log(const char *fmt, ...) {
     va_end(ap);
     fsync(fd);
 }
-#define TRACELOGE(...) trace_log("E " __VA_ARGS__)
-#define TRACELOGW(...) trace_log("W " __VA_ARGS__)
-#else
-#define TRACELOGE(...) ((void)0)
-#define TRACELOGW(...) ((void)0)
 #endif
 
 
@@ -334,5 +331,6 @@ bool trace_zygote(int pid, const char *libpath) {
         TRACELOGE("trace: unknown initial state: %s\n", parse_status(status).c_str());
         TRACE_FAIL(pid, 4);
     }
+    TRACELOGW("trace: inject done for pid=%d\n", pid);
     return true;
 }

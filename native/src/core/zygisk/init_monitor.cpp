@@ -14,6 +14,7 @@
 #include <consts.hpp>
 
 #include "zygisk.hpp"
+#include "ptrace_utils.hpp"
 
 using namespace std;
 
@@ -42,12 +43,14 @@ static void inject_zygote(int pid) {
         program != "/system/bin/app_process64") return;
 
     LOGI("zygisk: inject zygote PID=[%d] [%s]\n", pid, program.c_str());
+    TRACELOGW("inject: enter pid=%d program=%s\n", pid, program.c_str());
 
     auto tracer = string(get_magisk_tmp()) + "/magisk";
     if (program == "/system/bin/app_process32")
         tracer = string(get_magisk_tmp()) + "/magisk32";
     else if (program == "/system/bin/app_process64")
         tracer = string(get_magisk_tmp()) + "/magisk64";
+    TRACELOGW("inject: tracer=%s\n", tracer.c_str());
     auto pid_str = to_string(pid);
 
     if (access(tracer.c_str(), X_OK) == -1) {
@@ -64,8 +67,10 @@ static void inject_zygote(int pid) {
     if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP && (status >> 16) == 0) {
         ptrace(PTRACE_DETACH, pid, 0, SIGSTOP);
         LOGI("zygisk: tracer path=[%s]\n", tracer.c_str());
+        TRACELOGW("inject: fork+exec for pid=%d\n", pid);
         auto p = xfork();
         if (p == 0) {
+            TRACELOGW("inject: child exec %s\n", tracer.c_str());
             execl(tracer.c_str(), "magisk", "--zygisk", "trace_zygote",
                   pid_str.c_str(), tracer.c_str(), nullptr);
             LOGE("zygisk: exec %s failed: %s\n", tracer.c_str(), strerror(errno));
@@ -78,12 +83,14 @@ static void inject_zygote(int pid) {
                 if (ret == p) {
                     if (WIFEXITED(child_status)) {
                         int code = WEXITSTATUS(child_status);
+                        TRACELOGW("inject: tracer exit code=%d for pid=%d\n", code, pid);
                         if (code == 0) {
                             LOGI("zygisk: trace_zygote done for PID %d\n", pid);
                         } else {
                             LOGW("zygisk: trace_zygote PID %d fail step=%d\n", pid, code);
                         }
                     } else if (WIFSIGNALED(child_status)) {
+                        TRACELOGW("inject: tracer killed sig=%d for pid=%d\n", WTERMSIG(child_status), pid);
                         LOGW("zygisk: trace_zygote PID %d killed (sig=%d)\n", pid, WTERMSIG(child_status));
                     }
                     goto inject_done;
@@ -133,6 +140,7 @@ static bool find_zygote_by_polling() {
             }
             auto p = xfork();
             if (p == 0) {
+                TRACELOGW("inject: poll child exec %s\n", tracer.c_str());
                 execl(tracer.c_str(), "magisk", "--zygisk", "trace_zygote",
                       pid_str.c_str(), tracer.c_str(), nullptr);
                 PLOGE("failed to exec");
@@ -144,9 +152,12 @@ static bool find_zygote_by_polling() {
                     if (ret == p) {
                         if (WIFEXITED(child_status)) {
                             int code = WEXITSTATUS(child_status);
+                            TRACELOGW("inject: poll tracer exit code=%d for pid=%d\n", code, pid);
                             if (code != 0) {
                                 LOGW("zygisk: poll tracer PID %d fail step=%d\n", pid, code);
                             }
+                        } else if (WIFSIGNALED(child_status)) {
+                            TRACELOGW("inject: poll tracer killed sig=%d for pid=%d\n", WTERMSIG(child_status), pid);
                         }
                         goto poll_done;
                     }
