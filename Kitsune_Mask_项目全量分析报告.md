@@ -1414,5 +1414,67 @@ native/out/
 
 **代码审查发现统计：** 9 个问题中 4 个为本次改动引入（已全部修复），5 个为既有债（已选择性修复其中 3 个）。
 
+---
+
+## 17. 黑屏问题排查：32 位 Zygisk 与 ART 冲突（追加于 2026-07-09，commits `1b3f11a6`）
+
+> 三二进制改动后，开启 Zygisk 重启后 VPhoneOS 窗口关闭（"卡 99% 后黑屏"）。
+> 不开 Zygisk 时正常开机。
+
+### 17.1 现象
+
+| 版本 | Zygisk | 开机 | Settings |
+|------|--------|------|----------|
+| 53ee70b4（旧版单二进制） | 关 | ✅ | ✅ 正常 |
+| 53ee70b4（旧版单二进制） | 开 | ✅ 正常开机 | 无 crash（日志无 SIGABRT） |
+| 1b3f11a6（三二进制） | 关 | ✅ | ✅ 正常 |
+| 1b3f11a6（三二进制） | 开 | ❌ 黑屏 | ❌ Settings RenderThread SIGABRT |
+
+### 17.2 关键时间线（1b3f11a6 开 Zygisk，来自 titan.log + UserKernel.log）
+
+```
+11:43:46.669  SetTopActivity: com.android.settings/.FallbackHome  ← 启动器启动
+11:43:46.753  PID 25641 com.android.settings RenderThread → SIGABRT  ← 崩溃！
+11:43:46.765  Engine::OnGetError: error=42, arg1=6
+11:43:47.258  PID 25588 com.android.phone → SIGSEGV (空指针)
+11:43:57.456  PID 25259 → Aborted
+11:44:26.815  BootProgress=100（95%→100% 耗时 40 秒，正常 2.4 秒）
+11:44:37.797  term app->window（窗口销毁，黑屏）
+```
+
+### 17.3 根因分析
+
+```
+com.android.settings (PID 25641)
+  → RenderThread 线程执行 abort()
+  → ART 检测到 JNI 环境被修改（Zygisk 的 env->functions 表替换）
+  → 进程被 SIGABRT 杀死
+  → FallbackHome（启动器）崩溃 → 无桌面显示
+  → VPhoneOS 引擎收不到 launcher 事件 → 关闭窗口
+```
+
+### 17.4 对比参考版本
+
+**kokoro-no-kitsune-27001b（同样 API 29、同样 ptrace 注入、同时注入 64+32 位）：**
+```
+proc_monitor: pid=[54] app_process64 → zygisk64 注入成功
+proc_monitor: pid=[55] app_process32 → zygisk32 注入成功
+zygisk64: JNIEnv hook（大量 log）
+zygisk32: JNIEnv hook（大量 log）
+```
+**正常运行，无崩溃。** 说明同一个 VPhoneOS 上 kokoro 的 Zygisk 实现能正常工作。
+
+**27.0：** 使用 NativeBridge 注入（非 ptrace），只作用于 64 位 zygote，32 位进程不受 Zygisk 影响。
+
+### 17.5 待排查方向
+
+与 kokoro 的差异可能包括：
+1. `hook.cpp` 中 `env->functions` 表替换的具体实现差异
+2. 内存分配器（`memory.cpp`）实现差异
+3. Zygisk API 版本差异（kokoro 是 v1-v4，本项目 v1-v4 但个别函数实现不同）
+4. ART 兼容性处理差异
+
+需要对比 `zygisk/hook.cpp`、`zygisk/entry.cpp`、`zygisk/memory.cpp` 等核心注入文件。
+
 **当前未推送的本地 commits：** `05b4648`、`831ec85`、`5bf2f06`、`db27519`、`2d84c7d`（等待网络恢复后推送）。
 
