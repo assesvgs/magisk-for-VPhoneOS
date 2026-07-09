@@ -24,8 +24,8 @@ pub struct ZygiskState {
 
 impl ZygiskState {
     fn connect_zygiskd(&mut self, mut client: UnixStream, daemon: &MagiskD) -> Option<()> {
-        let is_64_bit: bool = client.read_decodable().ok()?;
-        let slot = if is_64_bit { &mut self.sockets.1 } else { &mut self.sockets.0 };
+        let is_64_bit: i32 = client.read_decodable().ok()?;
+        let slot = if is_64_bit != 0 { &mut self.sockets.1 } else { &mut self.sockets.0 };
 
         if let Some(s) = slot.as_ref() {
             let fd = s.as_raw_fd();
@@ -41,9 +41,9 @@ impl ZygiskState {
         } else {
             let (mut local, remote) = UnixStream::pair().ok()?;
             if unsafe { libc::fork() } == 0 {
-                exec_zygiskd(is_64_bit, remote);
+                exec_zygiskd(is_64_bit != 0, remote);
             }
-            if let Some(module_fds) = daemon.get_module_fds(is_64_bit) {
+            if let Some(module_fds) = daemon.get_module_fds(is_64_bit != 0) {
                 local.send_fds(&module_fds).ok()?;
             }
             if local.read_decodable::<i32>().ok()? != 0 {
@@ -161,7 +161,7 @@ impl MagiskD {
     fn get_process_info(&self, mut client: UnixStream) -> Option<()> {
         let uid: i32 = client.read_decodable().ok()?;
         let process: String = client.read_decodable().ok()?;
-        let is_64_bit: bool = client.read_decodable().ok()?;
+        let is_64_bit: i32 = client.read_decodable().ok()?;
 
         let mut flags: u32 = 0;
         unsafe {
@@ -179,13 +179,13 @@ impl MagiskD {
         client.write_pod(&flags).ok()?;
 
         if zygisk_should_load_module(flags) {
-            if let Some(fds) = self.get_module_fds(is_64_bit) {
+            if let Some(fds) = self.get_module_fds(is_64_bit != 0) {
                 client.send_fds(&fds).ok()?;
             }
         }
 
         if uid == 1000 && process == "system_server" {
-            let _failed_ids: Vec<i32> = client.read_decodable().ok()?;
+            let _failed_ids: Vec<i64> = client.read_decodable().ok()?;
         }
 
         Some(())
@@ -195,7 +195,7 @@ impl MagiskD {
         let module_list = self.module_list.get()?;
         Some(module_list.iter().map(|m| {
             let fd = if is_64_bit { m.z64 } else { m.z32 };
-            if fd < 0 { -1 } else { fd }
+            if fd < 0 { 1 } else { fd }
         }).collect())
     }
 
