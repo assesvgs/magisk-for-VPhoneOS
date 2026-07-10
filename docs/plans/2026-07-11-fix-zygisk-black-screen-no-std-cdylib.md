@@ -13,15 +13,20 @@
 ## 执行策略：三阶段推进
 
 ```
-Phase 1 ─── 本地写代码：cdylib 骨架 + 分配器 + cxx 桥 + 构建集成
-                → push → CI 编译 → 下载产物 → readelf 验证 .init_array
-                → 通过则 Phase 2
+Phase 1  ─── cdylib 骨架 + 分配器 + cxx 桥 + 构建集成
+                → push → CI → 下载产物 → readelf 验证 .init_array
 
-Phase 2 ─── 本地写代码：PLT hook + JNI hook + HookContext + 模块管理
-                → push → CI 编译 → 通过则 Phase 3
+Phase 2a ─── PLT hook 注册
+                → push → CI
 
-Phase 3 ─── 本地写代码：注入路径修改 + 部署脚本 + 清理旧文件
-                → push → CI 编译 → 部署到 VPhoneOS 验证
+Phase 2b ─── JNI env->functions 表替换
+                → push → CI
+
+Phase 2c ─── HookContext + 模块生命周期
+                → push → CI
+
+Phase 3  ─── 注入路径 + 部署脚本 + 清理旧文件
+                → push → CI → 部署到 VPhoneOS 验证
 ```
 
 ## 文件清单
@@ -162,9 +167,11 @@ bool commit_plt_hooks();
 
 ---
 
-### Phase 2：核心逻辑迁移（任务 4-6）
+### Phase 2：核心逻辑迁移（任务 4-6，分 3 次 push）
 
-#### 任务 4：PLT hook 注册
+> 每个子阶段完成后单独 push → CI → 通过后继续下一子阶段。
+
+#### Phase 2a：任务 4 — PLT hook 注册
 
 **文件：**
 - 修改：`native/src/zygisk_inject/src/plt.rs`
@@ -172,7 +179,9 @@ bool commit_plt_hooks();
 
 实现所有 PLT hook 注册（fork、unshare、androidSetCreateThreadFunc、selinux_android_setcontext、__android_log_close），对应 hook.cpp 的 PLT_HOOK_REGISTER_SYM 宏。
 
-#### 任务 5：JNI hook
+- [ ] 编写代码 → push → CI → 通过后继续
+
+#### Phase 2b：任务 5 — JNI hook
 
 **文件：**
 - 创建：`native/src/zygisk_inject/src/jni.rs`
@@ -180,13 +189,17 @@ bool commit_plt_hooks();
 
 JNI 类型绑定（JNINativeInterface、JNIEnv、JNINativeMethod 的 repr(C) 结构体），`hook_jni_env()` 复制旧表 → 分配新表 → 替换 RegisterNatives。
 
-#### 任务 6：HookContext 和模块生命周期
+- [ ] 编写代码 → push → CI → 通过后继续
+
+#### Phase 2c：任务 6 — HookContext 和模块生命周期
 
 **文件：**
 - 创建：`native/src/zygisk_inject/src/context.rs`
 - 创建：`native/src/zygisk_inject/src/module.rs`
 
 HookContext（env、process、pid、info_flags、modules）、app_specialize_pre/post、server_specialize_pre/post、ZygiskModule 加载。
+
+- [ ] 编写代码 → push → CI → 通过后继续 Phase 3
 
 ---
 
