@@ -321,7 +321,16 @@ def build_cdylib():
         cmds.append("--verbose")
 
     for triple in build_abis.values():
-        proc = run_cargo(cmds + ["--target", triple])
+        linker_var = f"CARGO_TARGET_{triple.upper().replace('-', '_')}_LINKER"
+        old_linker = os.environ.get(linker_var)
+        os.environ[linker_var] = f"{triple}-clang"
+        try:
+            proc = run_cargo(cmds + ["--target", triple])
+        finally:
+            if old_linker is not None:
+                os.environ[linker_var] = old_linker
+            else:
+                os.environ.pop(linker_var, None)
         if proc.returncode != 0:
             error("Build zygisk_inject cdylib failed!")
 
