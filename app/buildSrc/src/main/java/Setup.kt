@@ -151,6 +151,7 @@ fun Project.setupCoreLib() {
                                 archBins.add("magisk")
                                 archBins.add("magisk64")
                             }
+                            archBins.add("libzygisk_inject.so")
                             include(archBins)
                             rename { if (it.endsWith(".so")) it else "lib$it.so" }
                         }
@@ -159,9 +160,9 @@ fun Project.setupCoreLib() {
                 from(zipTree(downloadFile(BUSYBOX_DOWNLOAD_URL, BUSYBOX_ZIP_CHECKSUM)))
                 include(abiList.map { "$it/libbusybox.so" })
                 onlyIf {
-                    if (inputs.sourceFiles.files.size != abiList.size * 7)
-                        // 7 = 4 common (magiskboot, magiskinit, magiskpolicy, libinit-ld.so)
-                        //   + magisk + magisk32/magisk64 + busybox per ABI
+                    if (inputs.sourceFiles.files.size != abiList.size * 8)
+                        // 8 = 4 common (magiskboot, magiskinit, magiskpolicy, libinit-ld.so)
+                        //   + magisk + magisk32/magisk64 + libzygisk_inject + busybox per ABI
                         throw StopExecutionException("Please build binaries first! (./build.py binary)")
                     true
                 }
