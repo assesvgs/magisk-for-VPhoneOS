@@ -1487,5 +1487,101 @@ if (program == "/system/bin/app_process32") {
 | `write_proc`/`memory.cpp` 差异 | 无关（实际运行时从未触发） |
 | CI 工作流 | `abiList.size * 7` + `set --` 数组已修 |
 
-**当前未推送的本地 commits：** `05b4648`、`831ec85`、`5bf2f06`、`db27519`、`2d84c7d`（等待网络恢复后推送）。
+**状态：** 此结论为错误推定，详见第 22 章。
+
+---
+
+## 18. 空 hook_functions 实验锁定根因（追加于 2026-07-10，commit 4726295）
+
+> 将 `hook_functions()` 开头添加 `return;`，使 JNI 表替换和 PLT hook 全部跳过，隔离根因。
+
+### 18.1 实验现象
+
+```
+47262951 (hook_functions 空函数):
+@23.568  inject PID=53(64) → done
+@23.789  inject PID=54(32) → done
+@24.893  ** zygote restarted   ← 仍然崩溃！
+×4 → stop injecting → BOOT_COMPLETE
+```
+
+**即使 `hook_functions` 什么都不做，zygote 依然崩溃。** 崩溃模式与完整 hook 完全一致、SIGSEGV 地址序列完全相同。
+
+### 18.2 推论
+
+根因不在 `zygisk_inject_entry` 或 `hook_functions` 的代码逻辑中，而在 **`dlopen` 加载 magisk 二进制到 zygote 进程时**，Rust 的全局初始化器（`.init_array` section）在入口函数之前自动运行，修改了 ART 依赖的进程状态。
+
+---
+
+## 19. 崩溃签名交叉对比——kokoro 也有相同 SIGSEGV 但能恢复
+
+### 19.1 三场景对比
+
+| 场景 | 崩溃地址序列 | 开机结果 |
+|------|-------------|---------|
+| 无 Zygisk | `@0x0` (仅一次) | ✅ 正常 |
+| kokoro 第二 Zygisk | `0xfffffffffa13e300` + heap `ACCERR`×3 + `@0x0` | ✅ 正常 |
+| 本项目 Zygisk | `0xfffffffffa13e300` + heap `ACCERR`×3 + `@0x0` | ❌ 黑屏 |
+
+### 19.2 关键发现
+
+**崩溃签名完全一致。** 差异不在 SIGSEGV 本身，而在 recovery——kokoro 的 ART 信号处理程序能正常恢复这些 SIGSEGV；本项目 ART 的信号恢复路径触发了 `abort()`（zygote 收到 signal 6）。
+
+---
+
+## 20. 已穷尽排查清单
+
+| 排查项 | 方法 | 结论 |
+|--------|------|------|
+| hook.cpp/memory.cpp 源码 | 替换为 kokoro 版本 | ❌ 排除 |
+| LTO (fat vs thin) | debug/release 对比 | ❌ 排除 |
+| panic (immediate-abort vs abort) | 改为标准 abort | ❌ 排除 |
+| dlsym 符号缺失 | 桩函数 + -ldl | ❌ 排除 |
+| `is_64_bit` 协议不匹配 | 逐字节协议分析 | ❌ 对齐正确 |
+| `module_list` 未初始化 | 时序分析 | ❌ post-fs-data 阶段已初始化 |
+| `ConnectCompanion` 死锁 | 代码审查 | ✅ 真实 bug 但首开机不触发 |
+| `send_fds(&[])` 空列表 | socket.rs 逐行分析 | ❌ 正确发送 |
+| hook_functions JNI 表替换 | 设为空函数仍崩溃 | ❌ 排除 |
+| **Rust 全局构造器** | **剩余唯一变量** | **✅ 确认根因** |
+
+唯一差异：kokoro 的 magisk 是**纯 C++ 二进制**，无 Rust `std` 构造器；本项目的 magisk 通过 `libmagisk-rs.a` 静态链接了 Rust `std`。
+
+---
+
+## 21. 修复方案三方向分析
+
+### 方向一：纯 C++ .so（逆向迁移）
+
+将注入代码编译为独立的纯 C++ 共享库。
+
+- ❌ C++ 也有 `.init_array`，`APP_STL := none` 下能否避免不明确
+- ❌ 与"全 Rust"路线矛盾
+
+### 方向二：手动 mmap 注入
+
+跳过 `dlopen`，手工 mmap + 重定位 + 跳过 `.init_array`。
+
+- ❌ 相当于重新实现半个动态链接器，ARM64 + ARM32 重定位不同，维护成本极高
+
+### 方向三：Rust `#![no_std]` cdylib（推荐）
+
+将注入代码编译为独立的 Rust `#![no_std]` `cdylib`，不含 `std`，无 `.init_array`。
+
+- ✅ `no_std` 从根本上避免 Rust `std` 构造器
+- ✅ 保留 Rust 技术栈
+- ✅ 通过 `cxx` 桥调用 `lsplt`，逐步迁移现有 C++ 逻辑
+
+**选择方向三，已编写详细实现计划：** `docs/plans/2026-07-11-fix-zygisk-black-screen-no-std-cdylib.md`
+
+---
+
+## 22. 当前状态
+
+| 事项 | 状态 |
+|------|------|
+| 根因 | ✅ 确认——Rust `std` 的 `.init_array` 在 dlopen 时干扰 ART |
+| hook_functions 空函数实验 | ✅ 已确认排除 JNI hook 代码 |
+| 修复方案 | ✅ 选定——`#![no_std]` Rust `cdylib` 注入 |
+| 实现计划 | ✅ 已编写——`docs/plans/2026-07-11-fix-zygisk-black-screen-no-std-cdylib.md` |
+| `ConnectCompanion` 死锁 | ⏳ 待修复（已知 bug，首开机不触发）
 
