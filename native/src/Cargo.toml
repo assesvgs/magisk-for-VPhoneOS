@@ -1,7 +1,7 @@
 cargo-features = ["panic-immediate-abort"]
 
 [workspace]
-exclude = ["external"]
+exclude = ["external", "zygisk_inject"]
 members = ["base", "base/derive", "boot", "core", "init", "sepolicy"]
 resolver = "2"
 

@@ -1,5 +1,3 @@
-[workspace]
-
 [package]
 name = "zygisk_inject"
 version = "0.1.0"
