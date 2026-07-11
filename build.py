@@ -312,9 +312,12 @@ def build_cdylib():
     if not manifest.exists():
         return
 
-    manifest_path = Path("native", "src", "zygisk_inject", "Cargo.toml")
-
-    cmds = ["build", f"--manifest-path={manifest_path}", "-Z", "build-std=core"]
+    rust_out = Path("native", "out", "rust-inject")
+    cmds = [
+        "build", f"--manifest-path={manifest}",
+        "--target-dir", str(rust_out.resolve()),
+        "-Z", "build-std=core",
+    ]
     if args.release:
         cmds.append("-r")
         profile = "release"
@@ -331,7 +334,6 @@ def build_cdylib():
             error("Build zygisk_inject staticlib failed!")
 
     # Copy .a into native/out/<arch>/ for ndk-build to link into .so
-    rust_out = Path("native", "out", "rust-inject")
     for arch, triple in build_abis.items():
         arch_out = Path("native", "out", arch)
         arch_out.mkdir(mode=0o755, exist_ok=True)
