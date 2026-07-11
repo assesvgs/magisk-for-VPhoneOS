@@ -1,3 +1,4 @@
+use alloc::string::ToString;
 use core::ffi::c_void;
 
 #[repr(C)]
