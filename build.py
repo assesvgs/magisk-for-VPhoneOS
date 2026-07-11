@@ -321,7 +321,7 @@ def build_cdylib():
     elif args.verbose > 1:
         cmds.append("--verbose")
 
-    # Find NDK LLVM prebuilt directory (host-specific, e.g. darwin-x86_64)
+    # Find NDK clang (unified, no target-specific wrappers in NDK r26+)
     ensure_paths()
     llvm_prebuilt = ndk_path / "toolchains" / "llvm" / "prebuilt"
     if not llvm_prebuilt.is_dir():
@@ -329,21 +329,19 @@ def build_cdylib():
     host_dirs = [d for d in llvm_prebuilt.iterdir() if d.is_dir()]
     if not host_dirs:
         error("No NDK prebuilt directory found")
-    ndk_llvm_bin = host_dirs[0] / "bin"
+    ndk_clang = str(host_dirs[0] / "bin" / "clang")
 
-    # Map Rust triples → NDK clang names (NDK r26+ dropped API-level suffix)
-    triple_to_clang = {
-        "aarch64-linux-android":          "aarch64-linux-android-clang",
-        "thumbv7neon-linux-androideabi":  "armv7a-linux-androideabi-clang",
-        "i686-linux-android":             "i686-linux-android-clang",
-        "x86_64-linux-android":           "x86_64-linux-android-clang",
-    }
+    # Create wrapper scripts so clang receives --target for cross-linking
+    wrapper_dir = Path("native", "out", "rust-inject")
+    wrapper_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
     for triple in build_abis.values():
-        clang_name = triple_to_clang.get(triple, f"{triple}-clang")
-        linker = str(ndk_llvm_bin / clang_name)
+        wrapper = wrapper_dir / f"clang-{triple}"
+        if not wrapper.exists():
+            wrapper.write_text(f'#!/bin/sh\nexec "{ndk_clang}" "--target={triple}" "$@"\n')
+            wrapper.chmod(0o755)
         linker_var = f"CARGO_TARGET_{triple.upper().replace('-', '_')}_LINKER"
         old_linker = os.environ.get(linker_var)
-        os.environ[linker_var] = linker
+        os.environ[linker_var] = str(wrapper)
         try:
             proc = run_cargo(cmds + ["--target", triple])
         finally:
