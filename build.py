@@ -309,7 +309,7 @@ def build_cdylib():
     if not manifest.exists():
         return
 
-    cmds = ["build", f"--manifest-path={manifest}"]
+    cmds = ["build", f"--manifest-path={manifest}", "-Z", "build-std=core"]
     if args.release:
         cmds.append("-r")
         profile = "release"
