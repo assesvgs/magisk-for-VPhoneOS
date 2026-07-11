@@ -73,8 +73,10 @@ crate-type = ["cdylib"]
 [dependencies]
 cxx = { path = "../external/cxx-rs" }
 libc = "0.2"
+jni = { version = "0.21", default-features = false }
 [build-dependencies]
 cxx-build = { path = "../external/cxx-rs/gen/cmd" }
+cc = "1.0"
 [profile.release]
 opt-level = "z"
 lto = true
@@ -83,9 +85,15 @@ panic = "abort"
 strip = true
 ```
 
-`.cargo/config.toml`（空文件，覆盖根目录的 build-std）：
+注意：`jni` crate 的 `default-features = false` 去掉 `std` 依赖，提供官方的 `JNINativeInterface`、`JNIEnv` 类型绑定，避免手写 `repr(C)` 结构体的偏移错误。
+
+`.cargo/config.toml`（显式覆盖根目录的 build-std，空文件无效！）：
 ```toml
+[unstable]
+build-std = ["core"]
 ```
+
+注意：根目录的 `.cargo/config.toml` 设了 `build-std = ["std", "panic_abort"]`。Cargo 的 config 是**合并**而非替换，**空文件不会覆盖父目录设置**。必须显式声明 `[unstable]` 段将 `build-std` 改为 `["core"]`（只编译 `core` 不编译 `std`），否则 `std` 的 `.init_array` 构造器仍会混入。
 
 `src/lib.rs`：
 ```rust
@@ -106,11 +114,24 @@ pub extern "C" fn zygisk_companion_entry(socket: i32) {}
 `build.rs`：
 ```rust
 fn main() {
+    // 编译 lsplt 源码（独立于 ndk-build，cdylib 自包含）
+    cc::Build::new()
+        .cpp(true)
+        .file("../external/lsplt/lsplt/src/main/jni/elf_util.cc")
+        .file("../external/lsplt/lsplt/src/main/jni/lsplt.cc")
+        .include("../external/lsplt/lsplt/src/main/jni/include")
+        .flag("-std=c++20")
+        .flag("-fvisibility=hidden")
+        .compile("lsplt");
+
+    // 编译 cxx bridge 生成的 C++ 胶水代码
     cxx_build::bridge("src/lib.rs")
         .flag("-std=c++23")
         .flag("-Oz")
         .compile("zygisk_inject_cxx");
+
     println!("cargo:rerun-if-changed=src/lib.rs");
+    println!("cargo:rerun-if-changed=../external/lsplt/lsplt/src/main/jni/");
 }
 ```
 
@@ -161,7 +182,7 @@ bool register_plt_hook(const PltHookEntry &e);
 bool commit_plt_hooks();
 ```
 
-`build.rs` 补充 lsplt 头文件路径和 C++ 源文件。
+`build.rs` 中已通过 `cc::Build` 编译 lsplt 源码（见任务 1），只需要在桥接文件中 `#include <lsplt.hpp>`，cxx bridge 会自动链接 lsplt。
 
 `src/plt.rs`：Rust 侧 `PltHook` struct + `register()` / `commit()` 方法。
 
@@ -187,7 +208,7 @@ bool commit_plt_hooks();
 - 创建：`native/src/zygisk_inject/src/jni.rs`
 - 修改：`native/src/zygisk_inject/lib.rs`
 
-JNI 类型绑定（JNINativeInterface、JNIEnv、JNINativeMethod 的 repr(C) 结构体），`hook_jni_env()` 复制旧表 → 分配新表 → 替换 RegisterNatives。
+使用 `jni` crate 的官方类型（`jni::sys::JNINativeInterface`、`jni::JNIEnv`），避免手写 `repr(C)` 绑定的偏移错误。`hook_jni_env()` 复制旧表 → 分配新表 → 替换 RegisterNatives。
 
 - [ ] 编写代码 → push → CI → 通过后继续
 
