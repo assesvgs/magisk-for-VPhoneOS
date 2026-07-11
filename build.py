@@ -304,6 +304,38 @@ def build_rust_src(targets: set[str]):
             mv(source, target)
 
 
+def build_cdylib():
+    manifest = Path("native", "src", "zygisk_inject", "Cargo.toml")
+    if not manifest.exists():
+        return
+
+    cmds = ["build", f"--manifest-path={manifest}"]
+    if args.release:
+        cmds.append("-r")
+        profile = "release"
+    else:
+        profile = "debug"
+    if args.verbose == 0:
+        cmds.append("-q")
+    elif args.verbose > 1:
+        cmds.append("--verbose")
+
+    for triple in build_abis.values():
+        proc = run_cargo(cmds + ["--target", triple])
+        if proc.returncode != 0:
+            error("Build zygisk_inject cdylib failed!")
+
+    # target-dir = "../../out/rust-inject" in zygisk_inject/.cargo/config.toml
+    # relative to zygisk_inject/ → resolves to native/out/rust-inject
+    rust_out = Path("native", "out", "rust-inject")
+    for arch, triple in build_abis.items():
+        arch_out = Path("native", "out", arch)
+        arch_out.mkdir(mode=0o755, exist_ok=True)
+        source = rust_out / triple / profile / "libzygisk_inject.so"
+        target = arch_out / "libzygisk_inject.so"
+        mv(source, target)
+
+
 def write_if_diff(file_name: Path, text: str):
     do_write = True
     if file_name.exists():
@@ -362,6 +394,7 @@ def build_native():
 
     dump_flag_header()
     build_rust_src(targets)
+    build_cdylib()
     build_cpp_src(targets)
 
 

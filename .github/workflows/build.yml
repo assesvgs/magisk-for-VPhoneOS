@@ -2,7 +2,7 @@ name: Magisk Build
 
 on:
   push:
-    branches: [master, main, kitsune-mask-integration]
+    branches: [master, main, kitsune-mask-integration, ci-clean]
     paths:
       - "app/**"
       - "native/**"
