@@ -171,6 +171,7 @@ def clean_elf():
     cmds.extend(glob.glob("native/out/*/magisk32"))
     cmds.extend(glob.glob("native/out/*/magisk64"))
     cmds.extend(glob.glob("native/out/*/magiskpolicy"))
+    cmds.extend(glob.glob("native/out/*/libzygisk_inject.so"))
     run_cargo(cmds)
 
 
@@ -351,6 +352,9 @@ def build_cdylib():
         arch_out = Path("native", "out", arch)
         arch_out.mkdir(mode=0o755, exist_ok=True)
         source = rust_out / triple / profile / "libzygisk_inject.so"
+        if not source.exists():
+            vprint(f"WARNING: {source} not found, skipping")
+            continue
         target = arch_out / "libzygisk_inject.so"
         mv(source, target)
 

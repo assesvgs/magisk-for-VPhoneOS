@@ -7,9 +7,6 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-libc = "0.2"
-
-[build-dependencies]
 
 [profile.release]
 opt-level = "z"
