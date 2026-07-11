@@ -320,10 +320,20 @@ def build_cdylib():
     elif args.verbose > 1:
         cmds.append("--verbose")
 
+    # Map Rust target triples to NDK clang wrapper names
+    triple_to_linker = {
+        "aarch64-linux-android": "aarch64-linux-android-clang",
+        "thumbv7neon-linux-androideabi": "armv7a-linux-androideabi-clang",
+        "i686-linux-android": "i686-linux-android-clang",
+        "x86_64-linux-android": "x86_64-linux-android-clang",
+    }
     for triple in build_abis.values():
+        linker = triple_to_linker.get(triple)
+        if linker is None:
+            linker = f"{triple}-clang"
         linker_var = f"CARGO_TARGET_{triple.upper().replace('-', '_')}_LINKER"
         old_linker = os.environ.get(linker_var)
-        os.environ[linker_var] = f"{triple}-clang"
+        os.environ[linker_var] = linker
         try:
             proc = run_cargo(cmds + ["--target", triple])
         finally:
@@ -537,6 +547,7 @@ def cleanup():
     if "rust" in targets:
         header("* Cleaning Rust")
         rm_rf(Path("native", "out", "rust"))
+        rm_rf(Path("native", "out", "rust-inject"))
         rm(Path("native", "src", "boot", "proto", "mod.rs"))
         rm(Path("native", "src", "boot", "proto", "update_metadata.rs"))
         for rs_gen in glob.glob("native/**/*-rs.*pp", recursive=True):
