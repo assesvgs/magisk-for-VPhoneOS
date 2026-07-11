@@ -1,9 +1,18 @@
 #include "jni_hook.h"
 #include <jni.h>
+#include <dlfcn.h>
 #include <sys/mman.h>
 #include <cstring>
 
+typedef jint (*JNI_GetCreatedJavaVMs_t)(JavaVM **, jsize, jsize *);
+
 bool zygisk_hook_jni_env() {
+    auto JNI_GetCreatedJavaVMs =
+        reinterpret_cast<JNI_GetCreatedJavaVMs_t>(
+            dlsym(RTLD_DEFAULT, "JNI_GetCreatedJavaVMs"));
+    if (!JNI_GetCreatedJavaVMs)
+        return false;
+
     JavaVM *vm = nullptr;
     jsize count = 0;
     if (JNI_GetCreatedJavaVMs(&vm, 1, &count) != 0 || count == 0 || vm == nullptr)
