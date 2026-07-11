@@ -146,7 +146,9 @@ include $(PREBUILT_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libzygisk_inject
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/zygisk_inject/include $(LOCAL_PATH)/external/lsplt/lsplt/src/main/jni/include
-LOCAL_SRC_FILES := zygisk_inject/cxx/plt_hook.cpp
+LOCAL_SRC_FILES := \
+    zygisk_inject/cxx/plt_hook.cpp \
+    zygisk_inject/cxx/jni_hook.cpp
 LOCAL_STATIC_LIBRARIES := liblsplt libcxx
 LOCAL_WHOLE_STATIC_LIBRARIES := zygisk_inject_static
 LOCAL_LDLIBS := -llog

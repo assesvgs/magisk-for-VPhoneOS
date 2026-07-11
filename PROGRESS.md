@@ -35,7 +35,23 @@
 
 ---
 
-## Phase 2a — PLT Hook 注册（进行中）
+## Phase 2a — PLT Hook 注册 ✅
+
+**状态：** CI 建设中
+
+### 改动
+
+| 文件 | 说明 |
+|------|------|
+| `src/memory.rs` | mmap 全局分配器 |
+| `src/plt.rs` | `/proc/self/maps` 扫描 + PLT hook FFI |
+| `include/plt_hook.h` | lsplt C FFI 头文件 |
+| `cxx/plt_hook.cpp` | lsplt RegisterHook/CommitHook 封装 |
+| `Android.mk` | 添加 liblsplt + libcxx |
+
+---
+
+## Phase 2b — JNI Hook（进行中）
 
 **目标：** 移植 PLT hook（fork、unshare、selinux_android_setcontext、strdup、__android_log_close、dlclose）
 
