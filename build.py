@@ -316,7 +316,7 @@ def build_cdylib():
     cmds = [
         "build", f"--manifest-path={manifest}",
         "--target-dir", str(rust_out.resolve()),
-        "-Z", "build-std=core",
+        "-Z", "build-std=core,alloc",
     ]
     if args.release:
         cmds.append("-r")
