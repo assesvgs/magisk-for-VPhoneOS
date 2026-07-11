@@ -137,6 +137,20 @@ include $(BUILD_EXECUTABLE)
 
 endif
 
+ifdef B_ZYGISK_INJECT
+include $(CLEAR_VARS)
+LOCAL_MODULE := zygisk_inject_static
+LOCAL_SRC_FILES := ../out/$(TARGET_ARCH_ABI)/libzygisk_inject.a
+include $(PREBUILT_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := libzygisk_inject
+LOCAL_SRC_FILES := zygisk_inject/cdylib_stub.c
+LOCAL_WHOLE_STATIC_LIBRARIES := zygisk_inject_static
+LOCAL_LDFLAGS := -Wl,--gc-sections
+include $(BUILD_SHARED_LIBRARY)
+endif
+
 ########################
 # Libraries
 ########################

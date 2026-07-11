@@ -171,7 +171,6 @@ def clean_elf():
     cmds.extend(glob.glob("native/out/*/magisk32"))
     cmds.extend(glob.glob("native/out/*/magisk64"))
     cmds.extend(glob.glob("native/out/*/magiskpolicy"))
-    cmds.extend(glob.glob("native/out/*/libzygisk_inject.so"))
     run_cargo(cmds)
 
 
@@ -224,6 +223,9 @@ def build_cpp_src(targets: set[str]):
 
     if "resetprop" in targets:
         cmds.append("B_PROP=1")
+
+    if Path("native", "src", "zygisk_inject", "Cargo.toml").exists():
+        cmds.append("B_ZYGISK_INJECT=1")
 
     if cmds:
         run_ndk_build(cmds)
@@ -310,7 +312,9 @@ def build_cdylib():
     if not manifest.exists():
         return
 
-    cmds = ["build", f"--manifest-path={manifest}", "-Z", "build-std=core"]
+    manifest_path = Path("native", "src", "zygisk_inject", "Cargo.toml")
+
+    cmds = ["build", f"--manifest-path={manifest_path}", "-Z", "build-std=core"]
     if args.release:
         cmds.append("-r")
         profile = "release"
@@ -321,48 +325,21 @@ def build_cdylib():
     elif args.verbose > 1:
         cmds.append("--verbose")
 
-    # Find NDK clang (unified, no target-specific wrappers in NDK r26+)
-    ensure_paths()
-    llvm_prebuilt = ndk_path / "toolchains" / "llvm" / "prebuilt"
-    if not llvm_prebuilt.is_dir():
-        error(f"NDK LLVM prebuilt not found at {llvm_prebuilt}")
-    host_dirs = [d for d in llvm_prebuilt.iterdir() if d.is_dir()]
-    if not host_dirs:
-        error("No NDK prebuilt directory found")
-    ndk_clang = str(host_dirs[0] / "bin" / "clang")
-
-    # Create wrapper scripts so clang receives --target for cross-linking
-    wrapper_dir = Path("native", "out", "rust-inject")
-    wrapper_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
     for triple in build_abis.values():
-        wrapper = wrapper_dir / f"clang-{triple}"
-        if not wrapper.exists():
-            wrapper.write_text(f'#!/bin/sh\nexec "{ndk_clang}" "--target={triple}" "$@"\n')
-            wrapper.chmod(0o755)
-        linker_var = f"CARGO_TARGET_{triple.upper().replace('-', '_')}_LINKER"
-        old_linker = os.environ.get(linker_var)
-        os.environ[linker_var] = str(wrapper)
-        try:
-            proc = run_cargo(cmds + ["--target", triple])
-        finally:
-            if old_linker is not None:
-                os.environ[linker_var] = old_linker
-            else:
-                os.environ.pop(linker_var, None)
+        proc = run_cargo(cmds + ["--target", triple])
         if proc.returncode != 0:
-            error("Build zygisk_inject cdylib failed!")
+            error("Build zygisk_inject staticlib failed!")
 
-    # target-dir = "../../out/rust-inject" in zygisk_inject/.cargo/config.toml
-    # relative to zygisk_inject/ → resolves to native/out/rust-inject
+    # Copy .a into native/out/<arch>/ for ndk-build to link into .so
     rust_out = Path("native", "out", "rust-inject")
     for arch, triple in build_abis.items():
         arch_out = Path("native", "out", arch)
         arch_out.mkdir(mode=0o755, exist_ok=True)
-        source = rust_out / triple / profile / "libzygisk_inject.so"
+        source = rust_out / triple / profile / "libzygisk_inject.a"
         if not source.exists():
             vprint(f"WARNING: {source} not found, skipping")
             continue
-        target = arch_out / "libzygisk_inject.so"
+        target = arch_out / "libzygisk_inject.a"
         mv(source, target)
 
 
