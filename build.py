@@ -321,17 +321,26 @@ def build_cdylib():
     elif args.verbose > 1:
         cmds.append("--verbose")
 
-    # Map Rust target triples to NDK clang wrapper names
-    triple_to_linker = {
-        "aarch64-linux-android": "aarch64-linux-android-clang",
-        "thumbv7neon-linux-androideabi": "armv7a-linux-androideabi-clang",
-        "i686-linux-android": "i686-linux-android-clang",
-        "x86_64-linux-android": "x86_64-linux-android-clang",
+    # Find NDK LLVM prebuilt directory (host-specific)
+    ensure_paths()
+    llvm_prebuilt = ndk_path / "toolchains" / "llvm" / "prebuilt"
+    if not llvm_prebuilt.is_dir():
+        error(f"NDK LLVM prebuilt not found at {llvm_prebuilt}")
+    host_dirs = [d for d in llvm_prebuilt.iterdir() if d.is_dir()]
+    if not host_dirs:
+        error("No NDK prebuilt directory found")
+    ndk_llvm_bin = host_dirs[0] / "bin"
+
+    # Map Rust triples → NDK clang path
+    triple_to_clang = {
+        "aarch64-linux-android":          ("aarch64-linux-android", 21),
+        "thumbv7neon-linux-androideabi":  ("armv7a-linux-androideabi", 16),
+        "i686-linux-android":             ("i686-linux-android", 16),
+        "x86_64-linux-android":           ("x86_64-linux-android", 21),
     }
     for triple in build_abis.values():
-        linker = triple_to_linker.get(triple)
-        if linker is None:
-            linker = f"{triple}-clang"
+        ndk_triple, api = triple_to_clang.get(triple, (triple, 21))
+        linker = str(ndk_llvm_bin / f"{ndk_triple}{api}-clang")
         linker_var = f"CARGO_TARGET_{triple.upper().replace('-', '_')}_LINKER"
         old_linker = os.environ.get(linker_var)
         os.environ[linker_var] = linker
