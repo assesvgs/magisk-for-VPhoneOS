@@ -18,6 +18,7 @@ enum HookSlot {
 }
 
 static mut ORIG_FUNCS: [*mut c_void; 6] = [core::ptr::null_mut(); 6];
+static mut ZYGOTE_INIT_SEEN: bool = false;
 
 fn orig_ptr(slot: HookSlot) -> *mut *mut c_void {
     unsafe { &mut ORIG_FUNCS[slot as usize] as *mut *mut c_void }
@@ -47,7 +48,18 @@ extern "C" fn new_selinux_android_setcontext(
 
 extern "C" fn new_strdup(s: *const libc::c_char) -> *mut libc::c_char {
     let f: StrdupFn = unsafe { core::mem::transmute(load_orig(HookSlot::Strdup)) };
-    unsafe { f(s) }
+    let ret = unsafe { f(s) };
+
+    if !s.is_null() && !unsafe { ZYGOTE_INIT_SEEN } {
+        let s_slice = unsafe { core::ffi::CStr::from_ptr(s) };
+        if let Ok(s_str) = s_slice.to_str() {
+            if s_str == "ZygoteInit" {
+                unsafe { ZYGOTE_INIT_SEEN = true; }
+                crate::jni::hook_jni_env();
+            }
+        }
+    }
+    ret
 }
 
 extern "C" fn new_android_log_close() {
@@ -66,10 +78,10 @@ pub fn hook_plt() {
         return;
     }
 
-    let nativebridge: &[(&str, &[u8], *mut c_void, HookSlot)] = &[
+    let hooks: &[(&str, &[u8], *mut c_void, HookSlot)] = &[
         ("/libnativebridge.so", b"dlclose\0", new_dlclose as *mut c_void, HookSlot::Dlclose),
     ];
-    let android_runtime: &[(&str, &[u8], *mut c_void, HookSlot)] = &[
+    let rt_hooks: &[(&str, &[u8], *mut c_void, HookSlot)] = &[
         ("/libandroid_runtime.so", b"fork\0",                    new_fork as *mut c_void, HookSlot::Fork),
         ("/libandroid_runtime.so", b"unshare\0",                new_unshare as *mut c_void, HookSlot::Unshare),
         ("/libandroid_runtime.so", b"selinux_android_setcontext\0",
@@ -78,9 +90,8 @@ pub fn hook_plt() {
         ("/libandroid_runtime.so", b"__android_log_close\0",    new_android_log_close as *mut c_void, HookSlot::LogClose),
     ];
 
-    for &(lib, sym, hook, slot) in nativebridge.iter().chain(android_runtime.iter()) {
+    for &(lib, sym, hook, slot) in hooks.iter().chain(rt_hooks.iter()) {
         crate::plt::find_and_hook(&maps, lib, sym, hook, orig_ptr(slot));
     }
-
     crate::plt::commit_all();
 }

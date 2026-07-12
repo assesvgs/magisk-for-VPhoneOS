@@ -17,7 +17,6 @@ fn panic(_info: &PanicInfo) -> ! {
 #[no_mangle]
 pub extern "C" fn zygisk_inject_entry(_handle: *mut core::ffi::c_void) {
     hooks::hook_plt();
-    jni::hook_jni_env();
 }
 
 #[no_mangle]
