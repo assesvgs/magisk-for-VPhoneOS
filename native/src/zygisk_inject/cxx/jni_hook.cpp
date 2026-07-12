@@ -8,28 +8,35 @@ typedef jint (*JNI_GetCreatedJavaVMs_t)(JavaVM **, jsize, jsize *);
 typedef jint (*RegisterNatives_t)(JNIEnv *, jclass, const JNINativeMethod *, jint);
 
 static RegisterNatives_t orig_RegisterNatives = nullptr;
+static void *orig_forkAndSpecialize = nullptr;
+static void *orig_specializeAppProcess = nullptr;
 
-// Hook for RegisterNatives: intercept Zygote method registration
 static jint hook_RegisterNatives(JNIEnv *env, jclass clazz,
                                   const JNINativeMethod *methods, jint nMethods) {
-    // Call original first
     jint ret = orig_RegisterNatives(env, clazz, methods, nMethods);
 
-    // Get class name
     jclass class_class = env->GetObjectClass(clazz);
-    jmethodID getName = env->GetMethodID(class_class, "getName", "()Ljava/lang/String;");
-    auto name = (jstring)env->CallObjectMethod(clazz, getName);
-    const char *name_str = env->GetStringUTFChars(name, nullptr);
+    if (!class_class || env->ExceptionCheck()) return ret;
 
-    // Check if this is Zygote class
-    if (name_str && strstr(name_str, "com.android.internal.os.Zygote") != nullptr) {
+    jmethodID getName = env->GetMethodID(class_class, "getName", "()Ljava/lang/String;");
+    if (!getName || env->ExceptionCheck()) return ret;
+
+    auto name = (jstring)env->CallObjectMethod(clazz, getName);
+    if (!name || env->ExceptionCheck()) return ret;
+
+    const char *name_str = env->GetStringUTFChars(name, nullptr);
+    if (!name_str) return ret;
+
+    if (strstr(name_str, "com.android.internal.os.Zygote") != nullptr) {
         for (int i = 0; i < nMethods; i++) {
-            // Store original methods for specialization interception
-            // Future: replace function pointers for forkAndSpecialize etc.
-            (void)methods[i].name;
+            if (strcmp(methods[i].name, "nativeForkAndSpecialize") == 0) {
+                orig_forkAndSpecialize = methods[i].fnPtr;
+            } else if (strcmp(methods[i].name, "nativeSpecializeAppProcess") == 0) {
+                orig_specializeAppProcess = methods[i].fnPtr;
+            }
         }
     }
-    if (name_str) env->ReleaseStringUTFChars(name, name_str);
+    env->ReleaseStringUTFChars(name, name_str);
     return ret;
 }
 
@@ -59,10 +66,11 @@ bool zygisk_hook_jni_env() {
 
     std::memcpy(new_functions, old_functions, table_size);
 
-    // Replace RegisterNatives
     orig_RegisterNatives = old_functions->RegisterNatives;
     new_functions->RegisterNatives = hook_RegisterNatives;
     env->functions = new_functions;
+
+    mprotect(new_functions, table_size, PROT_READ);
 
     return true;
 }

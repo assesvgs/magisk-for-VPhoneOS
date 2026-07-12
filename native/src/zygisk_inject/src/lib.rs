@@ -12,7 +12,7 @@ use core::panic::PanicInfo;
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    loop {}
+    unsafe { libc::abort() }
 }
 
 #[no_mangle]
@@ -21,4 +21,6 @@ pub extern "C" fn zygisk_inject_entry(_handle: *mut core::ffi::c_void) {
 }
 
 #[no_mangle]
-pub extern "C" fn zygisk_companion_entry(_socket: i32) {}
+pub extern "C" fn zygisk_companion_entry(_socket: i32) {
+    // Companion mode handled by entry.cpp/magisk.rs in the main binary
+}

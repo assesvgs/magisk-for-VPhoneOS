@@ -1,4 +1,5 @@
 use core::ffi::c_void;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 type ForkFn = unsafe extern "C" fn() -> i32;
 type UnshareFn = unsafe extern "C" fn(i32) -> i32;
@@ -18,23 +19,34 @@ enum HookSlot {
 }
 
 static mut ORIG_FUNCS: [*mut c_void; 6] = [core::ptr::null_mut(); 6];
-static mut ZYGOTE_INIT_SEEN: bool = false;
+static ZYGOTE_INIT_SEEN: AtomicBool = AtomicBool::new(false);
 
 fn orig_ptr(slot: HookSlot) -> *mut *mut c_void {
     unsafe { &mut ORIG_FUNCS[slot as usize] as *mut *mut c_void }
 }
 
-fn load_orig(slot: HookSlot) -> *mut c_void {
-    unsafe { ORIG_FUNCS[slot as usize] }
+fn load_orig<T>(slot: HookSlot) -> Option<T> {
+    let p = unsafe { ORIG_FUNCS[slot as usize] };
+    if p.is_null() {
+        None
+    } else {
+        Some(unsafe { core::mem::transmute::<*mut c_void, T>(p) })
+    }
 }
 
 extern "C" fn new_fork() -> i32 {
-    let f: ForkFn = unsafe { core::mem::transmute(load_orig(HookSlot::Fork)) };
+    let f: ForkFn = match load_orig(HookSlot::Fork) {
+        Some(f) => f,
+        None => return -1,
+    };
     unsafe { f() }
 }
 
 extern "C" fn new_unshare(flags: i32) -> i32 {
-    let f: UnshareFn = unsafe { core::mem::transmute(load_orig(HookSlot::Unshare)) };
+    let f: UnshareFn = match load_orig(HookSlot::Unshare) {
+        Some(f) => f,
+        None => return -1,
+    };
     unsafe { f(flags) }
 }
 
@@ -42,19 +54,25 @@ extern "C" fn new_selinux_android_setcontext(
     uid: u32, is_system_server: i32,
     seinfo: *const libc::c_char, pkgname: *const libc::c_char,
 ) -> i32 {
-    let f: SetcontextFn = unsafe { core::mem::transmute(load_orig(HookSlot::Setcontext)) };
+    let f: SetcontextFn = match load_orig(HookSlot::Setcontext) {
+        Some(f) => f,
+        None => return -1,
+    };
     unsafe { f(uid, is_system_server, seinfo, pkgname) }
 }
 
 extern "C" fn new_strdup(s: *const libc::c_char) -> *mut libc::c_char {
-    let f: StrdupFn = unsafe { core::mem::transmute(load_orig(HookSlot::Strdup)) };
+    let f: StrdupFn = match load_orig(HookSlot::Strdup) {
+        Some(f) => f,
+        None => return core::ptr::null_mut(),
+    };
     let ret = unsafe { f(s) };
 
-    if !s.is_null() && !unsafe { ZYGOTE_INIT_SEEN } {
+    if !s.is_null() && !ZYGOTE_INIT_SEEN.load(Ordering::Relaxed) {
         let s_slice = unsafe { core::ffi::CStr::from_ptr(s) };
         if let Ok(s_str) = s_slice.to_str() {
             if s_str == "ZygoteInit" {
-                unsafe { ZYGOTE_INIT_SEEN = true; }
+                ZYGOTE_INIT_SEEN.store(true, Ordering::Relaxed);
                 crate::jni::hook_jni_env();
             }
         }
@@ -63,12 +81,18 @@ extern "C" fn new_strdup(s: *const libc::c_char) -> *mut libc::c_char {
 }
 
 extern "C" fn new_android_log_close() {
-    let f: LogCloseFn = unsafe { core::mem::transmute(load_orig(HookSlot::LogClose)) };
+    let f: LogCloseFn = match load_orig(HookSlot::LogClose) {
+        Some(f) => f,
+        None => return,
+    };
     unsafe { f() }
 }
 
 extern "C" fn new_dlclose(handle: *mut c_void) -> i32 {
-    let f: DlcloseFn = unsafe { core::mem::transmute(load_orig(HookSlot::Dlclose)) };
+    let f: DlcloseFn = match load_orig(HookSlot::Dlclose) {
+        Some(f) => f,
+        None => return -1,
+    };
     unsafe { f(handle) }
 }
 
@@ -78,20 +102,18 @@ pub fn hook_plt() {
         return;
     }
 
-    let hooks: &[(&str, &[u8], *mut c_void, HookSlot)] = &[
-        ("/libnativebridge.so", b"dlclose\0", new_dlclose as *mut c_void, HookSlot::Dlclose),
-    ];
-    let rt_hooks: &[(&str, &[u8], *mut c_void, HookSlot)] = &[
-        ("/libandroid_runtime.so", b"fork\0",                    new_fork as *mut c_void, HookSlot::Fork),
-        ("/libandroid_runtime.so", b"unshare\0",                new_unshare as *mut c_void, HookSlot::Unshare),
-        ("/libandroid_runtime.so", b"selinux_android_setcontext\0",
-         new_selinux_android_setcontext as *mut c_void, HookSlot::Setcontext),
-        ("/libandroid_runtime.so", b"strdup\0",                 new_strdup as *mut c_void, HookSlot::Strdup),
-        ("/libandroid_runtime.so", b"__android_log_close\0",    new_android_log_close as *mut c_void, HookSlot::LogClose),
-    ];
-
-    for &(lib, sym, hook, slot) in hooks.iter().chain(rt_hooks.iter()) {
+    for &(lib, sym, hook, slot) in HOOK_LIST.iter() {
         crate::plt::find_and_hook(&maps, lib, sym, hook, orig_ptr(slot));
     }
     crate::plt::commit_all();
 }
+
+const HOOK_LIST: &[(&str, &[u8], *mut c_void, HookSlot)] = &[
+    ("/libnativebridge.so", b"dlclose\0", new_dlclose as *mut c_void, HookSlot::Dlclose),
+    ("/libandroid_runtime.so", b"fork\0",                    new_fork as *mut c_void, HookSlot::Fork),
+    ("/libandroid_runtime.so", b"unshare\0",                new_unshare as *mut c_void, HookSlot::Unshare),
+    ("/libandroid_runtime.so", b"selinux_android_setcontext\0",
+     new_selinux_android_setcontext as *mut c_void, HookSlot::Setcontext),
+    ("/libandroid_runtime.so", b"strdup\0",                 new_strdup as *mut c_void, HookSlot::Strdup),
+    ("/libandroid_runtime.so", b"__android_log_close\0",    new_android_log_close as *mut c_void, HookSlot::LogClose),
+];
