@@ -30,11 +30,12 @@ pub fn unhook_functions() -> bool {
 
 #[cfg(target_arch = "aarch64")]
 #[naked]
-pub unsafe extern "C" fn dlclose_self(handle: *mut c_void) -> ! {
+pub unsafe extern "C" fn dlclose_self(_handle: *mut c_void) -> ! {
+    // _handle 在 x0 中（ARM64 调用约定，第一个参数）
+    // dlclose 也读取 x0 作为其参数
+    // 所以无需 mov，直接尾调用即可
     core::arch::naked_asm!(
-        "mov x0, {handle}",
         "b dlclose",
-        handle = in(reg) handle,
     );
 }
 
