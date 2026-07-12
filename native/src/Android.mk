@@ -30,9 +30,7 @@ LOCAL_SRC_FILES := \
     core/deny/revert.cpp \
     core/kitsune.cpp \
     core/zygisk/entry.cpp \
-    core/zygisk/hook.cpp \
     core/zygisk/main.cpp \
-    core/zygisk/memory.cpp \
     core/zygisk/ptrace.cpp \
     core/zygisk/ptrace_utils.cpp \
     core/zygisk/init_monitor.cpp
