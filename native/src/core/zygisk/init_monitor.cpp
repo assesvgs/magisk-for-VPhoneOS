@@ -52,7 +52,7 @@ static void inject_zygote(int pid) {
         tracer = string(get_magisk_tmp()) + "/magisk64";
     TRACELOGW("inject: tracer=%s\n", tracer.c_str());
     auto pid_str = to_string(pid);
-    auto inject_lib = string(get_magisk_tmp()) + "/libzygisk_inject.so";
+    auto inject_lib = string(get_magisk_tmp()) + "/zygisk_inject";
 
     if (access(tracer.c_str(), X_OK) == -1) {
         LOGW("zygisk: skip injection PID=%d tracer=%s (%s)\n",
@@ -142,7 +142,7 @@ static bool find_zygote_by_polling() {
             auto p = xfork();
             if (p == 0) {
                 TRACELOGW("inject: poll child exec %s\n", tracer.c_str());
-                auto inject_lib = string(get_magisk_tmp()) + "/libzygisk_inject.so";
+    auto inject_lib = string(get_magisk_tmp()) + "/zygisk_inject";
                 execl(tracer.c_str(), "magisk", "--zygisk", "trace_zygote",
                       pid_str.c_str(), inject_lib.c_str(), nullptr);
                 PLOGE("failed to exec");
