@@ -154,7 +154,7 @@ fn get_class_name(env: *mut c_void, clazz: jclass) -> Option<alloc::string::Stri
     let utf_chars = unsafe { get_str(env, str_obj, core::ptr::null_mut()) };
     if utf_chars.is_null() { return None; }
 
-    let result = unsafe { core::ffi::CStr::from_ptr(utf_chars) }.to_str().ok().map(|s| alloc::string::String::from(s));
+    let result = unsafe { core::ffi::CStr::from_ptr(utf_chars as *const core::ffi::c_char) }.to_str().ok().map(|s| alloc::string::String::from(s));
     unsafe { release_str(env, str_obj, utf_chars) };
     result
 }
