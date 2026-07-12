@@ -1,70 +1,55 @@
 # Zygisk 黑屏修复 — 进度记录
 
-## Phase 1 ✅ — no_std cdylib 骨架
-
-**目标：** 创建 `#![no_std]` Rust 注入库，验证无 `.init_array`。
-
-**状态：** ✅ 完成（2026-07-11）
-
-### 改动
-
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| `native/src/zygisk_inject/` | 新建 | 独立 Rust cdylib 项目 |
-| `build.py` | 修改 | 新增 `build_cdylib()`，产 `.a`→ndk-build 链接 |
-| `Android.mk` | 修改 | 新增 `B_ZYGISK_INJECT` 段，PREBUILT_STATIC → BUILD_SHARED |
-| `Setup.kt` | 修改 | `archBins` 添加 `libzygisk_inject.so`，文件数校验 `*8` |
-
-### CI 失败记录（7 轮）
-
-| 轮 | 根因 | 修复 |
-|----|------|------|
-| 1 | workspace member 未声明 | `workspace.exclude` |
-| 2 | `build-std` 未激活 | `-Z build-std=core` |
-| 3~6 | 交叉链接器不可用 | 放弃 cargo 产 `.so`，改 staticlib + ndk-build |
-| 7 | `.a` 路径不可达 | 显式 `--target-dir` 传递给 cargo |
-
-### 验证结果
-
-| 架构 | `.init_array` | 导出符号 |
-|------|--------------|---------|
-| arm64-v8a | **0 条目** ✅ | `zygisk_inject_entry` ✅ |
-| armeabi-v7a | **0 条目** ✅ | `zygisk_inject_entry` ✅ |
-| x86 | **0 条目** ✅ | `zygisk_inject_entry` ✅ |
-| x86_64 | **0 条目** ✅ | `zygisk_inject_entry` ✅ |
+> 基于 `kitsune-mask-integration`，实施于 `ci-clean`
 
 ---
 
-## Phase 2a — PLT Hook 注册 ✅
+## Phase 1 — no_std 骨架 ✅
 
-**状态：** CI 建设中
+**目标：** 创建 `#![no_std]` Rust 注入库，验证 `.init_array` 为空。
 
-### 改动
+**7 轮 CI 迭代后架构定型：** Rust 产 `.a` (staticlib) → ndk-build 产 `.so` (BUILD_SHARED_LIBRARY)。
+
+**结果：** 4 架构均 0 `.init_array`，`zygisk_inject_entry` 导出。根因（Rust std 构造器）被实验证实。
+
+---
+
+## Phase 2a — PLT Hook 框架 ✅
 
 | 文件 | 说明 |
 |------|------|
 | `src/memory.rs` | mmap 全局分配器 |
-| `src/plt.rs` | `/proc/self/maps` 扫描 + PLT hook FFI |
-| `include/plt_hook.h` | lsplt C FFI 头文件 |
-| `cxx/plt_hook.cpp` | lsplt RegisterHook/CommitHook 封装 |
-| `Android.mk` | 添加 liblsplt + libcxx |
+| `src/plt.rs` | `/proc/self/maps` 扫描 + lsplt RegisterHook/CommitHook FFI |
+| `include/plt_hook.h` + `cxx/plt_hook.cpp` | C FFI 封装 |
 
 ---
 
-## Phase 2b — JNI Hook（进行中）
+## Phase 2b — JNI Hook 框架 ✅
 
-**目标：** 移植 PLT hook（fork、unshare、selinux_android_setcontext、strdup、__android_log_close、dlclose）
-
-**方案：** C FFI wrapper 调用 lsplt，Rust 侧 extern "C" 调用
-
----
-
-## Phase 2b — JNI Hook
-
-**目标：** env->functions 表替换
+| 文件 | 说明 |
+|------|------|
+| `include/jni_hook.h` + `cxx/jni_hook.cpp` | `dlsym(RTLD_DEFAULT)` → `JNI_GetCreatedJavaVMs` → mmap 复制 env->functions 表 |
+| `src/jni.rs` | Rust FFI 声明 |
+| `cxx/stubs.cpp` | 最小 C++ runtime 替代 libcxx（消除 .init_array） |
 
 ---
 
-## Phase 2c — HookContext + 模块生命周期
+## Phase 2c — Hook 回调 + 全局编排 ✅
 
-**目标：** app_specialize_pre/post、server_specialize_pre/post、ZygiskModule 加载
+| 文件 | 说明 |
+|------|------|
+| `src/hooks.rs` | 6 个 PLT hook 回调（fork/unshare/setcontext/strdup/log_close/dlclose）+ `ORIG_FUNCS` 静态数组 + `hook_plt()` 编排 |
+| `src/lib.rs` | `zygisk_inject_entry` 调用 `hook_plt()` + `hook_jni_env()` |
+
+**构建验证：** CI 通过，文件 32KB，`zygisk_inject_entry`/`zygisk_hook_jni_env`/`zygisk_plt_register`/`zygisk_plt_commit` 全部导出。
+
+---
+
+## Phase 3 — 注入路径切换（进行中 ⏳）
+
+| 文件 | 改动 |
+|------|------|
+| `init_monitor.cpp` | `inject_zygote()` + `find_zygote_by_polling()` 的 execl 最后一个参数改为 inject_lib 路径 |
+| `live_setup.sh` | 部署列表添加 `libzygisk_inject.so` |
+
+**推进中：** 旧文件清理（hook.cpp、memory.cpp、jni_hooks.hpp、gen_jni_hooks.py）待验证通过后执行。
