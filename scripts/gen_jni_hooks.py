@@ -108,9 +108,13 @@ class Method:
 
     def rust_mut_params(self):
         # 加 mut——用于函数定义，因为 proxy 函数体用 addr_of_mut! 取每个参数地址
+        # 但匿名参数（_0, _1 等 Samsung 额外参数）不加 mut——它们不会传给 addr_of_mut!
         params = [f'mut env: *mut c_void', f'mut clazz: jclass']
         for a in self.args:
-            params.append(f'mut {a.name}: {a.type.rust}')
+            if a.name.startswith('_'):
+                params.append(f'{a.name}: {a.type.rust}')
+            else:
+                params.append(f'mut {a.name}: {a.type.rust}')
         return ', '.join(params)
 
     def rust_call_args(self):

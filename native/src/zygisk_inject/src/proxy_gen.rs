@@ -485,7 +485,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_u(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_m(
-    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut _0: jint, mut _1: jint, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, _0: jint, _1: jint, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void
 ) -> jint {
     let orig = get_orig_ptr(6);
     if orig.is_null() { return -1; }
@@ -531,7 +531,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_m(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_n(
-    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut _2: jint, mut _3: jint, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void, mut _4: jint
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, _2: jint, _3: jint, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void, _4: jint
 ) -> jint {
     let orig = get_orig_ptr(7);
     if orig.is_null() { return -1; }
@@ -577,7 +577,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_n(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_o(
-    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut _5: jint, mut _6: jint, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut fds_to_ignore: *mut c_void, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, _5: jint, _6: jint, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut fds_to_ignore: *mut c_void, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void
 ) -> jint {
     let orig = get_orig_ptr(8);
     if orig.is_null() { return -1; }
@@ -623,7 +623,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_o(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_p(
-    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut _7: jint, mut _8: jint, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut fds_to_ignore: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, _7: jint, _8: jint, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut fds_to_ignore: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void
 ) -> jint {
     let orig = get_orig_ptr(9);
     if orig.is_null() { return -1; }
@@ -669,7 +669,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_p(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkAndSpecialize_grapheneos_u(
-    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut fds_to_ignore: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void, mut is_top_app: jboolean, mut pkg_data_info_list: *mut c_void, mut whitelisted_data_info_list: *mut c_void, mut mount_data_dirs: jboolean, mut mount_storage_dirs: jboolean, mut mount_sysprop_overrides: jboolean, mut _9: *mut c_void
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut fds_to_ignore: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void, mut is_top_app: jboolean, mut pkg_data_info_list: *mut c_void, mut whitelisted_data_info_list: *mut c_void, mut mount_data_dirs: jboolean, mut mount_storage_dirs: jboolean, mut mount_sysprop_overrides: jboolean, _9: *mut c_void
 ) -> jint {
     let orig = get_orig_ptr(10);
     if orig.is_null() { return -1; }
@@ -875,7 +875,7 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_u(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeSpecializeAppProcess_samsung_q(
-    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut _10: jint, mut _11: jint, mut nice_name: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, _10: jint, _11: jint, mut nice_name: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void
 ) -> () {
     let orig = get_orig_ptr(15);
     if orig.is_null() { return; }
@@ -915,7 +915,7 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_samsung_q(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeSpecializeAppProcess_grapheneos_u(
-    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut nice_name: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void, mut is_top_app: jboolean, mut pkg_data_info_list: *mut c_void, mut whitelisted_data_info_list: *mut c_void, mut mount_data_dirs: jboolean, mut mount_storage_dirs: jboolean, mut mount_sysprop_overrides: jboolean, mut _12: *mut c_void
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut nice_name: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void, mut is_top_app: jboolean, mut pkg_data_info_list: *mut c_void, mut whitelisted_data_info_list: *mut c_void, mut mount_data_dirs: jboolean, mut mount_storage_dirs: jboolean, mut mount_sysprop_overrides: jboolean, _12: *mut c_void
 ) -> () {
     let orig = get_orig_ptr(16);
     if orig.is_null() { return; }
@@ -987,7 +987,7 @@ pub unsafe extern "C" fn nativeForkSystemServer_l(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkSystemServer_samsung_q(
-    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut _13: jint, mut _14: jint, mut rlimits: *mut c_void, mut permitted_capabilities: jlong, mut effective_capabilities: jlong
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, _13: jint, _14: jint, mut rlimits: *mut c_void, mut permitted_capabilities: jlong, mut effective_capabilities: jlong
 ) -> jint {
     let orig = get_orig_ptr(18);
     if orig.is_null() { return -1; }
