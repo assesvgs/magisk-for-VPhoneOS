@@ -8,7 +8,6 @@ typedef jint (*JNI_GetCreatedJavaVMs_t)(JavaVM **, jsize, jsize *);
 typedef jint (*RegisterNatives_t)(JNIEnv *, jclass, const JNINativeMethod *, jint);
 
 static RegisterNatives_t orig_RegisterNatives = nullptr;
-static JNIEnv *cached_env = nullptr;
 
 // Hook for RegisterNatives: intercept Zygote method registration
 static jint hook_RegisterNatives(JNIEnv *env, jclass clazz,
@@ -64,7 +63,6 @@ bool zygisk_hook_jni_env() {
     orig_RegisterNatives = old_functions->RegisterNatives;
     new_functions->RegisterNatives = hook_RegisterNatives;
     env->functions = new_functions;
-    cached_env = env;
 
     return true;
 }
