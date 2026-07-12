@@ -91,8 +91,8 @@ impl MagiskD {
             .status()
             .log_ok();
 
-        // magisk32, magisk64 and magiskpolicy are not installed into ramdisk and has to be copied
-        // from data to magisk tmp
+        // magisk32, magisk64, magiskpolicy and zygisk_inject are not installed
+        // into ramdisk and have to be copied from data to magisk tmp
         let magisk32 = cstr!(concatcp!(DATABIN, "/magisk32"));
         if magisk32.exists() {
             let tmp = buf.append_path(get_magisk_tmp()).append_path("magisk32");
@@ -112,6 +112,10 @@ impl MagiskD {
             if !tmp64.exists() {
                 warn!("zygisk: magisk64 not deployed, 64-bit Zygisk unavailable");
             }
+            let tmp_inject = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject");
+            if !tmp_inject.exists() {
+                warn!("zygisk: zygisk_inject not deployed, injection target missing");
+            }
         }
         let magiskpolicy = cstr!(concatcp!(DATABIN, "/magiskpolicy"));
         if magiskpolicy.exists() {
@@ -119,6 +123,11 @@ impl MagiskD {
                 .append_path(get_magisk_tmp())
                 .append_path("magiskpolicy");
             magiskpolicy.copy_to(tmp).log_ok();
+        }
+        let zygisk_inject = cstr!(concatcp!(DATABIN, "/zygisk_inject"));
+        if zygisk_inject.exists() {
+            let tmp = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject");
+            zygisk_inject.copy_to(tmp).log_ok();
         }
 
         true
