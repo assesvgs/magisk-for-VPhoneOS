@@ -20,6 +20,9 @@ using namespace std;
 void *self_handle = nullptr;
 int system_server_fd = -1;
 
+// Stub: real logic moved to libzygisk_inject.so
+void hook_functions() {}
+
 extern "C" [[maybe_unused]] void zygisk_inject_entry(void *handle) {
     TRACELOGW("hook: zygisk_inject_entry pid=%d\n", getpid());
     self_handle = handle;
