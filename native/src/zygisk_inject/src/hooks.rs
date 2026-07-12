@@ -25,28 +25,22 @@ fn orig_ptr(slot: HookSlot) -> *mut *mut c_void {
     unsafe { &mut ORIG_FUNCS[slot as usize] as *mut *mut c_void }
 }
 
-fn load_orig<T>(slot: HookSlot) -> Option<T> {
+fn orig_fn<T>(slot: HookSlot) -> Option<T> {
     let p = unsafe { ORIG_FUNCS[slot as usize] };
     if p.is_null() {
         None
     } else {
-        Some(unsafe { core::mem::transmute::<*mut c_void, T>(p) })
+        Some(unsafe { core::mem::transmute_copy::<*mut c_void, T>(&p) })
     }
 }
 
 extern "C" fn new_fork() -> i32 {
-    let f: ForkFn = match load_orig(HookSlot::Fork) {
-        Some(f) => f,
-        None => return -1,
-    };
+    let f: ForkFn = match orig_fn(HookSlot::Fork) { Some(f) => f, None => return -1 };
     unsafe { f() }
 }
 
 extern "C" fn new_unshare(flags: i32) -> i32 {
-    let f: UnshareFn = match load_orig(HookSlot::Unshare) {
-        Some(f) => f,
-        None => return -1,
-    };
+    let f: UnshareFn = match orig_fn(HookSlot::Unshare) { Some(f) => f, None => return -1 };
     unsafe { f(flags) }
 }
 
@@ -54,18 +48,12 @@ extern "C" fn new_selinux_android_setcontext(
     uid: u32, is_system_server: i32,
     seinfo: *const libc::c_char, pkgname: *const libc::c_char,
 ) -> i32 {
-    let f: SetcontextFn = match load_orig(HookSlot::Setcontext) {
-        Some(f) => f,
-        None => return -1,
-    };
+    let f: SetcontextFn = match orig_fn(HookSlot::Setcontext) { Some(f) => f, None => return -1 };
     unsafe { f(uid, is_system_server, seinfo, pkgname) }
 }
 
 extern "C" fn new_strdup(s: *const libc::c_char) -> *mut libc::c_char {
-    let f: StrdupFn = match load_orig(HookSlot::Strdup) {
-        Some(f) => f,
-        None => return core::ptr::null_mut(),
-    };
+    let f: StrdupFn = match orig_fn(HookSlot::Strdup) { Some(f) => f, None => return core::ptr::null_mut() };
     let ret = unsafe { f(s) };
 
     if !s.is_null() && !ZYGOTE_INIT_SEEN.load(Ordering::Relaxed) {
@@ -81,18 +69,12 @@ extern "C" fn new_strdup(s: *const libc::c_char) -> *mut libc::c_char {
 }
 
 extern "C" fn new_android_log_close() {
-    let f: LogCloseFn = match load_orig(HookSlot::LogClose) {
-        Some(f) => f,
-        None => return,
-    };
+    let f: LogCloseFn = match orig_fn(HookSlot::LogClose) { Some(f) => f, None => return };
     unsafe { f() }
 }
 
 extern "C" fn new_dlclose(handle: *mut c_void) -> i32 {
-    let f: DlcloseFn = match load_orig(HookSlot::Dlclose) {
-        Some(f) => f,
-        None => return -1,
-    };
+    let f: DlcloseFn = match orig_fn(HookSlot::Dlclose) { Some(f) => f, None => return -1 };
     unsafe { f(handle) }
 }
 
@@ -101,7 +83,6 @@ pub fn hook_plt() {
     if maps.is_empty() {
         return;
     }
-
     for &(lib, sym, hook, slot) in HOOK_LIST.iter() {
         crate::plt::find_and_hook(&maps, lib, sym, hook, orig_ptr(slot));
     }
