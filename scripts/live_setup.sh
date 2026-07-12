@@ -131,7 +131,7 @@ mkdir /data/adb/modules 2>/dev/null
 mkdir /data/adb/post-fs-data.d 2>/dev/null
 mkdir /data/adb/service.d 2>/dev/null
 
-for file in magisk magisk32 magisk64 magiskpolicy stub.apk; do
+for file in magisk magisk32 magisk64 magiskpolicy libzygisk_inject.so stub.apk; do
   [ -f ./$file ] || continue
   chmod 755 ./$file
   cp -af ./$file $MAGISKTMP/$file
