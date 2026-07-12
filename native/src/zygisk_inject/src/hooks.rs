@@ -7,6 +7,7 @@ type StrdupFn = unsafe extern "C" fn(*const libc::c_char) -> *mut libc::c_char;
 type LogCloseFn = unsafe extern "C" fn();
 type DlcloseFn = unsafe extern "C" fn(*mut c_void) -> i32;
 
+#[derive(Copy, Clone)]
 enum HookSlot {
     Fork,
     Unshare,
