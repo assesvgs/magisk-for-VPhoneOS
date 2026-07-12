@@ -35,6 +35,10 @@ struct JniOffsetsCell {
     inited: AtomicBool,
     data: UnsafeCell<MaybeUninit<JniOffsets>>,
 }
+// JniOffsetsCell 的 init() 在 hook_jni_env 中单线程调用，
+// 之后 get() 由 Release/Acquire 同步保护。UnsafeCell 本身不 Sync，
+// 但此处通过 AtomicBool + 严格 Release/Acquire 确保安全。
+unsafe impl Sync for JniOffsetsCell {}
 
 impl JniOffsetsCell {
     const fn new() -> Self {

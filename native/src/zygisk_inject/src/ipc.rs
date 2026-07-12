@@ -108,7 +108,7 @@ pub fn connect_daemon() -> Option<i32> {
         libc::connect(
             fd,
             &addr as *const libc::sockaddr_un as *const libc::sockaddr,
-            addr_len as u32,
+            addr_len as libc::socklen_t,
         )
     };
     if ret < 0 {

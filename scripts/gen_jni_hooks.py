@@ -6,6 +6,19 @@ Usage: python3 scripts/gen_jni_hooks.py > native/src/zygisk_inject/src/proxy_gen
 
 ind = lambda n: '\n' + '    ' * n
 
+def camel_to_snake(name: str) -> str:
+    """Convert camelCase to snake_case.
+    e.g. 'nativeForkAndSpecialize' -> 'native_fork_and_specialize'
+    """
+    result = []
+    for i, c in enumerate(name):
+        if c.isupper() and i > 0:
+            result.append('_')
+            result.append(c.lower())
+        else:
+            result.append(c.lower())
+    return ''.join(result)
+
 
 class JType:
     def __init__(self, cpp, jni, rust):
@@ -87,9 +100,17 @@ class Method:
         return f'({a}){self.ret.jni}'
 
     def rust_params(self):
+        # 不加 mut——用于函数指针类型声明（fn pointer type 不允许 mut）
         params = [f'env: *mut c_void', f'clazz: jclass']
         for a in self.args:
             params.append(a.rust_param())
+        return ', '.join(params)
+
+    def rust_mut_params(self):
+        # 加 mut——用于函数定义，因为 proxy 函数体用 addr_of_mut! 取每个参数地址
+        params = [f'mut env: *mut c_void', f'mut clazz: jclass']
+        for a in self.args:
+            params.append(f'mut {a.name}: {a.type.rust}')
         return ', '.join(params)
 
     def rust_call_args(self):
@@ -258,19 +279,23 @@ def gen_jni_method_entry():
     out += '    pub orig_idx: usize,\n'
     out += '    pub handler: *mut c_void,\n'
     out += '}\n'
+    out += '// JniMethodEntry 只读，不修改，Sync 安全\n'
+    out += 'unsafe impl Sync for JniMethodEntry {}\n'
     return out
 
 
 def gen_table():
     """Generate ORIG_PTRS array and JNI_METHOD_TABLE."""
     out = f'pub const TABLE_SIZE: usize = {len(ALL_METHODS)};\n\n'
-    out += 'pub static ORIG_PTRS: core::cell::UnsafeCell<[*mut c_void; TABLE_SIZE]> =\n'
-    out += '    core::cell::UnsafeCell::new([core::ptr::null_mut(); TABLE_SIZE]);\n\n'
+    out += 'struct OrigPtrs(UnsafeCell<[*mut c_void; TABLE_SIZE]>);\n'
+    out += 'unsafe impl Sync for OrigPtrs {}\n\n'
+    out += 'pub static ORIG_PTRS: OrigPtrs =\n'
+    out += '    OrigPtrs(UnsafeCell::new([core::ptr::null_mut(); TABLE_SIZE]));\n\n'
     out += 'pub fn set_orig_ptr(i: usize, ptr: *mut c_void) {\n'
-    out += '    unsafe { (*ORIG_PTRS.get())[i] = ptr; }\n'
+    out += '    unsafe { (*ORIG_PTRS.0.get())[i] = ptr; }\n'
     out += '}\n\n'
     out += 'pub fn get_orig_ptr(i: usize) -> *mut c_void {\n'
-    out += '    unsafe { (*ORIG_PTRS.get())[i] }\n'
+    out += '    unsafe { (*ORIG_PTRS.0.get())[i] }\n'
     out += '}\n\n'
     out += 'pub static JNI_METHOD_TABLE: [JniMethodEntry; TABLE_SIZE] = [\n'
     for idx, m in enumerate(ALL_METHODS):
@@ -296,7 +321,7 @@ def gen_hook_and_save():
     out += '        let m = &mut *methods.offset(i);\n'
     out += '        let m_name = core::ffi::CStr::from_ptr(m.name).to_str().unwrap_or("");\n'
     out += '        let m_sig = core::ffi::CStr::from_ptr(m.signature).to_str().unwrap_or("");\n'
-    out += '        for entry in JNI_METHOD_TABLE {\n'
+    out += '        for entry in &JNI_METHOD_TABLE {\n'
     out += '            if entry.name == m_name && entry.sig == m_sig {\n'
     out += '                set_orig_ptr(entry.orig_idx, m.fn_ptr);\n'
     out += '                m.fn_ptr = entry.handler;\n'
@@ -327,7 +352,7 @@ def gen_proxy_function_inline(m):
     """Generate a proxy function with inline pre/post/call (no helper)."""
     out = f'#[no_mangle]\n'
     out += f'pub unsafe extern "C" fn {m.func_name}(\n'
-    out += f'    {m.rust_params()}\n'
+    out += f'    {m.rust_mut_params()}\n'
     out += f') -> {m.ret.rust} {{\n'
 
     idx = ALL_METHODS.index(m)
@@ -366,7 +391,8 @@ def gen_proxy_function_inline(m):
         out += f'    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");\n'
         out += '    let _prev_ctx = crate::hook_context::get_current_ptr();\n'
         out += '    crate::hook_context::set_current(&mut ctx);\n'
-        out += f'    ctx.{m.base_name}_pre();\n'
+        pre_name = camel_to_snake(m.base_name)
+        out += f'    ctx.{pre_name}_pre();\n'
         out += f'    let _ret = orig_fn({m.rust_call_args()});\n'
 
         if is_fork(m):

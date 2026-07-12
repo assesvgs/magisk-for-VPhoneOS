@@ -72,8 +72,8 @@ pub fn record_open_fds(fds: &mut FdSet) {
         let mut valid = true;
         for &c in name.iter() {
             if c == 0 { break; }
-            if c >= b'0' && c <= b'9' {
-                fd_val = fd_val * 10 + (c - b'0') as i32;
+            if (c as u8) >= b'0' && (c as u8) <= b'9' {
+                fd_val = fd_val * 10 + (c as u8 - b'0') as i32;
             } else { valid = false; break; }
         }
         if valid && fd_val >= 0 && (fd_val as usize) < MAX_FD_SIZE {

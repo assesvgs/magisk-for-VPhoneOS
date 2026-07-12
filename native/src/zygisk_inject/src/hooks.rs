@@ -20,24 +20,24 @@ enum HookSlot {
     PthreadAttrDestroy,
 }
 
-static ORIG_FUNCS: [UnsafeCell<*mut c_void>; 7] = [
-    UnsafeCell::new(core::ptr::null_mut()),
-    UnsafeCell::new(core::ptr::null_mut()),
-    UnsafeCell::new(core::ptr::null_mut()),
-    UnsafeCell::new(core::ptr::null_mut()),
-    UnsafeCell::new(core::ptr::null_mut()),
-    UnsafeCell::new(core::ptr::null_mut()),
-    UnsafeCell::new(core::ptr::null_mut()),
-];
+struct OrigFuncs([UnsafeCell<*mut c_void>; 7]);
+// 只在单线程初始化期被 C++ FFI 写入，之后只读。Sync 安全。
+unsafe impl Sync for OrigFuncs {}
+const ORIG_FUNC_INIT: UnsafeCell<*mut c_void> = UnsafeCell::new(core::ptr::null_mut());
+
+static ORIG_FUNCS: OrigFuncs = OrigFuncs([
+    ORIG_FUNC_INIT, ORIG_FUNC_INIT, ORIG_FUNC_INIT, ORIG_FUNC_INIT,
+    ORIG_FUNC_INIT, ORIG_FUNC_INIT, ORIG_FUNC_INIT,
+]);
 // Zygote 初始化阶段是单线程的，Relaxed 安全
 static ZYGOTE_INIT_SEEN: AtomicBool = AtomicBool::new(false);
 
 fn orig_ptr(slot: HookSlot) -> *mut *mut c_void {
-    ORIG_FUNCS[slot as usize].get()
+    ORIG_FUNCS.0[slot as usize].get()
 }
 
 fn orig_fn<T>(slot: HookSlot) -> Option<T> {
-    let p = unsafe { *ORIG_FUNCS[slot as usize].get() };
+    let p = unsafe { *ORIG_FUNCS.0[slot as usize].get() };
     if p.is_null() {
         None
     } else {

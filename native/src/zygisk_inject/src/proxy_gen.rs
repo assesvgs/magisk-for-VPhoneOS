@@ -51,18 +51,23 @@ pub struct JniMethodEntry {
     pub orig_idx: usize,
     pub handler: *mut c_void,
 }
+// JniMethodEntry 只读，不修改，Sync 安全
+unsafe impl Sync for JniMethodEntry {}
 
 pub const TABLE_SIZE: usize = 19;
 
-pub static ORIG_PTRS: core::cell::UnsafeCell<[*mut c_void; TABLE_SIZE]> =
-    core::cell::UnsafeCell::new([core::ptr::null_mut(); TABLE_SIZE]);
+struct OrigPtrs(UnsafeCell<[*mut c_void; TABLE_SIZE]>);
+unsafe impl Sync for OrigPtrs {}
+
+pub static ORIG_PTRS: OrigPtrs =
+    OrigPtrs(UnsafeCell::new([core::ptr::null_mut(); TABLE_SIZE]));
 
 pub fn set_orig_ptr(i: usize, ptr: *mut c_void) {
-    unsafe { (*ORIG_PTRS.get())[i] = ptr; }
+    unsafe { (*ORIG_PTRS.0.get())[i] = ptr; }
 }
 
 pub fn get_orig_ptr(i: usize) -> *mut c_void {
-    unsafe { (*ORIG_PTRS.get())[i] }
+    unsafe { (*ORIG_PTRS.0.get())[i] }
 }
 
 pub static JNI_METHOD_TABLE: [JniMethodEntry; TABLE_SIZE] = [
@@ -192,7 +197,7 @@ pub unsafe fn hook_and_save_zygote_methods(
         let m = &mut *methods.offset(i);
         let m_name = core::ffi::CStr::from_ptr(m.name).to_str().unwrap_or("");
         let m_sig = core::ffi::CStr::from_ptr(m.signature).to_str().unwrap_or("");
-        for entry in JNI_METHOD_TABLE {
+        for entry in &JNI_METHOD_TABLE {
             if entry.name == m_name && entry.sig == m_sig {
                 set_orig_ptr(entry.orig_idx, m.fn_ptr);
                 m.fn_ptr = entry.handler;
@@ -204,7 +209,7 @@ pub unsafe fn hook_and_save_zygote_methods(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkAndSpecialize_l(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, nice_name: *mut c_void, fds_to_close: *mut c_void, instruction_set: *mut c_void, app_data_dir: *mut c_void
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void
 ) -> jint {
     let orig = get_orig_ptr(0);
     if orig.is_null() { return -1; }
@@ -236,7 +241,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_l(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeForkAndSpecialize_pre();
+    ctx.native_fork_and_specialize_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, nice_name, fds_to_close, instruction_set, app_data_dir);
     if _ret == 0 {
         ctx.native_specialize_app_process_post();
@@ -250,7 +255,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_l(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkAndSpecialize_o(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, nice_name: *mut c_void, fds_to_close: *mut c_void, fds_to_ignore: *mut c_void, instruction_set: *mut c_void, app_data_dir: *mut c_void
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut fds_to_ignore: *mut c_void, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void
 ) -> jint {
     let orig = get_orig_ptr(1);
     if orig.is_null() { return -1; }
@@ -282,7 +287,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_o(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeForkAndSpecialize_pre();
+    ctx.native_fork_and_specialize_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, nice_name, fds_to_close, fds_to_ignore, instruction_set, app_data_dir);
     if _ret == 0 {
         ctx.native_specialize_app_process_post();
@@ -296,7 +301,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_o(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkAndSpecialize_p(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, nice_name: *mut c_void, fds_to_close: *mut c_void, fds_to_ignore: *mut c_void, is_child_zygote: jboolean, instruction_set: *mut c_void, app_data_dir: *mut c_void
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut fds_to_ignore: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void
 ) -> jint {
     let orig = get_orig_ptr(2);
     if orig.is_null() { return -1; }
@@ -328,7 +333,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_p(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeForkAndSpecialize_pre();
+    ctx.native_fork_and_specialize_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, nice_name, fds_to_close, fds_to_ignore, is_child_zygote, instruction_set, app_data_dir);
     if _ret == 0 {
         ctx.native_specialize_app_process_post();
@@ -342,7 +347,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_p(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkAndSpecialize_q_alt(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, nice_name: *mut c_void, fds_to_close: *mut c_void, fds_to_ignore: *mut c_void, is_child_zygote: jboolean, instruction_set: *mut c_void, app_data_dir: *mut c_void, is_top_app: jboolean
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut fds_to_ignore: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void, mut is_top_app: jboolean
 ) -> jint {
     let orig = get_orig_ptr(3);
     if orig.is_null() { return -1; }
@@ -374,7 +379,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_q_alt(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeForkAndSpecialize_pre();
+    ctx.native_fork_and_specialize_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, nice_name, fds_to_close, fds_to_ignore, is_child_zygote, instruction_set, app_data_dir, is_top_app);
     if _ret == 0 {
         ctx.native_specialize_app_process_post();
@@ -388,7 +393,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_q_alt(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkAndSpecialize_r(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, nice_name: *mut c_void, fds_to_close: *mut c_void, fds_to_ignore: *mut c_void, is_child_zygote: jboolean, instruction_set: *mut c_void, app_data_dir: *mut c_void, is_top_app: jboolean, pkg_data_info_list: *mut c_void, whitelisted_data_info_list: *mut c_void, mount_data_dirs: jboolean, mount_storage_dirs: jboolean
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut fds_to_ignore: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void, mut is_top_app: jboolean, mut pkg_data_info_list: *mut c_void, mut whitelisted_data_info_list: *mut c_void, mut mount_data_dirs: jboolean, mut mount_storage_dirs: jboolean
 ) -> jint {
     let orig = get_orig_ptr(4);
     if orig.is_null() { return -1; }
@@ -420,7 +425,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_r(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeForkAndSpecialize_pre();
+    ctx.native_fork_and_specialize_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, nice_name, fds_to_close, fds_to_ignore, is_child_zygote, instruction_set, app_data_dir, is_top_app, pkg_data_info_list, whitelisted_data_info_list, mount_data_dirs, mount_storage_dirs);
     if _ret == 0 {
         ctx.native_specialize_app_process_post();
@@ -434,7 +439,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_r(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkAndSpecialize_u(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, nice_name: *mut c_void, fds_to_close: *mut c_void, fds_to_ignore: *mut c_void, is_child_zygote: jboolean, instruction_set: *mut c_void, app_data_dir: *mut c_void, is_top_app: jboolean, pkg_data_info_list: *mut c_void, whitelisted_data_info_list: *mut c_void, mount_data_dirs: jboolean, mount_storage_dirs: jboolean, mount_sysprop_overrides: jboolean
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut fds_to_ignore: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void, mut is_top_app: jboolean, mut pkg_data_info_list: *mut c_void, mut whitelisted_data_info_list: *mut c_void, mut mount_data_dirs: jboolean, mut mount_storage_dirs: jboolean, mut mount_sysprop_overrides: jboolean
 ) -> jint {
     let orig = get_orig_ptr(5);
     if orig.is_null() { return -1; }
@@ -466,7 +471,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_u(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeForkAndSpecialize_pre();
+    ctx.native_fork_and_specialize_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, nice_name, fds_to_close, fds_to_ignore, is_child_zygote, instruction_set, app_data_dir, is_top_app, pkg_data_info_list, whitelisted_data_info_list, mount_data_dirs, mount_storage_dirs, mount_sysprop_overrides);
     if _ret == 0 {
         ctx.native_specialize_app_process_post();
@@ -480,7 +485,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_u(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_m(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, _0: jint, _1: jint, nice_name: *mut c_void, fds_to_close: *mut c_void, instruction_set: *mut c_void, app_data_dir: *mut c_void
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut _0: jint, mut _1: jint, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void
 ) -> jint {
     let orig = get_orig_ptr(6);
     if orig.is_null() { return -1; }
@@ -512,7 +517,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_m(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeForkAndSpecialize_pre();
+    ctx.native_fork_and_specialize_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, _0, _1, nice_name, fds_to_close, instruction_set, app_data_dir);
     if _ret == 0 {
         ctx.native_specialize_app_process_post();
@@ -526,7 +531,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_m(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_n(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, _2: jint, _3: jint, nice_name: *mut c_void, fds_to_close: *mut c_void, instruction_set: *mut c_void, app_data_dir: *mut c_void, _4: jint
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut _2: jint, mut _3: jint, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void, mut _4: jint
 ) -> jint {
     let orig = get_orig_ptr(7);
     if orig.is_null() { return -1; }
@@ -558,7 +563,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_n(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeForkAndSpecialize_pre();
+    ctx.native_fork_and_specialize_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, _2, _3, nice_name, fds_to_close, instruction_set, app_data_dir, _4);
     if _ret == 0 {
         ctx.native_specialize_app_process_post();
@@ -572,7 +577,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_n(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_o(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, _5: jint, _6: jint, nice_name: *mut c_void, fds_to_close: *mut c_void, fds_to_ignore: *mut c_void, instruction_set: *mut c_void, app_data_dir: *mut c_void
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut _5: jint, mut _6: jint, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut fds_to_ignore: *mut c_void, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void
 ) -> jint {
     let orig = get_orig_ptr(8);
     if orig.is_null() { return -1; }
@@ -604,7 +609,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_o(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeForkAndSpecialize_pre();
+    ctx.native_fork_and_specialize_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, _5, _6, nice_name, fds_to_close, fds_to_ignore, instruction_set, app_data_dir);
     if _ret == 0 {
         ctx.native_specialize_app_process_post();
@@ -618,7 +623,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_o(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_p(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, _7: jint, _8: jint, nice_name: *mut c_void, fds_to_close: *mut c_void, fds_to_ignore: *mut c_void, is_child_zygote: jboolean, instruction_set: *mut c_void, app_data_dir: *mut c_void
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut _7: jint, mut _8: jint, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut fds_to_ignore: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void
 ) -> jint {
     let orig = get_orig_ptr(9);
     if orig.is_null() { return -1; }
@@ -650,7 +655,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_p(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeForkAndSpecialize_pre();
+    ctx.native_fork_and_specialize_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, _7, _8, nice_name, fds_to_close, fds_to_ignore, is_child_zygote, instruction_set, app_data_dir);
     if _ret == 0 {
         ctx.native_specialize_app_process_post();
@@ -664,7 +669,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_p(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkAndSpecialize_grapheneos_u(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, nice_name: *mut c_void, fds_to_close: *mut c_void, fds_to_ignore: *mut c_void, is_child_zygote: jboolean, instruction_set: *mut c_void, app_data_dir: *mut c_void, is_top_app: jboolean, pkg_data_info_list: *mut c_void, whitelisted_data_info_list: *mut c_void, mount_data_dirs: jboolean, mount_storage_dirs: jboolean, mount_sysprop_overrides: jboolean, _9: *mut c_void
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut nice_name: *mut c_void, mut fds_to_close: *mut c_void, mut fds_to_ignore: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void, mut is_top_app: jboolean, mut pkg_data_info_list: *mut c_void, mut whitelisted_data_info_list: *mut c_void, mut mount_data_dirs: jboolean, mut mount_storage_dirs: jboolean, mut mount_sysprop_overrides: jboolean, mut _9: *mut c_void
 ) -> jint {
     let orig = get_orig_ptr(10);
     if orig.is_null() { return -1; }
@@ -696,7 +701,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_grapheneos_u(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeForkAndSpecialize_pre();
+    ctx.native_fork_and_specialize_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, nice_name, fds_to_close, fds_to_ignore, is_child_zygote, instruction_set, app_data_dir, is_top_app, pkg_data_info_list, whitelisted_data_info_list, mount_data_dirs, mount_storage_dirs, mount_sysprop_overrides, _9);
     if _ret == 0 {
         ctx.native_specialize_app_process_post();
@@ -710,7 +715,7 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_grapheneos_u(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeSpecializeAppProcess_q(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, nice_name: *mut c_void, is_child_zygote: jboolean, instruction_set: *mut c_void, app_data_dir: *mut c_void
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut nice_name: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void
 ) -> () {
     let orig = get_orig_ptr(11);
     if orig.is_null() { return; }
@@ -742,7 +747,7 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_q(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeSpecializeAppProcess_pre();
+    ctx.native_specialize_app_process_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, nice_name, is_child_zygote, instruction_set, app_data_dir);
     ctx.native_specialize_app_process_post();
     crate::hook_context::set_current_ptr(_prev_ctx);
@@ -750,7 +755,7 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_q(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeSpecializeAppProcess_q_alt(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, nice_name: *mut c_void, is_child_zygote: jboolean, instruction_set: *mut c_void, app_data_dir: *mut c_void, is_top_app: jboolean
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut nice_name: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void, mut is_top_app: jboolean
 ) -> () {
     let orig = get_orig_ptr(12);
     if orig.is_null() { return; }
@@ -782,7 +787,7 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_q_alt(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeSpecializeAppProcess_pre();
+    ctx.native_specialize_app_process_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, nice_name, is_child_zygote, instruction_set, app_data_dir, is_top_app);
     ctx.native_specialize_app_process_post();
     crate::hook_context::set_current_ptr(_prev_ctx);
@@ -790,7 +795,7 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_q_alt(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeSpecializeAppProcess_r(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, nice_name: *mut c_void, is_child_zygote: jboolean, instruction_set: *mut c_void, app_data_dir: *mut c_void, is_top_app: jboolean, pkg_data_info_list: *mut c_void, whitelisted_data_info_list: *mut c_void, mount_data_dirs: jboolean, mount_storage_dirs: jboolean
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut nice_name: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void, mut is_top_app: jboolean, mut pkg_data_info_list: *mut c_void, mut whitelisted_data_info_list: *mut c_void, mut mount_data_dirs: jboolean, mut mount_storage_dirs: jboolean
 ) -> () {
     let orig = get_orig_ptr(13);
     if orig.is_null() { return; }
@@ -822,7 +827,7 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_r(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeSpecializeAppProcess_pre();
+    ctx.native_specialize_app_process_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, nice_name, is_child_zygote, instruction_set, app_data_dir, is_top_app, pkg_data_info_list, whitelisted_data_info_list, mount_data_dirs, mount_storage_dirs);
     ctx.native_specialize_app_process_post();
     crate::hook_context::set_current_ptr(_prev_ctx);
@@ -830,7 +835,7 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_r(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeSpecializeAppProcess_u(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, nice_name: *mut c_void, is_child_zygote: jboolean, instruction_set: *mut c_void, app_data_dir: *mut c_void, is_top_app: jboolean, pkg_data_info_list: *mut c_void, whitelisted_data_info_list: *mut c_void, mount_data_dirs: jboolean, mount_storage_dirs: jboolean, mount_sysprop_overrides: jboolean
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut nice_name: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void, mut is_top_app: jboolean, mut pkg_data_info_list: *mut c_void, mut whitelisted_data_info_list: *mut c_void, mut mount_data_dirs: jboolean, mut mount_storage_dirs: jboolean, mut mount_sysprop_overrides: jboolean
 ) -> () {
     let orig = get_orig_ptr(14);
     if orig.is_null() { return; }
@@ -862,7 +867,7 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_u(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeSpecializeAppProcess_pre();
+    ctx.native_specialize_app_process_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, nice_name, is_child_zygote, instruction_set, app_data_dir, is_top_app, pkg_data_info_list, whitelisted_data_info_list, mount_data_dirs, mount_storage_dirs, mount_sysprop_overrides);
     ctx.native_specialize_app_process_post();
     crate::hook_context::set_current_ptr(_prev_ctx);
@@ -870,7 +875,7 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_u(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeSpecializeAppProcess_samsung_q(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, _10: jint, _11: jint, nice_name: *mut c_void, is_child_zygote: jboolean, instruction_set: *mut c_void, app_data_dir: *mut c_void
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut _10: jint, mut _11: jint, mut nice_name: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void
 ) -> () {
     let orig = get_orig_ptr(15);
     if orig.is_null() { return; }
@@ -902,7 +907,7 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_samsung_q(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeSpecializeAppProcess_pre();
+    ctx.native_specialize_app_process_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, _10, _11, nice_name, is_child_zygote, instruction_set, app_data_dir);
     ctx.native_specialize_app_process_post();
     crate::hook_context::set_current_ptr(_prev_ctx);
@@ -910,7 +915,7 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_samsung_q(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeSpecializeAppProcess_grapheneos_u(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, mount_external: jint, se_info: *mut c_void, nice_name: *mut c_void, is_child_zygote: jboolean, instruction_set: *mut c_void, app_data_dir: *mut c_void, is_top_app: jboolean, pkg_data_info_list: *mut c_void, whitelisted_data_info_list: *mut c_void, mount_data_dirs: jboolean, mount_storage_dirs: jboolean, mount_sysprop_overrides: jboolean, _12: *mut c_void
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut mount_external: jint, mut se_info: *mut c_void, mut nice_name: *mut c_void, mut is_child_zygote: jboolean, mut instruction_set: *mut c_void, mut app_data_dir: *mut c_void, mut is_top_app: jboolean, mut pkg_data_info_list: *mut c_void, mut whitelisted_data_info_list: *mut c_void, mut mount_data_dirs: jboolean, mut mount_storage_dirs: jboolean, mut mount_sysprop_overrides: jboolean, mut _12: *mut c_void
 ) -> () {
     let orig = get_orig_ptr(16);
     if orig.is_null() { return; }
@@ -942,7 +947,7 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_grapheneos_u(
     let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
-    ctx.nativeSpecializeAppProcess_pre();
+    ctx.native_specialize_app_process_pre();
     let _ret = orig_fn(env, clazz, uid, gid, gids, runtime_flags, rlimits, mount_external, se_info, nice_name, is_child_zygote, instruction_set, app_data_dir, is_top_app, pkg_data_info_list, whitelisted_data_info_list, mount_data_dirs, mount_storage_dirs, mount_sysprop_overrides, _12);
     ctx.native_specialize_app_process_post();
     crate::hook_context::set_current_ptr(_prev_ctx);
@@ -950,7 +955,7 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_grapheneos_u(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkSystemServer_l(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, rlimits: *mut c_void, permitted_capabilities: jlong, effective_capabilities: jlong
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut rlimits: *mut c_void, mut permitted_capabilities: jlong, mut effective_capabilities: jlong
 ) -> jint {
     let orig = get_orig_ptr(17);
     if orig.is_null() { return -1; }
@@ -982,7 +987,7 @@ pub unsafe extern "C" fn nativeForkSystemServer_l(
 
 #[no_mangle]
 pub unsafe extern "C" fn nativeForkSystemServer_samsung_q(
-    env: *mut c_void, clazz: jclass, uid: jint, gid: jint, gids: *mut c_void, runtime_flags: jint, _13: jint, _14: jint, rlimits: *mut c_void, permitted_capabilities: jlong, effective_capabilities: jlong
+    mut env: *mut c_void, mut clazz: jclass, mut uid: jint, mut gid: jint, mut gids: *mut c_void, mut runtime_flags: jint, mut _13: jint, mut _14: jint, mut rlimits: *mut c_void, mut permitted_capabilities: jlong, mut effective_capabilities: jlong
 ) -> jint {
     let orig = get_orig_ptr(18);
     if orig.is_null() { return -1; }
