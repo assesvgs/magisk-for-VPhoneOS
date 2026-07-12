@@ -34,22 +34,56 @@
 
 ---
 
-## Phase 2c — Hook 回调 + 全局编排 ✅
+## Phase 2c — Hook 回调 + 模块加载 ✅
 
 | 文件 | 说明 |
 |------|------|
-| `src/hooks.rs` | 6 个 PLT hook 回调（fork/unshare/setcontext/strdup/log_close/dlclose）+ `ORIG_FUNCS` 静态数组 + `hook_plt()` 编排 |
-| `src/lib.rs` | `zygisk_inject_entry` 调用 `hook_plt()` + `hook_jni_env()` |
+| `src/hooks.rs` | 6 个 PLT hook 回调 + `AtomicBool` ZygoteInit 检测 + `hook_plt()` 编排 |
+| `src/module.rs` | Zygisk 模块扫描（`/data/adb/modules/*/zygisk/`） |
+| `src/lib.rs` | `zygisk_inject_entry` 调用 `hook_plt()` |
 
-**构建验证：** CI 通过，文件 32KB，`zygisk_inject_entry`/`zygisk_hook_jni_env`/`zygisk_plt_register`/`zygisk_plt_commit` 全部导出。
+**构建验证：** 32KB，所有符号导出。代码审查修复 8 项（transmute、AtomicBool、null 检查、mprotect、ABI guard 等）。
 
 ---
 
-## Phase 3 — 注入路径切换（进行中 ⏳）
+## Phase 3 — 注入路径 + 部署 ✅
 
 | 文件 | 改动 |
 |------|------|
-| `init_monitor.cpp` | `inject_zygote()` + `find_zygote_by_polling()` 的 execl 最后一个参数改为 inject_lib 路径 |
-| `live_setup.sh` | 部署列表添加 `libzygisk_inject.so` |
+| `init_monitor.cpp` | execl 最后一个参数改为 `zygisk_inject` 路径 |
+| `live_setup.sh` | 部署列表添加 `zygisk_inject` |
+| `bootstages.rs` | 开机时复制 `zygisk_inject` 到 `/sbin/` |
+| `Android.mk` | 移除旧 hook.cpp/memory.cpp 引用 |
+| `entry.cpp` | 添加 `hook_functions()` 空桩 |
+| `jni_hooks.hpp`（根目录） | 删除（孤立文件） |
+| `hook.cpp`、`memory.cpp/hpp` | 删除（功能迁移到 cdylib） |
+| `gen_jni_hooks.py` | 删除（不再需要） |
 
-**推进中：** 旧文件清理（hook.cpp、memory.cpp、jni_hooks.hpp、gen_jni_hooks.py）待验证通过后执行。
+**部署全链路：**
+```
+APK(lib/arm64-v8a/libzygisk_inject.so)
+  → MagiskInstaller.kt ($installDir/zygisk_inject)
+  → 安装脚本 (/data/adb/magisk/zygisk_inject)
+  → bootstages.rs (/sbin/zygisk_inject)
+  → init_monitor.cpp dlopen(/sbin/zygisk_inject)
+```
+
+---
+
+## VPhoneOS 部署验证
+
+| 尝试 | 提交 | 结果 | 根因 |
+|------|------|------|------|
+| 第 1 次 | `eb1aec4f` | step=60 注入失败 | `/sbin/libzygisk_inject.so` 不存在 |
+| 第 2 次 | `dd80603c` | step=60 注入失败 | `bootstages.rs` 未部署到 `/sbin/` |
+| 第 3 次 | `5759d68` | ⏳ 待验证 | 全链路已修复 |
+
+---
+
+## 遗留项
+
+| 项 | 说明 | 优先级 |
+|----|------|--------|
+| specialization 方法拦截 | `hook_RegisterNatives` 已就位但未替换方法指针 | 低 |
+| 模块 dispatch | 已加载模块但未在 specialize 时调用 | 低 |
+| `app_specialize_pre/post` | 未实现 | 低 |
