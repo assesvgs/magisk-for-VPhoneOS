@@ -2,8 +2,12 @@
 // Do not edit manually.
 
 use core::ffi::c_void;
+use core::sync::atomic::Ordering;
+use core::cell::UnsafeCell;
+use core::ptr;
+use core::mem;
 use crate::jni_env::{jclass, jint, jlong, jboolean};
-use crate::hook_context::HookContext;
+use crate::hook_context::{HookContext, get_current_ptr, set_current, set_current_ptr};
 
 #[repr(C)]
 pub struct AppSpecializeArgs {
