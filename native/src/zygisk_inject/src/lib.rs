@@ -6,6 +6,7 @@ mod memory;
 mod plt;
 mod jni;
 mod hooks;
+mod module;
 
 use core::panic::PanicInfo;
 
