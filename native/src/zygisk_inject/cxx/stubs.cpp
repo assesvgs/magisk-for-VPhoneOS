@@ -27,4 +27,3 @@ extern "C" void __cxa_guard_abort(int64_t *guard) {
 
 extern "C" int __cxa_atexit(void (*)(void *), void *, void *) { return 0; }
 
-void *__dso_handle = (void *)&__dso_handle;
