@@ -2,6 +2,18 @@
 
 > 基于 `kitsune-mask-integration`，实施于 `ci-clean`
 
+## 交接摘要
+
+阅读 `kitsune-mask-integration` 分支上的 `Kitsune_Mask_项目全量分析报告.md` 和 `docs/plans/2026-07-11-fix-zygisk-black-screen-no-std-cdylib.md`（`ci-clean` 分支不包含它们）。当前分支有本 `PROGRESS.md` 记录完整进展。
+
+**黑屏根因：** 注入时 dlopen 的 magisk 二进制含 Rust `std` 的 `.init_array`，在 `zygisk_inject_entry` 运行前就干扰了 ART。纯 C++ 版无此问题；`hook_functions` 设空函数后仍然崩溃。修复方向：`#![no_std]` 独立注入库。
+
+**构建方式：** 本项目所有 Rust crate 只产 `.a`（staticlib），最终链接由 ndk-build 完成。cargo 未配置交叉链接器。最终方案：cargo 产 `.a` → ndk-build 链接成 `.so`。
+
+**部署文件命名：** 部署脚本会把 `libxxx.so` 重命名为 `xxx`，所以文件在 `/sbin/` 中叫 `zygisk_inject` 而非 `libzygisk_inject.so`。前两次部署失败均因路径不一致 + `bootstages.rs` 漏部署。
+
+**进展：** Phase 1~3 代码已完成并 CI 通过。最新提交 `fd27feb`。部署全链路已修复。剩余 specialization 拦截、模块 dispatch、`app_specialize_pre/post`。日志在 `logs/` 下，用 `decrypt.py` 解密。
+
 ---
 
 ## Phase 1 — no_std 骨架 ✅
