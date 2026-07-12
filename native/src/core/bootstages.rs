@@ -91,8 +91,8 @@ impl MagiskD {
             .status()
             .log_ok();
 
-        // magisk32, magisk64, magiskpolicy and zygisk_inject are not installed
-        // into ramdisk and have to be copied from data to magisk tmp
+        // zygisk_inject 从 data 分区复制到 magisk tmp
+        // magisk32, magisk64, magiskpolicy 同样需从 data 复制
         let magisk32 = cstr!(concatcp!(DATABIN, "/magisk32"));
         if magisk32.exists() {
             let tmp = buf.append_path(get_magisk_tmp()).append_path("magisk32");

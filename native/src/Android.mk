@@ -146,7 +146,6 @@ LOCAL_MODULE := libzygisk_inject
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/zygisk_inject/include $(LOCAL_PATH)/external/lsplt/lsplt/src/main/jni/include
 LOCAL_SRC_FILES := \
     zygisk_inject/cxx/plt_hook.cpp \
-    zygisk_inject/cxx/jni_hook.cpp \
     zygisk_inject/cxx/stubs.cpp
 LOCAL_STATIC_LIBRARIES := liblsplt
 LOCAL_WHOLE_STATIC_LIBRARIES := zygisk_inject_static

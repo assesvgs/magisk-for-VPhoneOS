@@ -8,3 +8,8 @@ bool zygisk_plt_register(dev_t dev, ino_t inode, const char *symbol, void *hook,
 bool zygisk_plt_commit() {
     return lsplt::CommitHook();
 }
+
+bool zygisk_plt_restore(dev_t dev, ino_t inode, const char *symbol, void *orig) {
+    void *dummy = nullptr;
+    return lsplt::RegisterHook(dev, inode, symbol, orig, &dummy);
+}

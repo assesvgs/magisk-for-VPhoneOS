@@ -40,9 +40,8 @@
 
 | 文件 | 说明 |
 |------|------|
-| `include/jni_hook.h` + `cxx/jni_hook.cpp` | `dlsym(RTLD_DEFAULT)` → `JNI_GetCreatedJavaVMs` → mmap 复制 env->functions 表 |
-| `src/jni.rs` | Rust FFI 声明 |
-| `cxx/stubs.cpp` | 最小 C++ runtime 替代 libcxx（消除 .init_array） |
+| `src/jni_env.rs` | 纯 Rust JNI env 表替换（运行时搜索 RegisterNatives） |
+| `cxx/stubs.cpp` | 最小 C++ runtime 替代 libcxx |
 
 ---
 

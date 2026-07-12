@@ -17,8 +17,10 @@ fn read_file(path: &[u8]) -> alloc::vec::Vec<u8> {
     let mut buf = alloc::vec::Vec::new();
     let mut tmp = [0u8; 1024];
     loop {
-        let n = unsafe { libc::read(fd, tmp.as_mut_ptr() as *mut libc::c_void, tmp.len()) };
-        if n <= 0 {
+        let n = unsafe { libc::read(fd, tmp.as_mut_ptr() as *mut c_void, tmp.len()) };
+        if n == 0 { break; }  // EOF
+        if n < 0 {
+            // read error — 不是 EOF，但继续可能导致无限循环，break
             break;
         }
         buf.extend_from_slice(&tmp[..n as usize]);
@@ -77,6 +79,7 @@ extern "C" {
         orig: *mut *mut c_void,
     ) -> bool;
     fn zygisk_plt_commit() -> bool;
+    fn zygisk_plt_restore(dev: u64, ino: u64, symbol: *const libc::c_char, orig: *mut c_void) -> bool;
 }
 
 pub fn find_and_hook(
@@ -100,6 +103,11 @@ pub fn find_and_hook(
             )
         };
         if ok {
+            let dev = (map.dev_major << 20) | map.dev_minor;
+            let orig_val = unsafe { *orig_fn };
+            // 去掉末尾 null 字节
+            let sym_len = symbol.iter().position(|&b| b == 0).unwrap_or(symbol.len());
+            crate::module_api::push_plt_hook(dev, map.inode, &symbol[..sym_len], orig_val);
             return true;
         }
     }
@@ -107,5 +115,17 @@ pub fn find_and_hook(
 }
 
 pub fn commit_all() -> bool {
+    unsafe { zygisk_plt_commit() }
+}
+
+pub fn restore_all_hooks() -> bool {
+    let list = crate::module_api::get_plt_hook_list();
+    if list.is_empty() { return true; }
+    for entry in list.iter() {
+        let sym_c = alloc::ffi::CString::new(entry.sym.as_slice()).unwrap_or_default();
+        unsafe {
+            zygisk_plt_restore(entry.dev, entry.ino, sym_c.as_ptr(), entry.orig);
+        }
+    }
     unsafe { zygisk_plt_commit() }
 }
