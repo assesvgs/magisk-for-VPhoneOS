@@ -146,10 +146,10 @@ fun Project.setupCoreLib() {
                             val archBins = mutableListOf("magiskboot", "magiskinit", "magiskpolicy", "libinit-ld.so")
                             if (abi in listOf("armeabi-v7a", "x86")) {
                                 archBins.add("magisk")
-                                archBins.add("magisk32")
+                                // magisk32 由 live_setup.sh 创建为 magisk 的符号链接
                             } else {
                                 archBins.add("magisk")
-                                archBins.add("magisk64")
+                                // magisk64 由 live_setup.sh 创建为 magisk 的符号链接
                             }
                             archBins.add("libzygisk_inject.so")
                             include(archBins)
@@ -160,9 +160,9 @@ fun Project.setupCoreLib() {
                 from(zipTree(downloadFile(BUSYBOX_DOWNLOAD_URL, BUSYBOX_ZIP_CHECKSUM)))
                 include(abiList.map { "$it/libbusybox.so" })
                 onlyIf {
-                    if (inputs.sourceFiles.files.size != abiList.size * 8)
-                        // 8 = 4 common (magiskboot, magiskinit, magiskpolicy, libinit-ld.so)
-                        //   + magisk + magisk32/magisk64 + libzygisk_inject + busybox per ABI
+                    if (inputs.sourceFiles.files.size != abiList.size * 7)
+                        // 7 = 4 common (magiskboot, magiskinit, magiskpolicy, libinit-ld.so)
+                        //   + magisk + libzygisk_inject + busybox per ABI
                         throw StopExecutionException("Please build binaries first! (./build.py binary)")
                     true
                 }

@@ -116,6 +116,11 @@ impl MagiskD {
             if !tmp_inject.exists() {
                 warn!("zygisk: zygisk_inject not deployed, injection target missing");
             }
+            // 32-bit zygisk_inject 存在性检查
+            let tmp_inject32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
+            if !tmp_inject32.exists() {
+                warn!("zygisk: zygisk_inject32 not deployed, 32-bit Zygisk unavailable");
+            }
         }
         let magiskpolicy = cstr!(concatcp!(DATABIN, "/magiskpolicy"));
         if magiskpolicy.exists() {
@@ -128,6 +133,11 @@ impl MagiskD {
         if zygisk_inject.exists() {
             let tmp = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject");
             zygisk_inject.copy_to(tmp).log_ok();
+        }
+        let zygisk_inject32 = cstr!(concatcp!(DATABIN, "/zygisk_inject32"));
+        if zygisk_inject32.exists() {
+            let tmp32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
+            zygisk_inject32.copy_to(tmp32).log_ok();
         }
 
         true

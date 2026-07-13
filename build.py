@@ -181,14 +181,7 @@ def collect_ndk_build():
         for source in arch_dir.iterdir():
             target = out_dir / source.name
             mv(source, target)
-        # Rename magisk per architecture: magisk32 for 32-bit, magisk64 for 64-bit
-        magisk_file = out_dir / "magisk"
-        if magisk_file.exists():
-            if arch in ("armeabi-v7a", "x86"):
-                cp(magisk_file, out_dir / "magisk32")
-            elif arch in ("arm64-v8a", "x86_64"):
-                cp(magisk_file, out_dir / "magisk64")
-
+        # magisk32/magisk64 不再在此处复制，由 live_setup.sh 在部署时创建符号链接
 
 def run_ndk_build(cmds: list[str]):
     os.chdir("native")

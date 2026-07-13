@@ -70,6 +70,12 @@ if $IS64BIT && [ -e "/system/bin/linker" ]; then
   mv libmagisk32.so magisk32
   chmod 755 magisk32
 fi
+# 提取 32-bit zygisk_inject（用于注入 32-bit zygote）
+unzip -oj magisk.apk "lib/$ABI32/libzygisk_inject.so" 2>/dev/null || true
+if [ -f libzygisk_inject.so ]; then
+    mv libzygisk_inject.so zygisk_inject32
+    chmod 755 zygisk_inject32
+fi
 
 # Stop zygote (and previous setup if exists)
 magisk --stop 2>/dev/null
@@ -131,7 +137,15 @@ mkdir /data/adb/modules 2>/dev/null
 mkdir /data/adb/post-fs-data.d 2>/dev/null
 mkdir /data/adb/service.d 2>/dev/null
 
-for file in magisk magisk32 magisk64 magiskpolicy zygisk_inject stub.apk; do
+# 创建 magisk64/magisk32 符号链接（代替重复文件）
+if [ ! -f magisk64 ]; then
+    ln -s magisk magisk64 2>/dev/null || cp -af magisk magisk64
+fi
+if [ ! -f magisk32 ]; then
+    ln -s magisk magisk32 2>/dev/null || cp -af magisk magisk32
+fi
+
+for file in magisk magisk32 magisk64 magiskpolicy zygisk_inject zygisk_inject32 stub.apk; do
   [ -f ./$file ] || continue
   chmod 755 ./$file
   cp -af ./$file $MAGISKTMP/$file
