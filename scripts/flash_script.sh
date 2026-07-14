@@ -56,6 +56,7 @@ cd $BINDIR
 for file in lib*.so; do mv "$file" "${file:3:${#file}-6}"; done
 cd /
 cp -af $INSTALLER/lib/$ABI32/libmagisk32.so $BINDIR/magisk32 2>/dev/null
+cp -af $INSTALLER/lib/$ABI32/libzygisk_inject.so $BINDIR/zygisk_inject32 2>/dev/null
 
 # Check if system root is installed and remove
 $BOOTMODE || remove_system_su

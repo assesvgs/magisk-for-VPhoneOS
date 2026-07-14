@@ -207,6 +207,13 @@ fi
 if [ -f magisk64 ]; then
   ./magiskboot compress=xz magisk64 magisk64.xz
 fi
+# Compress zygisk_inject (no_std Rust injection library) for Zygisk
+if [ -f zygisk_inject ]; then
+  ./magiskboot compress=xz zygisk_inject zygisk_inject.xz
+fi
+if [ -f zygisk_inject32 ]; then
+  ./magiskboot compress=xz zygisk_inject32 zygisk_inject32.xz
+fi
 ./magiskboot compress=xz stub.apk stub.xz
 ./magiskboot compress=xz init-ld init-ld.xz
 
@@ -233,6 +240,8 @@ set -- \
   "add 0644 overlay.d/sbin/magisk.xz magisk.xz"
 [ -f magisk32.xz ] && set -- "$@" "add 0644 overlay.d/sbin/magisk32.xz magisk32.xz"
 [ -f magisk64.xz ] && set -- "$@" "add 0644 overlay.d/sbin/magisk64.xz magisk64.xz"
+[ -f zygisk_inject.xz ] && set -- "$@" "add 0644 overlay.d/sbin/zygisk_inject.xz zygisk_inject.xz"
+[ -f zygisk_inject32.xz ] && set -- "$@" "add 0644 overlay.d/sbin/zygisk_inject32.xz zygisk_inject32.xz"
 set -- "$@" \
   "add 0644 overlay.d/sbin/stub.xz stub.xz" \
   "add 0644 overlay.d/sbin/init-ld.xz init-ld.xz" \
