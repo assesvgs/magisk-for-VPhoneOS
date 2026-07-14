@@ -1,6 +1,6 @@
 // 外部 crate
 use base::const_format::concatcp;
-use base::{BufReadExt, FsPathBuilder, ResultExt, Utf8CString, cstr, debug, error, info, libc, parse_mount_info, warn};
+use base::{BufReadExt, FsPathBuilder, ResultExt, cstr, debug, error, info, libc, parse_mount_info, warn};
 use bitflags::bitflags;
 use nix::fcntl::OFlag;
 
@@ -113,41 +113,8 @@ impl MagiskD {
             let tmp32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
             zygisk_inject32_databin.copy_to(tmp32).log_ok();
         }
-        // Fallback: try to find zygisk_inject32 from installed APK's 32-bit native lib
-        if !cstr::buf::default()
-            .join_path(get_magisk_tmp())
-            .join_path(cstr!("zygisk_inject32"))
-            .exists()
-        {
-            fn find_32bit_native_lib(dir: &str, pkg: &str) -> Option<Utf8CString> {
-                let entries = std::fs::read_dir(dir).ok()?;
-                for entry in entries {
-                    let entry = entry.ok()?;
-                    let path = entry.path();
-                    let name = path.file_name()?.to_str()?;
-                    if name.starts_with("~~") {
-                        // Session-based install dir, scan child for package dir
-                        if let Some(found) = find_32bit_native_lib(path.to_str()?, pkg) {
-                            return Some(found);
-                        }
-                    } else if name.starts_with(pkg) {
-                        // Try 32-bit native lib path
-                        let lib = format!("{}/lib/arm/libzygisk_inject.so", path.to_str()?);
-                        if std::path::Path::new(&lib).exists() {
-                            return Some(Utf8CString::from(lib));
-                        }
-                    }
-                }
-                None
-            }
-            if let Some(lib_path) = find_32bit_native_lib("/data/app/", APP_PACKAGE_NAME) {
-                info!("zygisk: found 32-bit zygisk_inject at {lib_path}");
-                let databin32 = cstr!(concatcp!(DATABIN, "/zygisk_inject32"));
-                lib_path.copy_to(databin32).log_ok();
-                let tmp32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
-                lib_path.copy_to(tmp32).log_ok();
-            }
-        }
+        // zygisk_inject32 由 boot_patch.sh 在 ramdisk 打包时从 APK 提取
+        // 不需要运行时扫描，参考 boot_patch.sh 中 unzip 逻辑
         // Copy magiskpolicy
         let magiskpolicy = cstr!(concatcp!(DATABIN, "/magiskpolicy"));
         if magiskpolicy.exists() {
