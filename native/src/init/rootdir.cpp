@@ -235,6 +235,8 @@ static void extract_files(bool sbin) {
     const char *magisk_xz = sbin ? "/sbin/magisk.xz" : "magisk.xz";
     const char *stub_xz = sbin ? "/sbin/stub.xz" : "stub.xz";
     const char *init_ld_xz = sbin ? "/sbin/init-ld.xz" : "init-ld.xz";
+    const char *zygisk_inject_xz = sbin ? "/sbin/zygisk_inject.xz" : "zygisk_inject.xz";
+    const char *zygisk_inject32_xz = sbin ? "/sbin/zygisk_inject32.xz" : "zygisk_inject32.xz";
 
     if (access(magisk_xz, F_OK) == 0) {
         mmap_data magisk(magisk_xz);
@@ -255,6 +257,20 @@ static void extract_files(bool sbin) {
         unlink(init_ld_xz);
         int fd = xopen("init-ld", O_WRONLY | O_CREAT, 0);
         unxz(fd, init_ld);
+        close(fd);
+    }
+    if (access(zygisk_inject_xz, F_OK) == 0) {
+        mmap_data zygisk_inject(zygisk_inject_xz);
+        unlink(zygisk_inject_xz);
+        int fd = xopen("zygisk_inject", O_WRONLY | O_CREAT, 0755);
+        unxz(fd, zygisk_inject);
+        close(fd);
+    }
+    if (access(zygisk_inject32_xz, F_OK) == 0) {
+        mmap_data zygisk_inject32(zygisk_inject32_xz);
+        unlink(zygisk_inject32_xz);
+        int fd = xopen("zygisk_inject32", O_WRONLY | O_CREAT, 0755);
+        unxz(fd, zygisk_inject32);
         close(fd);
     }
 }
