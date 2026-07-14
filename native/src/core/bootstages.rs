@@ -1,6 +1,6 @@
 // 外部 crate
 use base::const_format::concatcp;
-use base::{BufReadExt, FsPathBuilder, ResultExt, cstr, debug, error, info, libc, parse_mount_info, warn};
+use base::{BufReadExt, FsPathBuilder, ResultExt, Utf8CString, cstr, debug, error, info, libc, parse_mount_info, warn};
 use bitflags::bitflags;
 use nix::fcntl::OFlag;
 
@@ -91,8 +91,7 @@ impl MagiskD {
             .status()
             .log_ok();
 
-        // zygisk_inject 从 data 分区复制到 magisk tmp
-        // magisk32, magisk64, magiskpolicy 同样需从 data 复制
+        // Copy magisk/magisk32/magisk64 from data partition to magisk tmp
         let magisk32 = cstr!(concatcp!(DATABIN, "/magisk32"));
         if magisk32.exists() {
             let tmp = buf.append_path(get_magisk_tmp()).append_path("magisk32");
@@ -102,6 +101,68 @@ impl MagiskD {
         if magisk64.exists() {
             let tmp = buf.append_path(get_magisk_tmp()).append_path("magisk64");
             magisk64.copy_to(tmp).log_ok();
+        }
+        // Ensure magisk64 symlink exists (may not be deployed as separate file)
+        let magisk_link = buf.append_path(get_magisk_tmp()).append_path("magisk");
+        let magisk64_link = buf.append_path(get_magisk_tmp()).append_path("magisk64");
+        if !magisk64_link.exists() && magisk_link.exists() {
+            if unsafe { libc::symlink(cstr!("magisk").as_ptr(), magisk64_link.as_ptr()) } == 0 {
+                debug!("zygisk: created magisk64 symlink -> magisk");
+            }
+        }
+        // Copy zygisk_inject from data partition
+        let zygisk_inject_databin = cstr!(concatcp!(DATABIN, "/zygisk_inject"));
+        if zygisk_inject_databin.exists() {
+            let tmp = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject");
+            zygisk_inject_databin.copy_to(tmp).log_ok();
+        }
+        let zygisk_inject32_databin = cstr!(concatcp!(DATABIN, "/zygisk_inject32"));
+        if zygisk_inject32_databin.exists() {
+            let tmp32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
+            zygisk_inject32_databin.copy_to(tmp32).log_ok();
+        }
+        // Fallback: try to find zygisk_inject32 from installed APK's 32-bit native lib
+        if !cstr::buf::default()
+            .join_path(get_magisk_tmp())
+            .join_path(cstr!("zygisk_inject32"))
+            .exists()
+        {
+            fn find_32bit_native_lib(dir: &str, pkg: &str) -> Option<Utf8CString> {
+                let entries = std::fs::read_dir(dir).ok()?;
+                for entry in entries {
+                    let entry = entry.ok()?;
+                    let path = entry.path();
+                    let name = path.file_name()?.to_str()?;
+                    if name.starts_with("~~") {
+                        // Session-based install dir, scan child for package dir
+                        if let Some(found) = find_32bit_native_lib(path.to_str()?, pkg) {
+                            return Some(found);
+                        }
+                    } else if name.starts_with(pkg) {
+                        // Try 32-bit native lib path
+                        let lib = format!("{}/lib/arm/libzygisk_inject.so", path.to_str()?);
+                        if std::path::Path::new(&lib).exists() {
+                            return Some(Utf8CString::from(lib));
+                        }
+                    }
+                }
+                None
+            }
+            if let Some(lib_path) = find_32bit_native_lib("/data/app/", APP_PACKAGE_NAME) {
+                info!("zygisk: found 32-bit zygisk_inject at {lib_path}");
+                let databin32 = cstr!(concatcp!(DATABIN, "/zygisk_inject32"));
+                lib_path.copy_to(databin32).log_ok();
+                let tmp32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
+                lib_path.copy_to(tmp32).log_ok();
+            }
+        }
+        // Copy magiskpolicy
+        let magiskpolicy = cstr!(concatcp!(DATABIN, "/magiskpolicy"));
+        if magiskpolicy.exists() {
+            let tmp = buf
+                .append_path(get_magisk_tmp())
+                .append_path("magiskpolicy");
+            magiskpolicy.copy_to(tmp).log_ok();
         }
         if self.get_db_setting(DbEntryKey::ZygiskConfig) != 0 {
             let tmp32 = buf.append_path(get_magisk_tmp()).append_path("magisk32");
@@ -116,28 +177,10 @@ impl MagiskD {
             if !tmp_inject.exists() {
                 warn!("zygisk: zygisk_inject not deployed, injection target missing");
             }
-            // 32-bit zygisk_inject 存在性检查
             let tmp_inject32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
             if !tmp_inject32.exists() {
                 warn!("zygisk: zygisk_inject32 not deployed, 32-bit Zygisk unavailable");
             }
-        }
-        let magiskpolicy = cstr!(concatcp!(DATABIN, "/magiskpolicy"));
-        if magiskpolicy.exists() {
-            let tmp = buf
-                .append_path(get_magisk_tmp())
-                .append_path("magiskpolicy");
-            magiskpolicy.copy_to(tmp).log_ok();
-        }
-        let zygisk_inject = cstr!(concatcp!(DATABIN, "/zygisk_inject"));
-        if zygisk_inject.exists() {
-            let tmp = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject");
-            zygisk_inject.copy_to(tmp).log_ok();
-        }
-        let zygisk_inject32 = cstr!(concatcp!(DATABIN, "/zygisk_inject32"));
-        if zygisk_inject32.exists() {
-            let tmp32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
-            zygisk_inject32.copy_to(tmp32).log_ok();
         }
 
         true
