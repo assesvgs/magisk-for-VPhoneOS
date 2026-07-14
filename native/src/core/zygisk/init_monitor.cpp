@@ -48,8 +48,6 @@ static void inject_zygote(int pid) {
     auto tracer = string(get_magisk_tmp()) + "/magisk";
     if (program == "/system/bin/app_process32")
         tracer = string(get_magisk_tmp()) + "/magisk32";
-    else if (program == "/system/bin/app_process64")
-        tracer = string(get_magisk_tmp()) + "/magisk64";
     TRACELOGW("inject: tracer=%s\n", tracer.c_str());
     auto pid_str = to_string(pid);
     string inject_lib;
@@ -136,8 +134,6 @@ static bool find_zygote_by_polling() {
             auto tracer = string(get_magisk_tmp()) + "/magisk";
             if (program == "/system/bin/app_process32")
                 tracer = string(get_magisk_tmp()) + "/magisk32";
-            else if (program == "/system/bin/app_process64")
-                tracer = string(get_magisk_tmp()) + "/magisk64";
             auto pid_str = to_string(pid);
             if (access(tracer.c_str(), X_OK) == -1) {
                 LOGW("zygisk: poll skip injection PID=%d tracer=%s (%s)\n",

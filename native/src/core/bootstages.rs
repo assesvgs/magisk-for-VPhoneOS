@@ -91,24 +91,16 @@ impl MagiskD {
             .status()
             .log_ok();
 
-        // Copy magisk/magisk32/magisk64 from data partition to magisk tmp
+        // Copy magisk/magisk32 from data partition to magisk tmp
         let magisk32 = cstr!(concatcp!(DATABIN, "/magisk32"));
         if magisk32.exists() {
             let tmp = buf.append_path(get_magisk_tmp()).append_path("magisk32");
             magisk32.copy_to(tmp).log_ok();
         }
-        let magisk64 = cstr!(concatcp!(DATABIN, "/magisk64"));
-        if magisk64.exists() {
-            let tmp = buf.append_path(get_magisk_tmp()).append_path("magisk64");
-            magisk64.copy_to(tmp).log_ok();
-        }
-        // Ensure magisk64 symlink exists (may not be deployed as separate file)
-        let magisk_link = buf.append_path(get_magisk_tmp()).append_path("magisk");
-        let magisk64_link = buf.append_path(get_magisk_tmp()).append_path("magisk64");
-        if !magisk64_link.exists() && magisk_link.exists() {
-            if unsafe { libc::symlink(cstr!("magisk").as_ptr(), magisk64_link.as_ptr()) } == 0 {
-                debug!("zygisk: created magisk64 symlink -> magisk");
-            }
+        let magisk = cstr!(concatcp!(DATABIN, "/magisk"));
+        if magisk.exists() {
+            let tmp = buf.append_path(get_magisk_tmp()).append_path("magisk");
+            magisk.copy_to(tmp).log_ok();
         }
         // Copy zygisk_inject from data partition
         let zygisk_inject_databin = cstr!(concatcp!(DATABIN, "/zygisk_inject"));
@@ -165,13 +157,13 @@ impl MagiskD {
             magiskpolicy.copy_to(tmp).log_ok();
         }
         if self.get_db_setting(DbEntryKey::ZygiskConfig) != 0 {
+            let tmp_magisk = buf.append_path(get_magisk_tmp()).append_path("magisk");
+            if !tmp_magisk.exists() {
+                warn!("zygisk: magisk not deployed, 64-bit tracer missing");
+            }
             let tmp32 = buf.append_path(get_magisk_tmp()).append_path("magisk32");
             if !tmp32.exists() {
-                warn!("zygisk: magisk32 not deployed, 32-bit Zygisk unavailable");
-            }
-            let tmp64 = buf.append_path(get_magisk_tmp()).append_path("magisk64");
-            if !tmp64.exists() {
-                warn!("zygisk: magisk64 not deployed, 64-bit Zygisk unavailable");
+                warn!("zygisk: magisk32 not deployed, 32-bit tracer missing");
             }
             let tmp_inject = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject");
             if !tmp_inject.exists() {
