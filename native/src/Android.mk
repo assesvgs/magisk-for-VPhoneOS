@@ -150,9 +150,6 @@ LOCAL_SRC_FILES := \
 LOCAL_STATIC_LIBRARIES := liblsplt
 LOCAL_WHOLE_STATIC_LIBRARIES := zygisk_inject_static
 LOCAL_LDLIBS := -llog
-# 生成 linker script 以丢弃 .init_array（来自 NDK crtbegin 的空段）
-$(shell echo 'SECTIONS { /DISCARD/ : { *(.init_array) *(.fini_array) } }' > $(LOCAL_PATH)/zygisk_inject/discard.ld)
-LOCAL_LDFLAGS += -Wl,--script=$(LOCAL_PATH)/zygisk_inject/discard.ld
 LOCAL_LDFLAGS += -Wl,--gc-sections
 include $(BUILD_SHARED_LIBRARY)
 endif
