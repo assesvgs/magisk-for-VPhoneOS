@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <string>
 #include <set>
 #include <atomic>
@@ -36,6 +37,25 @@ static string get_program(int pid) {
     return buf;
 }
 
+// Ensure magisk is available in MAGISKTMP for tracer
+// (bootstages.rs copies magisk32/zygisk_inject but not magisk itself)
+static void ensure_magisk_tracer() {
+    auto tracer_path = string(get_magisk_tmp()) + "/magisk";
+    if (access(tracer_path.c_str(), X_OK) == 0) return;
+    auto magisk_src = string(DATABIN) + "/magisk";
+    if (access(magisk_src.c_str(), F_OK) != 0) return;
+    int src_fd = xopen(magisk_src.c_str(), O_RDONLY | O_CLOEXEC);
+    if (src_fd < 0) return;
+    auto content = full_read(src_fd);
+    close(src_fd);
+    int dst_fd = xopen(tracer_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0755);
+    if (dst_fd >= 0) {
+        write(dst_fd, content.data(), content.size());
+        close(dst_fd);
+    }
+    LOGD("zygisk: copied magisk tracer to %s\n", tracer_path.c_str());
+}
+
 static void inject_zygote(int pid) {
     auto program = get_program(pid);
     if (program != "/system/bin/app_process" &&
@@ -57,6 +77,7 @@ static void inject_zygote(int pid) {
         inject_lib = string(get_magisk_tmp()) + "/zygisk_inject";
     }
 
+    ensure_magisk_tracer();
     if (access(tracer.c_str(), X_OK) == -1) {
         LOGW("zygisk: skip injection PID=%d tracer=%s (%s)\n",
              pid, tracer.c_str(), strerror(errno));
@@ -135,6 +156,7 @@ static bool find_zygote_by_polling() {
             if (program == "/system/bin/app_process32")
                 tracer = string(get_magisk_tmp()) + "/magisk32";
             auto pid_str = to_string(pid);
+            ensure_magisk_tracer();
             if (access(tracer.c_str(), X_OK) == -1) {
                 LOGW("zygisk: poll skip injection PID=%d tracer=%s (%s)\n",
                      pid, tracer.c_str(), strerror(errno));
