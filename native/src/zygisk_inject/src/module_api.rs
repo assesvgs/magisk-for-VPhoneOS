@@ -57,23 +57,19 @@ pub struct ModuleApiV4 {
 // ===== Default implementations =====
 
 unsafe extern "C" fn default_plt_register(
-    _dev: u64, _ino: u64, sym: *const libc::c_char, hook: *mut c_void, orig: *mut *mut c_void,
+    dev: u64, ino: u64, sym: *const libc::c_char, hook: *mut c_void, orig: *mut *mut c_void,
 ) -> bool {
-    if sym.is_null() { return false; }
-    let sym_bytes = core::ffi::CStr::from_ptr(sym).to_bytes_with_nul();
-    let maps = crate::plt::scan_maps();
-    if maps.is_empty() { return false; }
-    // 在所有加载的库中搜索此符号
-    for map in &maps {
-        if crate::plt::find_and_hook(&maps, &map.path, sym_bytes, hook, orig) {
-            return true;
-        }
+    extern "C" {
+        fn zygisk_plt_register(
+            dev: u64, ino: u64, sym: *const libc::c_char, hook: *mut c_void, orig: *mut *mut c_void,
+        ) -> bool;
     }
-    false
+    unsafe { zygisk_plt_register(dev, ino, sym, hook, orig) }
 }
 
 unsafe extern "C" fn default_plt_commit() -> bool {
-    true
+    extern "C" { fn zygisk_plt_commit() -> bool; }
+    unsafe { zygisk_plt_commit() }
 }
 
 unsafe extern "C" fn default_hook_jni(
@@ -211,16 +207,14 @@ impl<'a, T> Drop for SpinMutexGuard<'a, T> {
 pub struct PltHookEntry {
     pub dev: u64,
     pub ino: u64,
-    pub addr: usize,
-    pub perms: i32,
     pub sym: alloc::vec::Vec<u8>,
     pub orig: *mut c_void,
 }
 
 static PLT_HOOK_LIST: SpinMutex<alloc::vec::Vec<PltHookEntry>> = SpinMutex::new(alloc::vec::Vec::new());
 
-pub fn push_plt_hook(dev: u64, ino: u64, addr: usize, perms: i32, sym: &[u8], orig: *mut c_void) {
-    PLT_HOOK_LIST.lock().push(PltHookEntry { dev, ino, addr, perms, sym: sym.to_vec(), orig });
+pub fn push_plt_hook(dev: u64, ino: u64, sym: &[u8], orig: *mut c_void) {
+    PLT_HOOK_LIST.lock().push(PltHookEntry { dev, ino, sym: sym.to_vec(), orig });
 }
 
 pub fn acquire_for_fork() -> SpinMutexGuard<'static, alloc::vec::Vec<PltHookEntry>> {

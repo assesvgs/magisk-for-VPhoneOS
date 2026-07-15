@@ -9,7 +9,23 @@ pub fn save_self_handle(handle: *mut c_void) {
 }
 
 pub fn unhook_functions() -> bool {
-    crate::plt::restore_all_hooks()
+    let list = crate::module_api::get_plt_hook_list();
+    if list.is_empty() {
+        return crate::plt::restore_all_hooks();
+    }
+    for entry in list.iter() {
+        let sym_c = alloc::ffi::CString::new(entry.sym.as_slice()).unwrap_or_default();
+        unsafe {
+            extern "C" {
+                fn zygisk_plt_restore(dev: u64, ino: u64, sym: *const libc::c_char, orig: *mut c_void) -> bool;
+            }
+            zygisk_plt_restore(entry.dev, entry.ino, sym_c.as_ptr(), entry.orig);
+        }
+    }
+    unsafe {
+        extern "C" { fn zygisk_plt_commit() -> bool; }
+        zygisk_plt_commit()
+    }
 }
 
 #[cfg(target_arch = "aarch64")]
