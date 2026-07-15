@@ -87,7 +87,8 @@ extern "C" fn new_pthread_attr_destroy(attr: *mut c_void) -> i32 {
 
 pub fn install_hooks(handle: *mut c_void) {
     crate::unload::save_self_handle(handle);
-    hook_plt();
+    // 跳过 hook_plt()——仅保存 handle，不执行任何 PLT hook 操作
+    // hook_plt();
 }
 
 pub fn hook_plt() {
