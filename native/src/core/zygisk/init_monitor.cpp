@@ -50,10 +50,17 @@ static void ensure_magisk_tracer() {
     close(src_fd);
     int dst_fd = xopen(tracer_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0755);
     if (dst_fd >= 0) {
-        write(dst_fd, content.data(), content.size());
+        auto written = write(dst_fd, content.data(), content.size());
         close(dst_fd);
+        if (written == static_cast<ssize_t>(content.size())) {
+            LOGD("zygisk: copied magisk tracer to %s (%zu bytes)\n",
+                 tracer_path.c_str(), content.size());
+        } else {
+            LOGW("zygisk: partial write magisk tracer %zd/%zu bytes, unlink\n",
+                 written, content.size());
+            unlink(tracer_path.c_str());
+        }
     }
-    LOGD("zygisk: copied magisk tracer to %s\n", tracer_path.c_str());
 }
 
 static void inject_zygote(int pid) {
