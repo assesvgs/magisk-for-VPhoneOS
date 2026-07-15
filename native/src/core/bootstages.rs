@@ -209,24 +209,23 @@ impl MagiskD {
         self.handle_modules();
         info!("post_fs_data: handle_modules done");
 
-        // 创建 zygisk.so symlink（ptrace 注入器 dlopen 需要此路径）
-        let zygisk_link = cstr::buf::default()
-            .join_path(get_magisk_tmp())
-            .join_path(cstr!("zygisk.so"));
-        if !zygisk_link.exists() {
-            if unsafe { libc::symlink(
-                    cstr!("/proc/self/exe").as_ptr(),
-                    zygisk_link.as_ptr(),
-                ) } != 0
-            {
-                let err = std::io::Error::last_os_error();
-                if err.raw_os_error() != Some(libc::EEXIST) {
-                    error!("failed to create zygisk.so symlink: {err}");
+        if self.zygisk_enabled.load(Ordering::Acquire) {
+            // Create zygisk.so symlink for ptrace injector
+            let zygisk_link = cstr::buf::default()
+                .join_path(get_magisk_tmp())
+                .join_path(cstr!("zygisk.so"));
+            if !zygisk_link.exists() {
+                if unsafe { libc::symlink(
+                        cstr!("/proc/self/exe").as_ptr(),
+                        zygisk_link.as_ptr(),
+                    ) } != 0
+                {
+                    let err = std::io::Error::last_os_error();
+                    if err.raw_os_error() != Some(libc::EEXIST) {
+                        error!("failed to create zygisk.so symlink: {err}");
+                    }
                 }
             }
-        }
-
-        if self.zygisk_enabled.load(Ordering::Acquire) {
             info!("post_fs_data: starting zygisk init_monitor");
             crate::ffi::start_zygisk_monitor();
         }
