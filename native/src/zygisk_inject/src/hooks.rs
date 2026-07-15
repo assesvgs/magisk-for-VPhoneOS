@@ -148,14 +148,6 @@ pub fn hook_plt() {
 }
 
 const HOOK_LIST: &[(&str, &[u8], *mut c_void, HookSlot)] = &[
-    ("/libnativebridge.so", b"dlclose\0", new_dlclose as *mut c_void, HookSlot::Dlclose),
-    ("/libandroid_runtime.so", b"unshare\0",                new_unshare as *mut c_void, HookSlot::Unshare),
-    ("/libandroid_runtime.so", b"selinux_android_setcontext\0",
-     new_selinux_android_setcontext as *mut c_void, HookSlot::Setcontext),
-    ("/libandroid_runtime.so", b"strdup\0",                 new_strdup as *mut c_void, HookSlot::Strdup),
-    ("/libandroid_runtime.so", b"__android_log_close\0",    new_android_log_close as *mut c_void, HookSlot::LogClose),
     ("/libandroid_runtime.so", b"androidSetCreateThread\0",
      new_android_set_create_thread as *mut c_void, HookSlot::AndroidSetCreateThread),
-    ("/libc.so", b"pthread_attr_destroy\0",
-     new_pthread_attr_destroy as *mut c_void, HookSlot::PthreadAttrDestroy),
 ];
