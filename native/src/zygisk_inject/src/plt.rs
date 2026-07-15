@@ -116,11 +116,13 @@ pub fn find_and_hook(
         return false;
     }
 
-    // 3) 扫描 8 字节对齐的值，匹配 dlsym 地址
+    // 3) 扫描指针宽度对齐的值，匹配 dlsym 地址
+    let ptr_size = core::mem::size_of::<*mut c_void>();
+    let align_mask = ptr_size - 1;
     for seg in &lib_rw {
-        let mut addr = (seg.addr_start + 7) & !7; // align up to 8
+        let mut addr = (seg.addr_start + align_mask) & !align_mask;
         let end = seg.addr_end;
-        while addr + 8 <= end {
+        while addr + ptr_size <= end {
             let val = unsafe { *(addr as *const *mut c_void) };
             if val == target {
                 // 找到 GOT 条目
@@ -148,7 +150,7 @@ pub fn find_and_hook(
 
                 // 记录以便卸载时恢复
                 let sym_len = symbol.iter().position(|&b| b == 0).unwrap_or(symbol.len());
-                crate::module_api::push_plt_hook(0, 0, addr, &symbol[..sym_len],
+                crate::module_api::push_plt_hook(0, 0, addr, orig_perms, &symbol[..sym_len],
                                                  unsafe { *orig_fn });
                 return true;
             }
@@ -167,10 +169,15 @@ pub fn commit_all() -> bool {
 pub fn restore_all_hooks() -> bool {
     let list = crate::module_api::get_plt_hook_list();
     if list.is_empty() { return true; }
+    // 获取当前 maps 用于验证地址有效性
+    let maps = scan_maps();
     for entry in list.iter() {
         let addr = entry.addr;
         if addr == 0 { continue; }
         let page = addr & !0xfff;
+
+        // 跳过不再映射的地址
+        if get_page_perms(&maps, page).is_none() { continue; }
 
         // mprotect 为可写
         if unsafe {
@@ -183,9 +190,10 @@ pub fn restore_all_hooks() -> bool {
         // 恢复原值
         unsafe { *(addr as *mut *mut c_void) = entry.orig; }
 
-        // 恢复权限（RX）
+        // 恢复原始权限
+        let restore = if entry.perms != 0 { entry.perms } else { libc::PROT_READ | libc::PROT_EXEC };
         unsafe {
-            libc::mprotect(page as *mut c_void, 0x1000, libc::PROT_READ | libc::PROT_EXEC);
+            libc::mprotect(page as *mut c_void, 0x1000, restore);
         }
     }
     true
