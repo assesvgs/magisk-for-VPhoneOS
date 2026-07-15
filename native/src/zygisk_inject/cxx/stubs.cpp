@@ -1,6 +1,6 @@
-#include <cstddef>
-#include <cstdlib>
-#include <cstdint>
+#include <stddef.h>
+#include <stdlib.h>
+#include <stdint.h>
 
 void *operator new(size_t size) {
     void *p = malloc(size);
