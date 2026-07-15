@@ -226,10 +226,9 @@ static int inject_on_main(int pid, const char *lib_path) {
             return 12;
         }
 
-        // 跳过 entry 函数调用——仅 dlopen，不执行任何注入库代码
-        // args.clear();
-        // args.push_back(remote_handle);
-        // remote_call(pid, regs, injector_entry, (uintptr_t) libc_return_addr, args);
+        args.clear();
+        args.push_back(remote_handle);
+        remote_call(pid, regs, injector_entry, (uintptr_t) libc_return_addr, args);
 
         backup.REG_IP = (long) entry_addr;
         ZLOGD("invoke entry\n");
