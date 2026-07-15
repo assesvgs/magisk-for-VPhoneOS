@@ -85,10 +85,9 @@ extern "C" fn new_pthread_attr_destroy(attr: *mut c_void) -> i32 {
     unsafe { f(attr) }
 }
 
-pub fn install_hooks(handle: *mut c_void) {
-    crate::unload::save_self_handle(handle);
-    // 跳过 hook_plt()——仅保存 handle，不执行任何 PLT hook 操作
-    // hook_plt();
+pub fn install_hooks(_handle: *mut c_void) {
+    // 完全无操作——不保存 handle，不 hook_plt
+    // 测试：仅加载库 + 入口函数返回后 zygote 是否稳定
 }
 
 pub fn hook_plt() {
