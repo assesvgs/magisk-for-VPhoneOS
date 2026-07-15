@@ -211,11 +211,24 @@ fi
 if [ -f zygisk_inject ]; then
   ./magiskboot compress=xz zygisk_inject zygisk_inject.xz
 fi
-# Try to extract 32-bit zygisk_inject from APK if not already present
-if [ ! -f zygisk_inject32 ] && [ -f magisk.apk ]; then
-  unzip -o magisk.apk "lib/$ABI32/libzygisk_inject.so" 2>/dev/null && \
-    chmod 755 libzygisk_inject.so && \
-    mv libzygisk_inject.so zygisk_inject32
+# Try to extract 32-bit zygisk_inject from APK or installed app libs
+if [ ! -f zygisk_inject32 ]; then
+  for src in \
+    magisk.apk \
+    /data/local/tmp/magisk.apk \
+    /data/app/*/io.github.huskydg.magisk*/lib/arm/libzygisk_inject.so \
+    /data/app/~~*/io.github.huskydg.magisk*/lib/arm/libzygisk_inject.so; do
+    if [ -f "$src" ]; then
+      case "$src" in
+        *.apk)
+          unzip -o "$src" "lib/$ABI32/libzygisk_inject.so" 2>/dev/null && \
+            chmod 755 libzygisk_inject.so && \
+            mv libzygisk_inject.so zygisk_inject32 && break ;;
+        *)
+          cp -af "$src" zygisk_inject32 && chmod 755 zygisk_inject32 && break ;;
+      esac
+    fi
+  done
 fi
 if [ -f zygisk_inject32 ]; then
   ./magiskboot compress=xz zygisk_inject32 zygisk_inject32.xz
