@@ -47,7 +47,28 @@ fn orig_fn<T>(slot: HookSlot) -> Option<T> {
 
 extern "C" fn new_unshare(flags: i32) -> i32 {
     let f: UnshareFn = match orig_fn(HookSlot::Unshare) { Some(f) => f, None => return -1 };
-    unsafe { f(flags) }
+    let res = unsafe { f(flags) };
+    if res == 0 && (flags & libc::CLONE_NEWNS) != 0 {
+        if let Some(ctx) = crate::hook_context::current_ctx() {
+            if ctx.flags.has(crate::hook_context::Flags::DO_ALLOW) {
+                crate::ipc::request_sulist();
+            } else if !ctx.flags.has(crate::hook_context::Flags::ALLOWLIST_ENFORCED)
+                && ctx.flags.has(crate::hook_context::Flags::DO_REVERT_UNMOUNT)
+            {
+                crate::ipc::request_umount();
+            }
+            // 二次 unshare 创建空白挂载 ID 空洞（Magisk 惯例），不是意外调用
+            if unsafe { f(libc::CLONE_NEWNS) } != 0 {
+                // 二次 unshare 失败—挂载 ID 空洞未修复，不影响主要功能
+            }
+            if ctx.flags.has(crate::hook_context::Flags::RESTORE_MOUNT_EXTERNAL_NONE) {
+                // TODO: 通过 AppSpecializeArgs.mount_external 恢复
+                // let args_ptr = ctx.args as *mut crate::proxy_gen::AppSpecializeArgs;
+                // unsafe { *((*args_ptr).mount_external as *mut i32) = 0; }
+            }
+        }
+    }
+    res
 }
 
 extern "C" fn new_selinux_android_setcontext(
@@ -55,15 +76,33 @@ extern "C" fn new_selinux_android_setcontext(
     seinfo: *const libc::c_char, pkgname: *const libc::c_char,
 ) -> i32 {
     let f: SetcontextFn = match orig_fn(HookSlot::Setcontext) { Some(f) => f, None => return -1 };
+    unsafe {
+        libc::access(b"/dev/socket/logdw\0".as_ptr() as *const libc::c_char, libc::W_OK);
+    }
     unsafe { f(uid, is_system_server, seinfo, pkgname) }
 }
 
 extern "C" fn new_strdup(s: *const libc::c_char) -> *mut libc::c_char {
     let f: StrdupFn = match orig_fn(HookSlot::Strdup) { Some(f) => f, None => return core::ptr::null_mut() };
-    unsafe { f(s) }
+    let ret = unsafe { f(s) };
+
+    if !s.is_null() && !ZYGOTE_INIT_SEEN.load(Ordering::Relaxed) {
+        let s_slice = unsafe { core::ffi::CStr::from_ptr(s) };
+        if let Ok(s_str) = s_slice.to_str() {
+            if s_str == "ZygoteInit" {
+                ZYGOTE_INIT_SEEN.store(true, Ordering::Relaxed);
+                // hook_jni_env 由 androidSetCreateThread 触发（更安全的时机）
+            }
+        }
+    }
+    ret
 }
 
 extern "C" fn new_android_log_close() {
+    let skip = crate::hook_context::current_ctx()
+        .map(|ctx| ctx.flags.has(crate::hook_context::Flags::SKIP_CLOSE_LOG_PIPE))
+        .unwrap_or(false);
+    if skip { return; }
     let f: LogCloseFn = match orig_fn(HookSlot::LogClose) { Some(f) => f, None => return };
     unsafe { f() }
 }
@@ -75,19 +114,26 @@ extern "C" fn new_dlclose(handle: *mut c_void) -> i32 {
 }
 
 extern "C" fn new_android_set_create_thread(_func: *mut c_void) {
-    // pass-through, no JNI hook for now
+    crate::jni_env::hook_jni_env();
 }
 
 extern "C" fn new_pthread_attr_destroy(attr: *mut c_void) -> i32 {
     let f: PthreadAttrDestroyFn = match orig_fn(HookSlot::PthreadAttrDestroy) {
         Some(f) => f, None => return -1
     };
-    unsafe { f(attr) }
+    let ret = unsafe { f(attr) };
+    if crate::unload::SHOULD_UNLOAD.load(Ordering::Acquire) {
+        crate::unload::unhook_functions();
+        unsafe { crate::unload::dlclose_self(
+            crate::unload::SELF_HANDLE.load(Ordering::Relaxed)
+        ) }
+    }
+    ret
 }
 
-pub fn install_hooks(_handle: *mut c_void) {
-    // 完全无操作——不保存 handle，不 hook_plt
-    // 测试：仅加载库 + 入口函数返回后 zygote 是否稳定
+pub fn install_hooks(handle: *mut c_void) {
+    crate::unload::save_self_handle(handle);
+    hook_plt();
 }
 
 pub fn hook_plt() {
@@ -102,12 +148,12 @@ pub fn hook_plt() {
 }
 
 const HOOK_LIST: &[(&str, &[u8], *mut c_void, HookSlot)] = &[
-    ("/libnativebridge.so", b"dlclose\0",                new_dlclose as *mut c_void, HookSlot::Dlclose),
-    ("/libandroid_runtime.so", b"unshare\0",              new_unshare as *mut c_void, HookSlot::Unshare),
+    ("/libnativebridge.so", b"dlclose\0", new_dlclose as *mut c_void, HookSlot::Dlclose),
+    ("/libandroid_runtime.so", b"unshare\0",                new_unshare as *mut c_void, HookSlot::Unshare),
     ("/libandroid_runtime.so", b"selinux_android_setcontext\0",
      new_selinux_android_setcontext as *mut c_void, HookSlot::Setcontext),
-    ("/libandroid_runtime.so", b"strdup\0",               new_strdup as *mut c_void, HookSlot::Strdup),
-    ("/libandroid_runtime.so", b"__android_log_close\0",  new_android_log_close as *mut c_void, HookSlot::LogClose),
+    ("/libandroid_runtime.so", b"strdup\0",                 new_strdup as *mut c_void, HookSlot::Strdup),
+    ("/libandroid_runtime.so", b"__android_log_close\0",    new_android_log_close as *mut c_void, HookSlot::LogClose),
     ("/libandroid_runtime.so", b"androidSetCreateThread\0",
      new_android_set_create_thread as *mut c_void, HookSlot::AndroidSetCreateThread),
     ("/libc.so", b"pthread_attr_destroy\0",
