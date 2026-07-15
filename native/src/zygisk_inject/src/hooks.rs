@@ -148,6 +148,5 @@ pub fn hook_plt() {
 }
 
 const HOOK_LIST: &[(&str, &[u8], *mut c_void, HookSlot)] = &[
-    ("/libandroid_runtime.so", b"androidSetCreateThread\0",
-     new_android_set_create_thread as *mut c_void, HookSlot::AndroidSetCreateThread),
+    // 空列表——测试 lsplt 机制本身是否导致 crash
 ];
