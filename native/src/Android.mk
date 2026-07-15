@@ -148,7 +148,7 @@ LOCAL_SRC_FILES := \
     zygisk_inject/cxx/stubs.cpp
 LOCAL_WHOLE_STATIC_LIBRARIES := zygisk_inject_static
 LOCAL_LDLIBS := -llog
-LOCAL_LDFLAGS += -Wl,--gc-sections
+LOCAL_LDFLAGS += -Wl,--gc-sections -Wl,-z,norelro
 include $(BUILD_SHARED_LIBRARY)
 endif
 
