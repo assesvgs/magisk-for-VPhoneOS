@@ -91,7 +91,7 @@ extern "C" fn new_strdup(s: *const libc::c_char) -> *mut libc::c_char {
         if let Ok(s_str) = s_slice.to_str() {
             if s_str == "ZygoteInit" {
                 ZYGOTE_INIT_SEEN.store(true, Ordering::Relaxed);
-                crate::jni_env::hook_jni_env();
+                // hook_jni_env 由 androidSetCreateThread 触发（更安全的时机）
             }
         }
     }

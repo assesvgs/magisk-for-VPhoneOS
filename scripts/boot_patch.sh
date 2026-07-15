@@ -221,7 +221,7 @@ if [ ! -f zygisk_inject32 ]; then
     if [ -f "$src" ]; then
       case "$src" in
         *.apk)
-          unzip -o "$src" "lib/$ABI32/libzygisk_inject.so" 2>/dev/null && \
+          unzip -j -o "$src" "lib/$ABI32/libzygisk_inject.so" 2>/dev/null && \
             chmod 755 libzygisk_inject.so && \
             mv libzygisk_inject.so zygisk_inject32 && break ;;
         *)
