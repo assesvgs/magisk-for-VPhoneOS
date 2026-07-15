@@ -91,31 +91,37 @@ impl MagiskD {
             .status()
             .log_ok();
 
-        // Copy magisk/magisk32 from data partition to magisk tmp
+        // zygisk_inject 从 data 分区复制到 magisk tmp
+        // magisk32, magisk64, magiskpolicy 同样需从 data 复制
         let magisk32 = cstr!(concatcp!(DATABIN, "/magisk32"));
         if magisk32.exists() {
             let tmp = buf.append_path(get_magisk_tmp()).append_path("magisk32");
             magisk32.copy_to(tmp).log_ok();
         }
-        let magisk = cstr!(concatcp!(DATABIN, "/magisk"));
-        if magisk.exists() {
-            let tmp = buf.append_path(get_magisk_tmp()).append_path("magisk");
-            magisk.copy_to(tmp).log_ok();
+        let magisk64 = cstr!(concatcp!(DATABIN, "/magisk64"));
+        if magisk64.exists() {
+            let tmp = buf.append_path(get_magisk_tmp()).append_path("magisk64");
+            magisk64.copy_to(tmp).log_ok();
         }
-        // Copy zygisk_inject from data partition
-        let zygisk_inject_databin = cstr!(concatcp!(DATABIN, "/zygisk_inject"));
-        if zygisk_inject_databin.exists() {
-            let tmp = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject");
-            zygisk_inject_databin.copy_to(tmp).log_ok();
+        if self.get_db_setting(DbEntryKey::ZygiskConfig) != 0 {
+            let tmp32 = buf.append_path(get_magisk_tmp()).append_path("magisk32");
+            if !tmp32.exists() {
+                warn!("zygisk: magisk32 not deployed, 32-bit Zygisk unavailable");
+            }
+            let tmp64 = buf.append_path(get_magisk_tmp()).append_path("magisk64");
+            if !tmp64.exists() {
+                warn!("zygisk: magisk64 not deployed, 64-bit Zygisk unavailable");
+            }
+            let tmp_inject = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject");
+            if !tmp_inject.exists() {
+                warn!("zygisk: zygisk_inject not deployed, injection target missing");
+            }
+            // 32-bit zygisk_inject 存在性检查
+            let tmp_inject32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
+            if !tmp_inject32.exists() {
+                warn!("zygisk: zygisk_inject32 not deployed, 32-bit Zygisk unavailable");
+            }
         }
-        let zygisk_inject32_databin = cstr!(concatcp!(DATABIN, "/zygisk_inject32"));
-        if zygisk_inject32_databin.exists() {
-            let tmp32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
-            zygisk_inject32_databin.copy_to(tmp32).log_ok();
-        }
-        // zygisk_inject32 由 boot_patch.sh 在 ramdisk 打包时从 APK 提取
-        // 不需要运行时扫描，参考 boot_patch.sh 中 unzip 逻辑
-        // Copy magiskpolicy
         let magiskpolicy = cstr!(concatcp!(DATABIN, "/magiskpolicy"));
         if magiskpolicy.exists() {
             let tmp = buf
@@ -123,23 +129,15 @@ impl MagiskD {
                 .append_path("magiskpolicy");
             magiskpolicy.copy_to(tmp).log_ok();
         }
-        if self.get_db_setting(DbEntryKey::ZygiskConfig) != 0 {
-            let tmp_magisk = buf.append_path(get_magisk_tmp()).append_path("magisk");
-            if !tmp_magisk.exists() {
-                warn!("zygisk: magisk not deployed, 64-bit tracer missing");
-            }
-            let tmp32 = buf.append_path(get_magisk_tmp()).append_path("magisk32");
-            if !tmp32.exists() {
-                warn!("zygisk: magisk32 not deployed, 32-bit tracer missing");
-            }
-            let tmp_inject = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject");
-            if !tmp_inject.exists() {
-                warn!("zygisk: zygisk_inject not deployed, injection target missing");
-            }
-            let tmp_inject32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
-            if !tmp_inject32.exists() {
-                warn!("zygisk: zygisk_inject32 not deployed, 32-bit Zygisk unavailable");
-            }
+        let zygisk_inject = cstr!(concatcp!(DATABIN, "/zygisk_inject"));
+        if zygisk_inject.exists() {
+            let tmp = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject");
+            zygisk_inject.copy_to(tmp).log_ok();
+        }
+        let zygisk_inject32 = cstr!(concatcp!(DATABIN, "/zygisk_inject32"));
+        if zygisk_inject32.exists() {
+            let tmp32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
+            zygisk_inject32.copy_to(tmp32).log_ok();
         }
 
         true
@@ -209,23 +207,24 @@ impl MagiskD {
         self.handle_modules();
         info!("post_fs_data: handle_modules done");
 
-        if self.zygisk_enabled.load(Ordering::Acquire) {
-            // Create zygisk.so symlink for ptrace injector
-            let zygisk_link = cstr::buf::default()
-                .join_path(get_magisk_tmp())
-                .join_path(cstr!("zygisk.so"));
-            if !zygisk_link.exists() {
-                if unsafe { libc::symlink(
-                        cstr!("/proc/self/exe").as_ptr(),
-                        zygisk_link.as_ptr(),
-                    ) } != 0
-                {
-                    let err = std::io::Error::last_os_error();
-                    if err.raw_os_error() != Some(libc::EEXIST) {
-                        error!("failed to create zygisk.so symlink: {err}");
-                    }
+        // 创建 zygisk.so symlink（ptrace 注入器 dlopen 需要此路径）
+        let zygisk_link = cstr::buf::default()
+            .join_path(get_magisk_tmp())
+            .join_path(cstr!("zygisk.so"));
+        if !zygisk_link.exists() {
+            if unsafe { libc::symlink(
+                    cstr!("/proc/self/exe").as_ptr(),
+                    zygisk_link.as_ptr(),
+                ) } != 0
+            {
+                let err = std::io::Error::last_os_error();
+                if err.raw_os_error() != Some(libc::EEXIST) {
+                    error!("failed to create zygisk.so symlink: {err}");
                 }
             }
+        }
+
+        if self.zygisk_enabled.load(Ordering::Acquire) {
             info!("post_fs_data: starting zygisk init_monitor");
             crate::ffi::start_zygisk_monitor();
         }
