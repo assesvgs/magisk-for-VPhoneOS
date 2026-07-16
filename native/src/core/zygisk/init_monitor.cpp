@@ -37,14 +37,19 @@ static string get_program(int pid) {
     return buf;
 }
 
-// Ensure magisk is available in MAGISKTMP for tracer
-// (bootstages.rs copies magisk32/zygisk_inject but not magisk itself)
-static void ensure_magisk_tracer() {
-    auto tracer_path = string(get_magisk_tmp()) + "/magisk";
+// Ensure a tracer binary is available in MAGISKTMP
+// (bootstages.rs copies magisk/magisk32/zygisk_inject but some may be absent
+//  if DATABIN was populated after boot, e.g. module updates)
+static void ensure_tracer(const string &name) {
+    auto tracer_path = string(get_magisk_tmp()) + "/" + name;
     if (access(tracer_path.c_str(), X_OK) == 0) return;
-    auto magisk_src = string(DATABIN) + "/magisk";
-    if (access(magisk_src.c_str(), F_OK) != 0) return;
-    int src_fd = xopen(magisk_src.c_str(), O_RDONLY | O_CLOEXEC);
+    auto src = string(DATABIN) + "/" + name;
+    if (access(src.c_str(), F_OK) != 0) {
+        // Fall back to DATABIN/magisk (multi-call binary symlink target)
+        src = string(DATABIN) + "/magisk";
+        if (access(src.c_str(), F_OK) != 0) return;
+    }
+    int src_fd = xopen(src.c_str(), O_RDONLY | O_CLOEXEC);
     if (src_fd < 0) return;
     auto content = full_read(src_fd);
     close(src_fd);
@@ -53,15 +58,18 @@ static void ensure_magisk_tracer() {
         auto written = write(dst_fd, content.data(), content.size());
         close(dst_fd);
         if (written == static_cast<ssize_t>(content.size())) {
-            LOGD("zygisk: copied magisk tracer to %s (%zu bytes)\n",
-                 tracer_path.c_str(), content.size());
+            LOGD("zygisk: deployed %s tracer to %s (%zu bytes)\n",
+                 name, tracer_path.c_str(), content.size());
         } else {
-            LOGW("zygisk: partial write magisk tracer %zd/%zu bytes, unlink\n",
-                 written, content.size());
+            LOGW("zygisk: partial write %s tracer %zd/%zu bytes, unlink\n",
+                 name, written, content.size());
             unlink(tracer_path.c_str());
         }
     }
 }
+
+static void ensure_magisk_tracer() { ensure_tracer("magisk"); }
+static void ensure_magisk32_tracer() { ensure_tracer("magisk32"); }
 
 // Fork, exec tracer, and wait for result.
 // Returns: 0=success, >0=fail step, -2=signaled, -3=unexpected, -4=timeout.
@@ -127,6 +135,7 @@ static void inject_zygote(int pid) {
     }
 
     ensure_magisk_tracer();
+    ensure_magisk32_tracer();
     if (access(tracer.c_str(), X_OK) == -1) {
         LOGW("zygisk: skip injection PID=%d tracer=%s (%s)\n",
              pid, tracer.c_str(), strerror(errno));
@@ -184,6 +193,7 @@ static bool find_zygote_by_polling() {
                 tracer = string(get_magisk_tmp()) + "/magisk32";
             auto pid_str = to_string(pid);
             ensure_magisk_tracer();
+            ensure_magisk32_tracer();
             if (access(tracer.c_str(), X_OK) == -1) {
                 LOGW("zygisk: poll skip injection PID=%d tracer=%s (%s)\n",
                      pid, tracer.c_str(), strerror(errno));

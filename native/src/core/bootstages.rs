@@ -91,53 +91,62 @@ impl MagiskD {
             .status()
             .log_ok();
 
-        // zygisk_inject 从 data 分区复制到 magisk tmp
-        // magisk32, magisk64, magiskpolicy 同样需从 data 复制
-        let magisk32 = cstr!(concatcp!(DATABIN, "/magisk32"));
-        if magisk32.exists() {
+        // 将所有二进制从 data 分区复制到 magisk tmp
+        // 顺序：先全部复制，再检查可用性（避免检查时文件尚未就绪的误报）
+        let magisk32_src = cstr!(concatcp!(DATABIN, "/magisk32"));
+        if magisk32_src.exists() {
             let tmp = buf.append_path(get_magisk_tmp()).append_path("magisk32");
-            magisk32.copy_to(tmp).log_ok();
+            magisk32_src.copy_to(tmp).log_ok();
         }
-        let magisk64 = cstr!(concatcp!(DATABIN, "/magisk64"));
-        if magisk64.exists() {
+        let magisk64_src = cstr!(concatcp!(DATABIN, "/magisk64"));
+        if magisk64_src.exists() {
             let tmp = buf.append_path(get_magisk_tmp()).append_path("magisk64");
-            magisk64.copy_to(tmp).log_ok();
+            magisk64_src.copy_to(tmp).log_ok();
         }
-        if self.get_db_setting(DbEntryKey::ZygiskConfig) != 0 {
-            // 64-bit tracer: /sbin/magisk（不是 magisk64，commit b357e03 已删除）
-            let tmp_magisk = buf.append_path(get_magisk_tmp()).append_path("magisk");
-            if !tmp_magisk.exists() {
-                warn!("zygisk: magisk not deployed, 64-bit Zygisk unavailable");
-            }
-            let tmp32 = buf.append_path(get_magisk_tmp()).append_path("magisk32");
-            if !tmp32.exists() {
-                warn!("zygisk: magisk32 not deployed, 32-bit Zygisk unavailable");
-            }
-            let tmp_inject = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject");
-            if !tmp_inject.exists() {
-                warn!("zygisk: zygisk_inject not deployed, injection target missing");
-            }
-            let tmp_inject32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
-            if !tmp_inject32.exists() {
-                warn!("zygisk: zygisk_inject32 not deployed, 32-bit Zygisk unavailable");
-            }
+        let magisk_src = cstr!(concatcp!(DATABIN, "/magisk"));
+        if magisk_src.exists() {
+            let tmp = buf.append_path(get_magisk_tmp()).append_path("magisk");
+            magisk_src.copy_to(tmp).log_ok();
         }
-        let magiskpolicy = cstr!(concatcp!(DATABIN, "/magiskpolicy"));
-        if magiskpolicy.exists() {
+        let magiskpolicy_src = cstr!(concatcp!(DATABIN, "/magiskpolicy"));
+        if magiskpolicy_src.exists() {
             let tmp = buf
                 .append_path(get_magisk_tmp())
                 .append_path("magiskpolicy");
-            magiskpolicy.copy_to(tmp).log_ok();
+            magiskpolicy_src.copy_to(tmp).log_ok();
         }
-        let zygisk_inject = cstr!(concatcp!(DATABIN, "/zygisk_inject"));
-        if zygisk_inject.exists() {
+        let zygisk_inject_src = cstr!(concatcp!(DATABIN, "/zygisk_inject"));
+        if zygisk_inject_src.exists() {
             let tmp = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject");
-            zygisk_inject.copy_to(tmp).log_ok();
+            zygisk_inject_src.copy_to(tmp).log_ok();
         }
-        let zygisk_inject32 = cstr!(concatcp!(DATABIN, "/zygisk_inject32"));
-        if zygisk_inject32.exists() {
+        let zygisk_inject32_src = cstr!(concatcp!(DATABIN, "/zygisk_inject32"));
+        if zygisk_inject32_src.exists() {
             let tmp32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
-            zygisk_inject32.copy_to(tmp32).log_ok();
+            zygisk_inject32_src.copy_to(tmp32).log_ok();
+        }
+        // 以上全部复制完成后，检查关键 tracer/注入文件是否到位
+        if self.get_db_setting(DbEntryKey::ZygiskConfig) != 0 {
+            let tmp_magisk = buf.append_path(get_magisk_tmp()).append_path("magisk");
+            if !tmp_magisk.exists() {
+                warn!("zygisk: magisk tracer absent in {}, 64-bit Zygisk will fail",
+                      get_magisk_tmp());
+            }
+            let tmp32 = buf.append_path(get_magisk_tmp()).append_path("magisk32");
+            if !tmp32.exists() {
+                warn!("zygisk: magisk32 tracer absent in {}, 32-bit Zygisk will fail",
+                      get_magisk_tmp());
+            }
+            let tmp_inject = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject");
+            if !tmp_inject.exists() {
+                warn!("zygisk: zygisk_inject absent in {}, 64-bit injection target missing",
+                      get_magisk_tmp());
+            }
+            let tmp_inject32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
+            if !tmp_inject32.exists() {
+                warn!("zygisk: zygisk_inject32 absent in {}, 32-bit injection target missing",
+                      get_magisk_tmp());
+            }
         }
 
         true
