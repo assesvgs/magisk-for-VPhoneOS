@@ -169,7 +169,9 @@ pub fn recv_fds(sock: i32) -> alloc::vec::Vec<i32> {
             && (*cmsg).cmsg_level == libc::SOL_SOCKET
             && (*cmsg).cmsg_type == libc::SCM_RIGHTS
         {
-            let payload_len = (*cmsg).cmsg_len - libc::CMSG_LEN(0);
+            // CMSG_LEN() 在 libc crate 中返回 usize 或 u32（取决于目标平台），
+            // 但 cmsg_len 始终是 usize。显式转换为 usize 确保跨平台兼容。
+            let payload_len = (*cmsg).cmsg_len - libc::CMSG_LEN(0) as usize;
             let num_fds = payload_len / core::mem::size_of::<i32>();
             let data_ptr = libc::CMSG_DATA(cmsg) as *const i32;
             for i in 0..num_fds {
