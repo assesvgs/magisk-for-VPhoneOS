@@ -1,8 +1,13 @@
 use alloc::string::ToString;
+use alloc::vec::Vec;
 use core::ffi::c_void;
 
 #[repr(C)]
 pub struct MapInfo {
+    pub addr_start: usize,
+    pub addr_end: usize,
+    pub perms: alloc::string::String,
+    pub offset: u64,
     pub dev_major: u64,
     pub dev_minor: u64,
     pub inode: u64,
@@ -18,11 +23,8 @@ fn read_file(path: &[u8]) -> alloc::vec::Vec<u8> {
     let mut tmp = [0u8; 1024];
     loop {
         let n = unsafe { libc::read(fd, tmp.as_mut_ptr() as *mut c_void, tmp.len()) };
-        if n == 0 { break; }  // EOF
-        if n < 0 {
-            // read error — 不是 EOF，但继续可能导致无限循环，break
-            break;
-        }
+        if n == 0 { break; }
+        if n < 0 { break; }
         buf.extend_from_slice(&tmp[..n as usize]);
     }
     unsafe { libc::close(fd); }
@@ -40,16 +42,20 @@ pub fn scan_maps() -> alloc::vec::Vec<MapInfo> {
         .lines()
         .filter_map(|line| {
             let line = line.trim();
-            if line.is_empty() {
-                return None;
-            }
+            if line.is_empty() { return None; }
+
             let mut parts = line.splitn(6, ' ');
-            let _ = parts.next()?; // addr range
-            let _ = parts.next()?; // perms
-            let _ = parts.next()?; // offset
+            let addr_range = parts.next()?;
+            let perms = parts.next()?.to_string();
+            let offset_str = parts.next()?;
             let dev_str = parts.next()?;
             let inode_str = parts.next()?;
             let path = parts.next().unwrap_or("").trim().to_string();
+
+            let mut addr_parts = addr_range.splitn(2, '-');
+            let addr_start = usize::from_str_radix(addr_parts.next()?, 16).ok()?;
+            let addr_end = usize::from_str_radix(addr_parts.next()?, 16).ok()?;
+            let offset = u64::from_str_radix(offset_str, 16).ok()?;
 
             let mut dev_parts = dev_str.splitn(2, ':');
             let dev_major = u64::from_str_radix(dev_parts.next()?, 16).ok()?;
@@ -61,6 +67,10 @@ pub fn scan_maps() -> alloc::vec::Vec<MapInfo> {
             }
 
             Some(MapInfo {
+                addr_start,
+                addr_end,
+                perms,
+                offset,
                 dev_major,
                 dev_minor,
                 inode,
@@ -70,16 +80,17 @@ pub fn scan_maps() -> alloc::vec::Vec<MapInfo> {
         .collect()
 }
 
-extern "C" {
-    fn zygisk_plt_register(
-        dev: u64,
-        ino: u64,
-        symbol: *const libc::c_char,
-        hook: *mut c_void,
-        orig: *mut *mut c_void,
-    ) -> bool;
-    fn zygisk_plt_commit() -> bool;
-    fn zygisk_plt_restore(dev: u64, ino: u64, symbol: *const libc::c_char, orig: *mut c_void) -> bool;
+fn get_page_perms(maps: &[MapInfo], page: usize) -> Option<i32> {
+    for m in maps {
+        if m.addr_start <= page && page < m.addr_end {
+            let mut p = 0i32;
+            if m.perms.contains('r') { p |= libc::PROT_READ; }
+            if m.perms.contains('w') { p |= libc::PROT_WRITE; }
+            if m.perms.contains('x') { p |= libc::PROT_EXEC; }
+            return Some(p);
+        }
+    }
+    None
 }
 
 pub fn find_and_hook(
@@ -89,43 +100,93 @@ pub fn find_and_hook(
     hook_fn: *mut c_void,
     orig_fn: *mut *mut c_void,
 ) -> bool {
-    for map in maps {
-        if !map.path.ends_with(lib_suffix) {
-            continue;
-        }
-        let ok = unsafe {
-            zygisk_plt_register(
-                (map.dev_major << 20) | map.dev_minor,
-                map.inode,
-                symbol.as_ptr() as *const libc::c_char,
-                hook_fn,
-                orig_fn,
-            )
-        };
-        if ok {
-            let dev = (map.dev_major << 20) | map.dev_minor;
-            let orig_val = unsafe { *orig_fn };
-            // 去掉末尾 null 字节
-            let sym_len = symbol.iter().position(|&b| b == 0).unwrap_or(symbol.len());
-            crate::module_api::push_plt_hook(dev, map.inode, &symbol[..sym_len], orig_val);
-            return true;
+    // 1) dlsym 获取原始函数地址
+    let target = unsafe {
+        libc::dlsym(libc::RTLD_DEFAULT, symbol.as_ptr() as *const libc::c_char)
+    };
+    if target.is_null() {
+        return false;
+    }
+
+    // 2) 找到该库所有可写映射段（GOT/PLT 在 rw 段）
+    let lib_rw: Vec<&MapInfo> = maps.iter()
+        .filter(|m| m.path.ends_with(lib_suffix) && m.perms.contains('w'))
+        .collect();
+    if lib_rw.is_empty() {
+        return false;
+    }
+
+    // 3) 扫描 8 字节对齐的值，匹配 dlsym 地址
+    for seg in &lib_rw {
+        let mut addr = (seg.addr_start + 7) & !7; // align up to 8
+        let end = seg.addr_end;
+        while addr + 8 <= end {
+            let val = unsafe { *(addr as *const *mut c_void) };
+            if val == target {
+                // 找到 GOT 条目
+                let page = addr & !0xfff;
+                let orig_perms = get_page_perms(maps, page).unwrap_or(libc::PROT_READ);
+
+                // mprotect 为可写（检查返回值！）
+                if unsafe {
+                    libc::mprotect(page as *mut c_void, 0x1000,
+                                   libc::PROT_READ | libc::PROT_WRITE)
+                } != 0 {
+                    return false;
+                }
+
+                // 保存原值
+                unsafe { *orig_fn = *(addr as *mut *mut c_void) };
+
+                // 写入 hook 地址
+                unsafe { *(addr as *mut *mut c_void) = hook_fn };
+
+                // 恢复权限
+                unsafe {
+                    libc::mprotect(page as *mut c_void, 0x1000, orig_perms);
+                }
+
+                // 记录以便卸载时恢复
+                let sym_len = symbol.iter().position(|&b| b == 0).unwrap_or(symbol.len());
+                crate::module_api::push_plt_hook(0, 0, addr, &symbol[..sym_len],
+                                                 unsafe { *orig_fn });
+                return true;
+            }
+            addr += 8;
         }
     }
     false
 }
 
+/// 立即应用——此函数保留以兼容 hooks.rs 调用，实际无操作
 pub fn commit_all() -> bool {
-    unsafe { zygisk_plt_commit() }
+    true
 }
 
+/// 恢复所有 PLT hook
 pub fn restore_all_hooks() -> bool {
     let list = crate::module_api::get_plt_hook_list();
     if list.is_empty() { return true; }
     for entry in list.iter() {
-        let sym_c = alloc::ffi::CString::new(entry.sym.as_slice()).unwrap_or_default();
+        let addr = entry.addr;
+        if addr == 0 { continue; }
+        let page = addr & !0xfff;
+
+        // mprotect 为可写
+        if unsafe {
+            libc::mprotect(page as *mut c_void, 0x1000,
+                           libc::PROT_READ | libc::PROT_WRITE)
+        } != 0 {
+            continue;
+        }
+
+        // 恢复原值
+        unsafe { *(addr as *mut *mut c_void) = entry.orig; }
+
+        // 恢复权限（RX）
         unsafe {
-            zygisk_plt_restore(entry.dev, entry.ino, sym_c.as_ptr(), entry.orig);
+            libc::mprotect(page as *mut c_void, 0x1000, libc::PROT_READ | libc::PROT_EXEC);
         }
     }
-    unsafe { zygisk_plt_commit() }
+    true
 }
