@@ -119,9 +119,9 @@ pub fn connect_daemon() -> Option<i32> {
 }
 
 /// 跨平台一致的 CMSG_LEN 包装。
-/// libc crate 的 CMSG_LEN 在不同目标平台返回类型不同（usize 或 u32），
-/// 统一转换为 usize 避免类型错误。
-fn cmsg_len(len: usize) -> usize {
+/// libc crate 的 CMSG_LEN 是 unsafe fn，且在不同目标平台返回类型不同
+///（usize 或 u32），统一转换为 usize 避免类型错误。
+unsafe fn cmsg_len(len: usize) -> usize {
     libc::CMSG_LEN(len as u32) as usize
 }
 
