@@ -169,10 +169,10 @@ static int wait_for_breakpoint(int pid, struct user_regs_struct &regs,
 }
 
 // Read and log dlerror from remote process after dlopen failure.
-// Template avoids explicit lsplt::MapInfo type (跨 NDK 版本类型解析不一致)。
+// Uses MapEntries (ABI-safe, fixed-size path) to avoid lsplt::MapInfo
+// type resolution issues across NDK versions.
 // Always returns 10 so the caller can propagate one unified failure code.
-template<typename MapVec>
-static int log_dlerror(int pid, MapVec &local_map, MapVec &map,
+static int log_dlerror(int pid, MapEntries &local_map, MapEntries &map,
                         struct user_regs_struct &regs, uintptr_t libc_return_addr) {
     auto dlerror_addr = find_func_addr(local_map, map, "libdl.so", "dlerror");
     if (dlerror_addr == nullptr) {

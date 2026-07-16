@@ -25,10 +25,10 @@
 #include "zygisk.hpp"
 #include <cstdio>
 
-std::vector<lsplt::MapInfo> Scan_proc(const std::string& pid) {
+MapEntries Scan_proc(const std::string& pid) {
     constexpr static auto kPermLength = 5;
     constexpr static auto kMapEntry = 7;
-    std::vector<lsplt::MapInfo> info;
+    MapEntries info;
     std::string file_name = std::string("/proc/") + pid + "/maps";
     auto maps = std::unique_ptr<FILE, decltype(&fclose)>{fopen(file_name.c_str(), "r"), &fclose};
     if (maps) {
@@ -51,12 +51,21 @@ std::vector<lsplt::MapInfo> Scan_proc(const std::string& pid) {
                 continue;
             }
             while (path_off < read && isspace(line[path_off])) path_off++;
-            auto &ref = info.emplace_back(lsplt::MapInfo{start, end, 0, perm[3] == 'p', off,
-                                                  static_cast<dev_t>(makedev(dev_major, dev_minor)),
-                                                  inode, line + path_off});
-            if (perm[0] == 'r') ref.perms |= PROT_READ;
-            if (perm[1] == 'w') ref.perms |= PROT_WRITE;
-            if (perm[2] == 'x') ref.perms |= PROT_EXEC;
+            MapEntry entry{};
+            entry.start = start;
+            entry.end = end;
+            entry.is_private = perm[3] == 'p';
+            entry.offset = off;
+            entry.dev = static_cast<dev_t>(makedev(dev_major, dev_minor));
+            entry.inode = inode;
+            if (perm[0] == 'r') entry.perms |= PROT_READ;
+            if (perm[1] == 'w') entry.perms |= PROT_WRITE;
+            if (perm[2] == 'x') entry.perms |= PROT_EXEC;
+            size_t path_len = strlen(line + path_off);
+            if (path_len >= sizeof(entry.path)) path_len = sizeof(entry.path) - 1;
+            memcpy(entry.path, line + path_off, path_len);
+            entry.path[path_len] = '\0';
+            info.push_back(entry);
         }
         free(line);
     }
@@ -140,7 +149,7 @@ bool set_regs(int pid, struct user_regs_struct &regs) {
     return true;
 }
 
-std::string get_addr_mem_region(std::vector<lsplt::MapInfo> &info, void *addr) {
+std::string get_addr_mem_region(MapEntries &info, void *addr) {
     for (auto &map: info) {
         if (map.start <= (uintptr_t) addr && map.end > (uintptr_t) addr) {
             auto s = std::string(map.path);
@@ -154,18 +163,20 @@ std::string get_addr_mem_region(std::vector<lsplt::MapInfo> &info, void *addr) {
     return "<unknown>";
 }
 
-void *find_module_return_addr(std::vector<lsplt::MapInfo> &info, std::string_view suffix) {
+void *find_module_return_addr(MapEntries &info, std::string_view suffix) {
     for (auto &map: info) {
-        if ((map.perms & PROT_EXEC) == 0 && map.path.ends_with(suffix)) {
+        std::string_view path(map.path);
+        if ((map.perms & PROT_EXEC) == 0 && path.ends_with(suffix)) {
             return (void *) map.start;
         }
     }
     return nullptr;
 }
 
-void *find_module_base(std::vector<lsplt::MapInfo> &info, std::string_view suffix) {
+void *find_module_base(MapEntries &info, std::string_view suffix) {
     for (auto &map: info) {
-        if (map.offset == 0 && map.path.ends_with(suffix)) {
+        std::string_view path(map.path);
+        if (map.offset == 0 && path.ends_with(suffix)) {
             return (void *) map.start;
         }
     }
@@ -173,8 +184,8 @@ void *find_module_base(std::vector<lsplt::MapInfo> &info, std::string_view suffi
 }
 
 void *find_func_addr(
-        std::vector<lsplt::MapInfo> &local_info,
-        std::vector<lsplt::MapInfo> &remote_info,
+        MapEntries &local_info,
+        MapEntries &remote_info,
         std::string_view module,
         std::string_view func) {
     auto lib = dlopen(module.data(), RTLD_NOW);

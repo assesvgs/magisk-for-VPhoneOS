@@ -6,6 +6,7 @@
 #include <sys/ptrace.h>
 #include <lsplt.hpp>
 #include <flags.h>
+#include "map_info.hpp"
 
 #if MAGISK_DEBUG
 void trace_log(const char *fmt, ...);
@@ -42,7 +43,7 @@ static_assert(sizeof(long) == sizeof(uintptr_t),
 
 #define WPTEVENT(x) (x >> 16)
 
-std::vector<lsplt::MapInfo> Scan_proc(const std::string& pid = "self");
+MapEntries Scan_proc(const std::string& pid = "self");
 
 ssize_t write_proc(int pid, uintptr_t *remote_addr, const void *buf, size_t len);
 
@@ -52,15 +53,15 @@ bool get_regs(int pid, struct user_regs_struct &regs);
 
 bool set_regs(int pid, struct user_regs_struct &regs);
 
-std::string get_addr_mem_region(std::vector<lsplt::MapInfo> &info, void *addr);
+std::string get_addr_mem_region(MapEntries &info, void *addr);
 
-void *find_module_return_addr(std::vector<lsplt::MapInfo> &info, std::string_view suffix);
+void *find_module_return_addr(MapEntries &info, std::string_view suffix);
 
-void *find_module_base(std::vector<lsplt::MapInfo> &info, std::string_view suffix);
+void *find_module_base(MapEntries &info, std::string_view suffix);
 
 void *find_func_addr(
-        std::vector<lsplt::MapInfo> &local_info,
-        std::vector<lsplt::MapInfo> &remote_info,
+        MapEntries &local_info,
+        MapEntries &remote_info,
         std::string_view module,
         std::string_view func);
 
