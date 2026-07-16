@@ -249,6 +249,7 @@ pub mod ffi {
 
 impl SuRequest {
     fn write_to_fd(&self, fd: i32) {
+        if fd < 0 { return; }
         unsafe {
             let mut w = ManuallyDrop::new(File::from_raw_fd(fd));
             self.encode(w.deref_mut()).ok();
