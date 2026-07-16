@@ -131,8 +131,11 @@ impl MagiskD {
             }
         };
 
-        // VPhoneOS: SO_PEERCRED 返回 real uid，setuid-root 进程 uid 非 0，强制使用 uid=0
-        let uid = if base::is_vphoneos() { 0 } else { cred.uid as i32 };
+        // VPhoneOS: SO_PEERCRED 返回 real uid 而非 effective uid。
+        // 正常 Linux 上 setuid(0) 后 peer_cred.uid=0，丢失了调用 app 的身份。
+        // VPhoneOS 上 peer_cred.uid=real_uid（如 10000=app），这恰好是 su 授权
+        // 查询所需的 uid。直接使用 cred.uid 即可，无需改写。
+        let uid = cred.uid as i32;
         let info = self.get_su_info(uid);
         {
             let mut access = info.access.lock();

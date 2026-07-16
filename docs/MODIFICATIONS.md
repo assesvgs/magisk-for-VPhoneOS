@@ -52,9 +52,10 @@
 | `app/core/res/drawable/ic_magisk.xml` | 图标改为 Kitsune Mask 狐狸 |
 | `base/files.rs` | 新增 `is_vphoneos()` 统一 VPhoneOS 检测 |
 | `core/daemon.rs` | VPhoneOS 检测改用 `base::is_vphoneos()` |
-| `core/su/daemon.rs` | VPhoneOS 检测改用 `base::is_vphoneos()` |
+| `core/su/daemon.rs` | VPhoneOS 检测改用 `base::is_vphoneos()`；移除 uid=0 强制改写——VPhoneOS SO_PEERCRED 返回 real uid 恰好是授权所需 |
 | `core/kitsune.cpp` | `mount_mirrors()` 已删除（无调用点，由 Rust 模块挂载替代） |
 | `core/include/core.hpp` | `mount_mirrors` 声明已删除 |
 | `core/deny/revert.cpp` | `mount_mirrors` 前向声明已删除 |
 | `core/zygisk/init_monitor.cpp` | `exec_tracer` 超时杀子进程 + `inject_zygote` SIGCONT 恢复 + polling 成功判断 |
+| `core/bootstages.rs` | `boot_complete()` 中 `enable_mount_su()` 前确保 WORKERDIR 存在（VPhoneOS patch_ro_root 未创建） |
 | `README.MD` | 更新历史根因记录，添加 VPhoneOS 兼容性章节 |
