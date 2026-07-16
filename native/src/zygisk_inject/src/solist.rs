@@ -27,6 +27,12 @@ fn read_file(path: &[u8]) -> Vec<u8> {
     buf
 }
 
+/// VPhoneOS 检测（此 crate 为 no_std，无法依赖 `base` crate）。
+///
+/// 检测逻辑与 `base::files::is_vphoneos()` 一致（检查 `/share` 目录存在性）。
+/// 若修改此检测条件，需同步更新 `base/files.rs` 中的 `is_vphoneos()`。
+///
+/// 若未来 `zygisk_inject` 不再需要 no_std 约束，应统一使用 `base::is_vphoneos()`。
 pub fn is_vphoneos() -> bool {
     unsafe { libc::access(b"/share\0".as_ptr() as *const libc::c_char, libc::F_OK) == 0 }
 }

@@ -131,7 +131,7 @@ static void lazy_unmount(const char* mountpoint) {
 }
 
 void su_mount();
-void mount_mirrors();
+// mount_mirrors 已删除：未实现，从未调用，由 Rust module 挂载逻辑替代。
 
 void do_mount_magisk(int pid) {
     string MAGISKTMP = get_magisk_tmp();

@@ -98,7 +98,8 @@ extern bool HAVE_32;
 extern int su_bin_fd;
 extern bool logging_muted;
 void su_mount();
-void mount_mirrors();
+// mount_mirrors 已删除：kokoro-no-kitsune 中也仅前向声明，从未实现或调用。
+// Module mirror 由 Rust (setup_module_mount + apply_modules) 处理。
 void enable_mount_su();
 int tmpfs_mount(const char *from, const char *to);
 int bind_mount_(const char *from, const char *to);

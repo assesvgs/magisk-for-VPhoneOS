@@ -107,7 +107,12 @@ static int exec_tracer(const string &tracer, const string &pid_str,
             }
             return -3;
         }
-        LOGW("zygisk: %s tracer timeout for PID %s\n", log_prefix, pid_str.c_str());
+        LOGW("zygisk: %s tracer timeout for PID %s, killing child\n", log_prefix, pid_str.c_str());
+        // 主动杀 tracer：若目标内核不支持 PTRACE_O_EXITKILL（kernel < 5.3），
+        // tracer 死亡不会通过 EXITKILL 传播到目标，需显式 kill。
+        if (kill_on_fail > 0) kill(kill_on_fail, SIGKILL);
+        kill(p, SIGKILL);
+        waitpid(p, &child_status, 0);
         return -4;
     }
     return -1;
@@ -160,14 +165,25 @@ static void inject_zygote(int pid) {
         int ret = exec_tracer(tracer, pid_str, inject_lib, "inject", pid);
         if (ret == 0) {
             LOGI("zygisk: trace_zygote done for PID %d\n", pid);
-        } else if (ret > 0) {
-            LOGW("zygisk: trace_zygote PID %d fail step=%d\n", pid, ret);
-        } else if (ret == -1) {
-            PLOGE("failed to fork");
-            kill(pid, SIGKILL);
+        } else {
+            // 所有失败路径：
+            //   ret > 0  — tracer 内部步骤失败，TRACE_FAIL 已 SIGKILL 目标
+            //   ret == -2 — tracer 被信号杀死，TRACE_FAIL 未执行但目标无主 tracer
+            //   ret == -3 — waitpid 意外返回
+            //   ret == -4 — tracer 超时（目标已继续但未触发断点），子进程已回收
+            //   ret == -1 — fork 失败，目标仍处于 SIGSTOP 状态
+            LOGW("zygisk: trace_zygote PID %d ret=%d\n", pid, ret);
+            if (ret == -1) {
+                // fork 失败：目标进程仍在 SIGSTOP 状态，需唤醒
+                PLOGE("failed to fork");
+                kill(pid, SIGCONT);
+            }
+            // 其他情况：目标已被 TRACE_FAIL 杀死或 tracer 已回收，无需操作
         }
     } else {
-        ptrace(PTRACE_DETACH, pid, 0, 0);
+        // waitpid 返回的状态不符合预期（非 SIGSTOP 或含 ptrace event）。
+        // 这种情况极罕见（信号竞争），直接 DETACH 并发送 SIGCONT 确保目标可运行。
+        ptrace(PTRACE_DETACH, pid, 0, SIGCONT);
     }
 }
 
@@ -212,13 +228,17 @@ static bool find_zygote_by_polling() {
                 inject_lib = string(get_magisk_tmp()) + "/zygisk_inject";
             }
             int ret = exec_tracer(tracer, pid_str, inject_lib, "inject: poll");
+            if (ret == 0) {
+                LOGI("zygisk: poll injected PID %d\n", pid);
+                return true;
+            }
+            // 注入失败：tracer 已回收（超时时已 kill+waitpid），目标已被 TRACE_FAIL 杀死
+            // 或 fork 失败。无论哪种情况，继续轮询下一个 PID。
             if (ret == -1) {
                 PLOGE("failed to fork");
-                continue;
-            } else if (ret > 0) {
-                LOGW("zygisk: poll tracer PID %d fail step=%d\n", pid, ret);
+            } else {
+                LOGW("zygisk: poll tracer PID %d failed ret=%d\n", pid, ret);
             }
-            return true;
         }
     }
     return false;

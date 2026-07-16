@@ -180,7 +180,7 @@ impl MagiskD {
     fn handle_requests(&'static self, mut client: UnixStream) {
         // VPhoneOS: SO_PEERCRED 返回 real uid 而非 effective uid，
         // setuid-root 进程的 cred.uid 不是 0。默认信任所有连接。
-        let is_vphoneos = cstr!("/share").exists();
+        let is_vphoneos = base::is_vphoneos();
         if is_vphoneos {
             debug!("VPhoneOS: peer credential check bypassed");
         }

@@ -64,7 +64,11 @@ fn fd_path_bytes(fd: i32) -> alloc::vec::Vec<u8> {
 /// 3. Send ack (`write_int(socket, 0)`)
 /// 4. Poll loop: `poll` → `recv_fd` (client) → `read_int` (module_id) → dispatch → fstat close guard
 ///
-/// On VPhoneOS: no-op (companion is handled by C++ `zygiskd()` in the magisk binary).
+/// VPhoneOS 边界条件：VPhoneOS 上此函数为 no-op，companion 由 C++ `zygiskd()`
+/// （magisk binary 内）处理。这是因为 VPhoneOS linker 在 no_std 环境（zigisk_inject）
+/// 中调用 dlopen 时存在兼容性问题，C++ 端的 zygiskd 已通过 magisk 二进制的
+/// zygiskd_companion_entry FFI 处理 companion 请求。
+/// 此设计依赖：C++ zygiskd() 始终存在于 magisk 二进制中（不会随 Rust 迁移被移除）。
 #[no_mangle]
 pub extern "C" fn zygisk_companion_entry(socket: i32) {
     // VPhoneOS: no-op; the C++ zygiskd() handles companion duties

@@ -897,6 +897,16 @@ fn parse_mount_info_line(line: &str) -> Option<MountInfo> {
     })
 }
 
+/// VPhoneOS 检测：检查是否存在 `/share` 目录。
+/// VPhoneOS（虚拟手机系统）在 `/share` 目录挂载共享文件系统（sharefs），
+/// 真机上不存在此挂载点。该检测用于需要区别真机/虚拟机的运行时路径。
+///
+/// 注意：zygisk_inject crate（no_std）有独立的检测实现（`solist.rs`），
+/// 因为该 crate 无法依赖 `base`（依赖 std）。
+pub fn is_vphoneos() -> bool {
+    cstr!("/share").exists()
+}
+
 pub fn parse_mount_info(pid: &str) -> Vec<MountInfo> {
     let mut res = vec![];
     let mut path = format!("/proc/{pid}/mountinfo");

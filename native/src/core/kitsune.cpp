@@ -101,14 +101,8 @@ void su_mount() {
     enable_mount_su();
 }
 
-// mount_mirrors function
-// This function is declared in revert.cpp but never called in current code.
-// The reference (kokoro-no-kitsune) also only forward-declares it —
-// it was never implemented in either project.
-// Module mounting is handled by Rust (setup_module_mount + apply_modules).
-void mount_mirrors() {
-    // No-op: module mirror mounting is handled by Rust
-}
+// mount_mirrors — 未使用，module mirror 由 Rust (setup_module_mount + apply_modules) 处理。
+// kokoro-no-kitsune 也仅前向声明，从未实现。已删除。
 
 // Forward declaration for the ptrace.cpp entry point (takes const char*)
 // Note: not static — actual definition is in ptrace.cpp with external linkage

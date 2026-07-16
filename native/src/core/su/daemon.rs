@@ -132,7 +132,7 @@ impl MagiskD {
         };
 
         // VPhoneOS: SO_PEERCRED 返回 real uid，setuid-root 进程 uid 非 0，强制使用 uid=0
-        let uid = if cstr!("/share").exists() { 0 } else { cred.uid as i32 };
+        let uid = if base::is_vphoneos() { 0 } else { cred.uid as i32 };
         let info = self.get_su_info(uid);
         {
             let mut access = info.access.lock();
