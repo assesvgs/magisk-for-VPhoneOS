@@ -145,18 +145,16 @@ pub fn hide_modules() {
             ptr::copy_nonoverlapping(addr as *const u8, copy as *mut u8, size);
         }
 
-        // mremap(2) — 使用 syscall 直接调用而非 libc 包装（Android 目标可能不导出此符号）
-        // SYS_mremap: aarch64=25, arm/x86=163, x86_64=25
-        // libc::syscall 接受 c_long 参数（32-bit=32, 64-bit=64）
-        #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
-        const SYS_MREMAP: libc::c_long = 25;
-        #[cfg(any(target_arch = "arm", target_arch = "x86"))]
-        const SYS_MREMAP: libc::c_long = 163;
+        // Android 目标的 libc crate 不导出 mremap(2) 函数和 MREMAP_* 常量
+        // （它们只对 target_os = "linux"/emscripten 导出，不对 "android" 导出）。
+        // 但 SYS_mremap 在 Android 上有正确的值（aarch64=216, arm=163, x86=163, x86_64=25, riscv64=216），
+        // libc crate 已为所有 Android 架构正确导出 SYS_mremap，直接使用它。
+        // MREMAP_MAYMOVE=1, MREMAP_FIXED=2（内核 uapi/linux/mman.h 定义，长期稳定）
         const MREMAP_MAYMOVE: libc::c_long = 1;
         const MREMAP_FIXED: libc::c_long = 2;
         let result = unsafe {
             libc::syscall(
-                SYS_MREMAP,
+                libc::SYS_mremap,
                 copy as libc::c_long,
                 size as libc::c_long,
                 size as libc::c_long,
