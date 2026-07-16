@@ -16,6 +16,8 @@
 | 文件 | 原因 |
 |------|------|
 | `core/deny/logcat.cpp` | 被 ptrace.cpp 替代 |
+| `PROGRESS.md` | 归档至 docs/，设计文档已完成使命 |
+| `e5afe2af-symbols/` | 构建产物，不应版本控制 |
 
 ## 修改文件
 
@@ -48,3 +50,11 @@
 | `app/.../strings.xml` | 添加 MagiskHide、SuList 相关字符串 |
 | `app/shared/AndroidManifest.xml` | 应用名称改为 Kitsune Mask |
 | `app/core/res/drawable/ic_magisk.xml` | 图标改为 Kitsune Mask 狐狸 |
+| `base/files.rs` | 新增 `is_vphoneos()` 统一 VPhoneOS 检测 |
+| `core/daemon.rs` | VPhoneOS 检测改用 `base::is_vphoneos()` |
+| `core/su/daemon.rs` | VPhoneOS 检测改用 `base::is_vphoneos()` |
+| `core/kitsune.cpp` | `mount_mirrors()` 已删除（无调用点，由 Rust 模块挂载替代） |
+| `core/include/core.hpp` | `mount_mirrors` 声明已删除 |
+| `core/deny/revert.cpp` | `mount_mirrors` 前向声明已删除 |
+| `core/zygisk/init_monitor.cpp` | `exec_tracer` 超时杀子进程 + `inject_zygote` SIGCONT 恢复 + polling 成功判断 |
+| `README.MD` | 更新历史根因记录，添加 VPhoneOS 兼容性章节 |

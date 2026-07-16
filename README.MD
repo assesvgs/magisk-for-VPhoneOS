@@ -137,25 +137,7 @@ POST_FS_DATA 阶段
     7. 退出码 0 = 成功；2+ = 失败步骤
 ```
 
-### 已知根因与修复
-
-**三个月未开机的根因**：`applets.cpp` 的入口分发逻辑与 execl 调用不兼容。
-
-```
-execl /sbin/magisk "" "zygisk" "trace_zygote" <pid> <libpath>
-  → argv[0] == ""（空字符串，execl 约定）
-  → applets.cpp:main() 检测到 argv[0][0] == '\0'
-  → 进入"私有 applet"路径（private_applets）
-  → private_applets 为空 → 找不到 "zygisk"
-  → return 1 → 父进程判定注入失败
-  → magisk_main() 从未被调用
-```
-
-**修复（commit `1dae774`、`53ee70b`）：**
-1. `applets.cpp:44`: `return 1` → `return magisk_main(argc, argv)`
-2. `magisk.rs`: 搜索 `"trace_zygote"` 位置定位参数，绕过 argh 干扰
-
-**验证结果（commit `53ee70b4`）：** 64 位 zygote 注入成功，系统正常开机。32 位 zygote 注入因 `process_vm_readv` 跨架构读栈失败（step=52），不影响使用。
+### 已知根因与修复（历史）
 
 ### 32 位兼容性
 
@@ -165,9 +147,9 @@ execl /sbin/magisk "" "zygisk" "trace_zygote" <pid> <libpath>
 |--------|------|------|
 | `magisk` | 主 CLI（daemon、su、--post-fs-data） | 设备主 ABI |
 | `magisk32` | 32 位 Zygisk tracer | 32 位 ABI（arm/x86） |
-| `magisk64` | 64 位 Zygisk tracer | 64 位 ABI（arm64/x86_64，与 magisk 同文件） |
+| `magisk64` | 64 位 Zygisk tracer | 64 位 ABI（arm64/x86_64，与 magisk 同文件，`live_setup.sh` 中创建符号链接） |
 
-`inject_zygote()` 根据 `app_process32`/`app_process64` 自动选择对应 tracer，64 位 tracer 不再读 32 位进程栈，`step=52` 问题解决。
+`inject_zygote()` 根据 `app_process32`/`app_process64` 自动选择对应 tracer，解决跨架构读栈问题。
 
 ### 退出码速查表
 
@@ -197,6 +179,20 @@ run_modules_post() — SoList 隐藏
 ~ZygiskContext() — 内存释放
   └── munmap 整块内存
 ```
+
+### VPhoneOS 兼容性
+
+本项目针对 VPhoneOS 虚拟化环境做了特殊适配：
+
+| 场景 | 真机行为 | VPhoneOS 行为 |
+|------|---------|--------------|
+| **Zygisk 注入** | `PTRACE_SEIZE init(1)` 继承 TRACEFORK 监听 | 回退到 `find_zygote_by_polling()` 扫描 `/proc` |
+| **magiskd peer_cred** | 校验 `cred.uid == 0` | 跳过 uid 检查（VPhoneOS SO_PEERCRED 返回 real uid） |
+| **su 鉴权** | 通过数据库 + Manager 鉴权 | uid 强制为 0，直接允许 |
+| **Zygisk companion** | Rust `zygisk_companion_entry()` 处理 | no-op，由 C++ `zygiskd()` 处理 |
+| **Kitsune su_mount** | 执行 `kitsune_load_modules_for_su()` | 跳过模块重载 |
+
+检测方式：检查 `/share` 目录存在性（VPhoneOS sharefs 挂载点）。统一函数 `base::is_vphoneos()` 定义在 `base/files.rs`。
 
 ### 进程监控对比
 
