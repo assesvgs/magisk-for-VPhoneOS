@@ -312,6 +312,10 @@ void MagiskInit::patch_ro_root() noexcept {
         rmdir("/data/debug_ramdisk");
     }
 
+    // recreate_sbin 会用镜像版的 .magisk 覆盖 setup_tmp 创建的 bind mount，
+    // 导致 DEVICEDIR (.magisk/device) 可能丢失。确保它存在。
+    xmkdir(DEVICEDIR, 0711);
+
     xrename("overlay.d", ROOTOVL);
     LOGD("patch_ro_root: renamed overlay.d to %s\n", ROOTOVL);
 
