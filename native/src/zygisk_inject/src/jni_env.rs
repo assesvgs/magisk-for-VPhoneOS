@@ -216,13 +216,11 @@ pub fn hook_jni_env() -> bool {
         return false;
     }
 
-    let mut actual_entries = 0;
-    for i in 0..256 {
-        let entry = unsafe { *(old_functions as *mut *mut c_void).add(i) };
-        if entry.is_null() { break; }
-        actual_entries = i + 1;
-    }
-    let table_size = (actual_entries + 8).max(64) * core::mem::size_of::<*mut c_void>();
+    // JNINativeInterface 前 4 个条目是 reserved0-3（都是 NULL），不能用 NULL 扫描确定大小。
+    // 标准 JNI 规范定义了 ~250 个函数指针（Android 10 API 29 有 251 个条目，索引 0-250）。
+    // RegisterNatives 在索引 ~215（64-bit），需要足够大的固定大小。
+    const JNI_TABLE_ENTRIES: usize = 256;
+    let table_size = JNI_TABLE_ENTRIES * core::mem::size_of::<*mut c_void>();
     let new_functions = unsafe {
         libc::mmap(
             core::ptr::null_mut(),

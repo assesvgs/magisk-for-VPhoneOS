@@ -123,9 +123,7 @@ CWD := $(LOCAL_PATH)
 include $(CWD)/system_properties/Android.mk
 include $(CWD)/libcxx/Android.mk
 
-ifdef B_CRT0
-include $(CWD)/crt0/Android.mk
-endif
+# crt0 not used: see build.py for rationale (cross-platform compatibility)
 
 # libphmap.a (header-only)
 LOCAL_PATH := $(CWD)

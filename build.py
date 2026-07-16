@@ -181,7 +181,11 @@ def collect_ndk_build():
         for source in arch_dir.iterdir():
             target = out_dir / source.name
             mv(source, target)
-        # magisk32/magisk64 不再在此处复制，由 live_setup.sh 在部署时创建符号链接
+        magisk_file = out_dir / "magisk"
+        if magisk_file.exists():
+            is_32bit = arch in ("armeabi-v7a", "x86")
+            suffix = "32" if is_32bit else "64"
+            cp(magisk_file, out_dir / f"magisk{suffix}")
 
 def run_ndk_build(cmds: list[str]):
     os.chdir("native")
@@ -232,6 +236,10 @@ def build_cpp_src(targets: set[str]):
     if "magiskboot" in targets:
         cmds.append("B_BOOT=1")
 
+    # crt0 被禁用（B_CRT0 不设置）以实现单 APK 跨真机和 VPhoneOS 兼容。
+    # crt0 使用裸 svc 指令绕过 libc，在早期启动环境中有性能优势，
+    # 但会绕过 VPhoneOS 虚拟机的系统调用转译层导致崩溃。
+    # 不启用 crt0 时 magiskinit 使用标准 NDK libc，两平台均能工作。
     if cmds:
         run_ndk_build(cmds)
         collect_ndk_build()

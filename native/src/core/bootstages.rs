@@ -104,19 +104,19 @@ impl MagiskD {
             magisk64.copy_to(tmp).log_ok();
         }
         if self.get_db_setting(DbEntryKey::ZygiskConfig) != 0 {
+            // 64-bit tracer: /sbin/magisk（不是 magisk64，commit b357e03 已删除）
+            let tmp_magisk = buf.append_path(get_magisk_tmp()).append_path("magisk");
+            if !tmp_magisk.exists() {
+                warn!("zygisk: magisk not deployed, 64-bit Zygisk unavailable");
+            }
             let tmp32 = buf.append_path(get_magisk_tmp()).append_path("magisk32");
             if !tmp32.exists() {
                 warn!("zygisk: magisk32 not deployed, 32-bit Zygisk unavailable");
-            }
-            let tmp64 = buf.append_path(get_magisk_tmp()).append_path("magisk64");
-            if !tmp64.exists() {
-                warn!("zygisk: magisk64 not deployed, 64-bit Zygisk unavailable");
             }
             let tmp_inject = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject");
             if !tmp_inject.exists() {
                 warn!("zygisk: zygisk_inject not deployed, injection target missing");
             }
-            // 32-bit zygisk_inject 存在性检查
             let tmp_inject32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
             if !tmp_inject32.exists() {
                 warn!("zygisk: zygisk_inject32 not deployed, 32-bit Zygisk unavailable");
@@ -164,15 +164,15 @@ impl MagiskD {
 
         self.prune_su_access();
 
-        info!("post_fs_data: setting up Magisk environment");
+        debug!("post_fs_data: setting up Magisk environment");
         if !self.setup_magisk_env() {
             error!("* Magisk environment incomplete, abort");
             return true;
         }
-        info!("post_fs_data: setup_magisk_env done");
+        debug!("post_fs_data: setup_magisk_env done");
 
         // Check safe mode
-        info!("post_fs_data: checking safe mode");
+        debug!("post_fs_data: checking safe mode");
         let boot_cnt = self.get_db_setting(DbEntryKey::BootloopCount);
         self.set_db_setting(DbEntryKey::BootloopCount, boot_cnt + 1)
             .log()
@@ -190,9 +190,9 @@ impl MagiskD {
             return true;
         }
 
-        info!("post_fs_data: executing post-fs-data scripts");
+        debug!("post_fs_data: executing post-fs-data scripts");
         exec_common_scripts(cstr!("post-fs-data"));
-        info!("post_fs_data: post-fs-data scripts done");
+        debug!("post_fs_data: post-fs-data scripts done");
 
         // Read DB and store zygisk_enabled BEFORE initialize_denylist
         // so that enable_deny() checks zygisk_enabled and skips denylist monitor
@@ -203,9 +203,9 @@ impl MagiskD {
         info!("post_fs_data: zygisk_enabled={}", self.zygisk_enabled.load(Ordering::Relaxed));
 
         initialize_denylist();
-        info!("post_fs_data: handling modules");
+        debug!("post_fs_data: handling modules");
         self.handle_modules();
-        info!("post_fs_data: handle_modules done");
+        debug!("post_fs_data: handle_modules done");
 
         // 创建 zygisk.so symlink（ptrace 注入器 dlopen 需要此路径）
         let zygisk_link = cstr::buf::default()
@@ -229,30 +229,11 @@ impl MagiskD {
             crate::ffi::start_zygisk_monitor();
         }
 
-        info!("post_fs_data: clean_mounts");
+        debug!("post_fs_data: clean_mounts");
         clean_mounts();
 
-        // [诊断] 检查 sdcard 状态
-        // 注意：使用 debug!() 而不是 info!()，因为 info!() 输出到 stdout，
-        // 会被 boot_patch.sh 的 $(./magisk --preinit-device) 捕获，污染 PREINITDEVICE 变量
-        debug!("post_fs_data: /sdcard exists={}", cstr!("/sdcard").exists());
-        debug!("post_fs_data: /storage/self/primary exists={}", cstr!("/storage/self/primary").exists());
-        debug!("post_fs_data: init.svc.vold={}", get_prop(cstr!("init.svc.vold")));
-
-        // 检查 sdcardfs 挂载
-        let sdcardfs_mounts: Vec<_> = parse_mount_info("self")
-            .into_iter()
-            .filter(|info| info.fs_type == "sdcardfs")
-            .collect();
-        if sdcardfs_mounts.is_empty() {
-            debug!("post_fs_data: sdcardfs NOT found in mountinfo");
-        } else {
-            for info in &sdcardfs_mounts {
-                debug!("post_fs_data: sdcardfs mounted at {}", info.target);
-            }
-        }
-        
-        info!("post_fs_data: done");
+        diag_sdcard("post_fs_data");
+        debug!("post_fs_data: done");
 
         false
     }
@@ -269,27 +250,8 @@ impl MagiskD {
             exec_module_scripts(cstr!("service"), module_list);
         }
         
-        // [诊断] 检查 sdcard 状态
-        // 注意：使用 debug!() 而不是 info!()，因为 info!() 输出到 stdout，
-        // 会被 boot_patch.sh 的 $(./magisk --preinit-device) 捕获，污染 PREINITDEVICE 变量
-        debug!("late_start: /sdcard exists={}", cstr!("/sdcard").exists());
-        debug!("late_start: /storage/self/primary exists={}", cstr!("/storage/self/primary").exists());
-        debug!("late_start: init.svc.vold={}", get_prop(cstr!("init.svc.vold")));
-
-        // 检查 sdcardfs 挂载
-        let sdcardfs_mounts: Vec<_> = parse_mount_info("self")
-            .into_iter()
-            .filter(|info| info.fs_type == "sdcardfs")
-            .collect();
-        if sdcardfs_mounts.is_empty() {
-            debug!("late_start: sdcardfs NOT found in mountinfo");
-        } else {
-            for info in &sdcardfs_mounts {
-                debug!("late_start: sdcardfs mounted at {}", info.target);
-            }
-        }
-
-        info!("late_start: done");
+        diag_sdcard("late_start");
+        debug!("late_start: done");
     }
 
     fn boot_complete(&self) {
@@ -386,6 +348,27 @@ fn diag(tag: u32, stage: &str) {
         cstr!("/data/media/0").follow_link().exists(),
         cstr!("/storage").exists(),
         cstr!("/share").exists(), ms);
+}
+
+/// 诊断 sdcard 和 sdcardfs 挂载状态（在 post_fs_data 和 late_start 中复用）
+fn diag_sdcard(stage: &str) {
+    // 注意：使用 debug!() 而不是 info!()，因为 info!() 输出到 stdout，
+    // 会被 boot_patch.sh 的 $(./magisk --preinit-device) 捕获，污染 PREINITDEVICE 变量
+    debug!("{stage}: /sdcard exists={}", cstr!("/sdcard").exists());
+    debug!("{stage}: /storage/self/primary exists={}", cstr!("/storage/self/primary").exists());
+    debug!("{stage}: init.svc.vold={}", get_prop(cstr!("init.svc.vold")));
+
+    let sdcardfs_mounts: Vec<_> = parse_mount_info("self")
+        .into_iter()
+        .filter(|info| info.fs_type == "sdcardfs")
+        .collect();
+    if sdcardfs_mounts.is_empty() {
+        debug!("{stage}: sdcardfs NOT found in mountinfo");
+    } else {
+        for info in &sdcardfs_mounts {
+            debug!("{stage}: sdcardfs mounted at {}", info.target);
+        }
+    }
 }
 
 fn check_data() -> bool {

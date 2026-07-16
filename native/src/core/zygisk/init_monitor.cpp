@@ -92,8 +92,12 @@ static void inject_zygote(int pid) {
     }
 
     kill(pid, SIGSTOP);
-    ptrace(PTRACE_CONT, pid, 0, 0);
     int status;
+    if (ptrace(PTRACE_CONT, pid, 0, 0) == -1) {
+        PLOGE("ptrace CONT in inject_zygote");
+        ptrace(PTRACE_DETACH, pid, 0, 0);
+        return;
+    }
     waitpid(pid, &status, __WALL);
 
     if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP && (status >> 16) == 0) {
@@ -169,6 +173,10 @@ static bool find_zygote_by_polling() {
                      pid, tracer.c_str(), strerror(errno));
                 continue;
             }
+            // 注意：此处不执行 SIGSTOP 同步（与 inject_zygote 不同），原因：
+            // polling 路径不是 zygote 的 tracer（未从 init 继承 PTRACE_O_TRACEFORK），
+            // 无法对其执行 PTRACE_CONT/waitpid。但子 tracer 使用 PTRACE_SEIZE 附加，
+            // 不需要目标先进入停止状态。SIGSTOP 在此路径会阻塞 zygote 且无法恢复。
             auto p = xfork();
             if (p == 0) {
                 TRACELOGW("inject: poll child exec %s\n", tracer.c_str());

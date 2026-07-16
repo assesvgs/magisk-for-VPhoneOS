@@ -14,17 +14,43 @@ type ModuleEntry = unsafe extern "C" fn(
 
 impl ZygiskModule {
     pub fn load(
-        _fd: i32,
+        fd: i32,
         module_id: &str,
     ) -> Option<Self> {
-        let mut so_path = alloc::string::String::from("/data/adb/modules/");
-        so_path.push_str(module_id);
-        so_path.push_str("/zygisk/zygisk.so");
-        let c_path = alloc::ffi::CString::new(so_path).ok()?;
-
-        let handle = unsafe {
-            libc::dlopen(c_path.as_ptr(), libc::RTLD_NOW)
+        // 优先通过 fd 加载（防 TOCTOU 篡改），失败则降级到文件路径加载。
+        // 双路径兼容真机和 VPhoneOS，无需平台检测。
+        let handle = if fd > 0 {
+            let mut path = alloc::vec::Vec::from(b"/proc/self/fd/" as &[u8]);
+            let mut n = fd;
+            let mut digits = alloc::vec::Vec::with_capacity(12);
+            if n == 0 {
+                digits.push(b'0');
+            } else {
+                while n > 0 {
+                    digits.push(b'0' + (n % 10) as u8);
+                    n /= 10;
+                }
+                digits.reverse();
+            }
+            path.extend(digits);
+            path.push(0);
+            let c_path = unsafe { core::ffi::CStr::from_bytes_with_nul_unchecked(&path) };
+            unsafe { libc::dlopen(c_path.as_ptr(), libc::RTLD_NOW) }
+        } else {
+            core::ptr::null_mut()
         };
+
+        // fd 加载失败→降级到文件路径
+        let handle = if handle.is_null() {
+            let mut so_path = alloc::string::String::from("/data/adb/modules/");
+            so_path.push_str(module_id);
+            so_path.push_str("/zygisk/zygisk.so");
+            let c_path = alloc::ffi::CString::new(so_path).ok()?;
+            unsafe { libc::dlopen(c_path.as_ptr(), libc::RTLD_NOW) }
+        } else {
+            handle
+        };
+
         if handle.is_null() { return None; }
 
         let entry_sym = unsafe {
@@ -76,13 +102,14 @@ impl ZygiskModule {
     pub fn on_load(&self, _env: *mut c_void) {}
 }
 
-pub fn load_modules(_fds: &[i32]) -> Vec<ZygiskModule> {
+pub fn load_modules(fds: &[i32]) -> Vec<ZygiskModule> {
     let mut modules = Vec::new();
     let dir = unsafe {
         libc::opendir(b"/data/adb/modules\0".as_ptr() as *const libc::c_char)
     };
     if dir.is_null() { return modules; }
 
+    let mut idx = 0usize;
     loop {
         let entry = unsafe { libc::readdir(dir) };
         if entry.is_null() { break; }
@@ -90,9 +117,11 @@ pub fn load_modules(_fds: &[i32]) -> Vec<ZygiskModule> {
         if name[0] == b'.' as libc::c_char { continue; }
         let name_slice = unsafe { core::ffi::CStr::from_ptr(name.as_ptr()) };
         if let Ok(s) = name_slice.to_str() {
-            if let Some(m) = ZygiskModule::load(-1, s) {
+            let fd = if idx < fds.len() { fds[idx] } else { -1 };
+            if let Some(m) = ZygiskModule::load(fd, s) {
                 modules.push(m);
             }
+            idx += 1;
         }
     }
     unsafe { libc::closedir(dir); }
@@ -100,9 +129,9 @@ pub fn load_modules(_fds: &[i32]) -> Vec<ZygiskModule> {
 }
 
 impl crate::hook_context::HookContext {
-    pub fn run_modules_pre_impl(&mut self, _fds: &[i32]) {
+    pub fn run_modules_pre_impl(&mut self, fds: &[i32]) {
         if self.modules.is_empty() {
-            self.modules = load_modules(_fds);
+            self.modules = load_modules(fds);
         }
         for m in &self.modules {
             crate::module_api::call_pre_app_specialize(m.api_handle);

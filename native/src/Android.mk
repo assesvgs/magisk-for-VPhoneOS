@@ -70,15 +70,11 @@ LOCAL_SRC_FILES := \
 
 LOCAL_LDFLAGS := -static
 
-ifdef B_CRT0
-LOCAL_STATIC_LIBRARIES += crt0
-LOCAL_LDFLAGS += -Wl,--defsym=vfprintf=tiny_vfprintf
-endif
-
+# crt0 not used: see build.py for rationale (cross-platform compatibility)
 include $(BUILD_EXECUTABLE)
 
-endif
 
+endif
 ifdef B_BOOT
 
 include $(CLEAR_VARS)
@@ -94,11 +90,7 @@ LOCAL_SRC_FILES := \
 
 LOCAL_LDFLAGS := -static
 
-ifdef B_CRT0
-LOCAL_STATIC_LIBRARIES += crt0
-LOCAL_LDFLAGS += -lm -Wl,--defsym=vfprintf=musl_vfprintf
-endif
-
+# crt0 not used: see build.py for rationale (cross-platform compatibility)
 include $(BUILD_EXECUTABLE)
 
 endif

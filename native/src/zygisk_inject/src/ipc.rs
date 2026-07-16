@@ -144,6 +144,42 @@ pub fn send_fd(sock: i32, fd_to_send: i32) -> bool {
     ret > 0
 }
 
+pub fn recv_fds(sock: i32) -> alloc::vec::Vec<i32> {
+    let mut data: i32 = 0;
+    let mut iov = libc::iovec {
+        iov_base: &mut data as *mut i32 as *mut core::ffi::c_void,
+        iov_len: core::mem::size_of::<i32>(),
+    };
+    let mut cmsg_buf = [0u8; 4096];
+    let mut msg: libc::msghdr = unsafe { core::mem::zeroed() };
+    msg.msg_iov = &mut iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = cmsg_buf.as_mut_ptr() as *mut core::ffi::c_void;
+    msg.msg_controllen = cmsg_buf.len();
+
+    let ret = unsafe { libc::recvmsg(sock, &mut msg, 0) };
+    if ret < 0 {
+        return alloc::vec::Vec::new();
+    }
+
+    let mut fds = alloc::vec::Vec::new();
+    unsafe {
+        let cmsg = libc::CMSG_FIRSTHDR(&msg);
+        if !cmsg.is_null()
+            && (*cmsg).cmsg_level == libc::SOL_SOCKET
+            && (*cmsg).cmsg_type == libc::SCM_RIGHTS
+        {
+            let payload_len = (*cmsg).cmsg_len - libc::CMSG_LEN(0);
+            let num_fds = payload_len / core::mem::size_of::<i32>();
+            let data_ptr = libc::CMSG_DATA(cmsg) as *const i32;
+            for i in 0..num_fds {
+                fds.push(core::ptr::read(data_ptr.add(i)));
+            }
+        }
+    }
+    fds
+}
+
 pub fn recv_fd(sock: i32) -> Option<i32> {
     let mut data: i32 = 0;
     let mut iov = libc::iovec {
@@ -217,9 +253,20 @@ pub fn write_string(fd: i32, s: &str) -> bool {
     n == s.len() as isize
 }
 
+/// Daemon IPC 命令码（必须与 lib.rs 中的 ZygiskRequest 枚举的值一致）
+/// ZygiskRequest { GetInfo=0, ConnectCompanion=1, GetModDir=2, SulistRootNs=3, RevertUmount=4 }
+#[repr(i32)]
+enum DaemonCommand {
+    RemoteGetInfo = 0,
+    ConnectCompanion = 1,
+    // 注：值 2 = GetModDir（未被 inject 库直接使用）
+    RequestSulist = 3,    // ZygiskRequest::SulistRootNs
+    RequestUmount = 4,    // ZygiskRequest::RevertUmount
+}
+
 pub fn remote_get_info(uid: i32, process: &str) -> Option<(u32, alloc::vec::Vec<i32>)> {
     let fd = connect_daemon()?;
-    if !write_int(fd, 0) {
+    if !write_int(fd, DaemonCommand::RemoteGetInfo as i32) {
         return None;
     }
     if !write_int(fd, uid) {
@@ -246,7 +293,7 @@ pub fn remote_get_info(uid: i32, process: &str) -> Option<(u32, alloc::vec::Vec<
 
 pub fn request_sulist() -> Option<i32> {
     let fd = connect_daemon()?;
-    if !write_int(fd, 2) {
+    if !write_int(fd, DaemonCommand::RequestSulist as i32) {
         unsafe { libc::close(fd) };
         return None;
     }
@@ -257,7 +304,7 @@ pub fn request_sulist() -> Option<i32> {
 
 pub fn request_umount() -> Option<i32> {
     let fd = connect_daemon()?;
-    if !write_int(fd, 3) {
+    if !write_int(fd, DaemonCommand::RequestUmount as i32) {
         unsafe { libc::close(fd) };
         return None;
     }
@@ -271,7 +318,7 @@ pub fn connect_companion(client: i32) -> bool {
         Some(f) => f,
         None => return false,
     };
-    if !write_int(fd, 1) {
+    if !write_int(fd, DaemonCommand::ConnectCompanion as i32) {
         unsafe { libc::close(fd) };
         return false;
     }

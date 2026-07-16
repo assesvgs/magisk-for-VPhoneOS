@@ -484,3 +484,7 @@ pub fn connect_daemon_for_cxx(code: RequestCode, create: bool) -> RawFd {
         .map(IntoRawFd::into_raw_fd)
         .unwrap_or(-1)
 }
+
+pub fn kitsune_is_emulator() -> bool {
+    MAGISKD.get().map_or(false, |d| d.is_emulator)
+}

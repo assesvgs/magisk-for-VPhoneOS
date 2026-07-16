@@ -212,7 +212,10 @@ if [ -f zygisk_inject ]; then
   ./magiskboot compress=xz zygisk_inject zygisk_inject.xz
 fi
 # Try to extract 32-bit zygisk_inject from APK or installed app libs
+# Ensure ABI32 is set (may be unset in SOURCEDMODE)
+[ -z "$ABI32" ] && api_level_arch_detect 2>/dev/null || true
 if [ ! -f zygisk_inject32 ]; then
+  echo "[Magisk] Looking for zygisk_inject32 (ABI32=$ABI32)..."
   for src in \
     magisk.apk \
     /data/local/tmp/magisk.apk \
@@ -221,14 +224,21 @@ if [ ! -f zygisk_inject32 ]; then
     if [ -f "$src" ]; then
       case "$src" in
         *.apk)
+          echo "[Magisk] Trying to extract zygisk_inject32 from $src (lib/$ABI32/libzygisk_inject.so)..."
           unzip -j -o "$src" "lib/$ABI32/libzygisk_inject.so" 2>/dev/null && \
             chmod 755 libzygisk_inject.so && \
-            mv libzygisk_inject.so zygisk_inject32 && break ;;
+            mv libzygisk_inject.so zygisk_inject32 && \
+            echo "[Magisk] Extracted zygisk_inject32 from APK" && break
+          echo "[Magisk] WARNING: Failed to extract zygisk_inject32 from $src" ;;
         *)
+          echo "[Magisk] Found zygisk_inject32 at $src"
           cp -af "$src" zygisk_inject32 && chmod 755 zygisk_inject32 && break ;;
       esac
     fi
   done
+  if [ ! -f zygisk_inject32 ]; then
+    echo "[Magisk] WARNING: zygisk_inject32 not found, 32-bit Zygisk will be unavailable"
+  fi
 fi
 if [ -f zygisk_inject32 ]; then
   ./magiskboot compress=xz zygisk_inject32 zygisk_inject32.xz

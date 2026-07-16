@@ -174,8 +174,8 @@ static int inject_on_main(int pid, const char *lib_path) {
         auto remote_handle = remote_call(pid, regs, (uintptr_t) dlopen_addr, (uintptr_t) libc_return_addr, args);
         ZLOGD("remote handle %p\n", (void *) remote_handle);
         if (remote_handle == 0) {
-            ZLOGE("handle is null\n");
-            TRACELOGE("inject: remote dlopen handle is null\n");
+            ZLOGE("remote dlopen failed for %s\n", lib_path);
+            TRACELOGE("inject: remote dlopen returned NULL for %s\n", lib_path);
             auto dlerror_addr = find_func_addr(local_map, map, "libdl.so", "dlerror");
             if (dlerror_addr == nullptr) {
                 ZLOGE("find dlerror\n");

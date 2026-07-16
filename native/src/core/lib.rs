@@ -11,7 +11,7 @@
 use crate::ffi::SuRequest;
 use crate::socket::Encodable;
 use base::derive::Decodable;
-use daemon::{MagiskD, connect_daemon_for_cxx};
+use daemon::{MagiskD, connect_daemon_for_cxx, kitsune_is_emulator};
 use logging::{android_logging, zygisk_close_logd, zygisk_get_logd, zygisk_logging};
 use magisk::magisk_main;
 use resetprop::{get_prop, resetprop_main};
@@ -22,6 +22,7 @@ use std::mem::ManuallyDrop;
 use std::ops::DerefMut;
 use std::os::fd::FromRawFd;
 use su::{get_pty_num, pump_tty};
+use module::kitsune_load_modules_for_su;
 use mount::revert_unmount;
 use zygisk::zygisk_should_load_module;
 
@@ -211,6 +212,8 @@ pub mod ffi {
         fn write_to_fd(self: &SuRequest, fd: i32);
         fn pump_tty(ptmx: i32, pump_stdin: bool);
         fn get_pty_num(fd: i32) -> i32;
+        fn kitsune_is_emulator() -> bool;
+        fn kitsune_load_modules_for_su();
         fn lgetfilecon(path: Utf8CStrRef, con: &mut [u8]) -> bool;
         fn setfilecon(path: Utf8CStrRef, con: Utf8CStrRef) -> bool;
 

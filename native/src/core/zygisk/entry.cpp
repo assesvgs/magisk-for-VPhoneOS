@@ -132,7 +132,7 @@ static void connect_companion(int client, bool is_64_bit) {
             char buf[16];
             ssprintf(buf, sizeof(buf), "%d", fds[1]);
             execl(exe, "", "zygisk", "companion", buf, (char *) nullptr);
-            exit(-1);
+            _exit(1);
         }
         close(fds[1]);
         vector<int> module_fds = get_module_fds(is_64_bit);

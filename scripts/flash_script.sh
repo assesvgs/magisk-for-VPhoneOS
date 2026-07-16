@@ -55,8 +55,11 @@ BINDIR=$INSTALLER/lib/$ABI
 cd $BINDIR
 for file in lib*.so; do mv "$file" "${file:3:${#file}-6}"; done
 cd /
-cp -af $INSTALLER/lib/$ABI32/libmagisk32.so $BINDIR/magisk32 2>/dev/null
-cp -af $INSTALLER/lib/$ABI32/libzygisk_inject.so $BINDIR/zygisk_inject32 2>/dev/null
+# 复制 32-bit magisk 二进制（APK 中文件名为 libmagisk.so，目标命名为 magisk32）
+cp -af $INSTALLER/lib/$ABI32/libmagisk.so $BINDIR/magisk32 2>/dev/null || \
+  echo "[Magisk] WARNING: libmagisk.so (32-bit) not found at $INSTALLER/lib/$ABI32/libmagisk.so"
+cp -af $INSTALLER/lib/$ABI32/libzygisk_inject.so $BINDIR/zygisk_inject32 2>/dev/null || \
+  echo "[Magisk] WARNING: libzygisk_inject.so (32-bit) not found at $INSTALLER/lib/$ABI32/libzygisk_inject.so"
 
 # Check if system root is installed and remove
 $BOOTMODE || remove_system_su

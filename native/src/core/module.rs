@@ -820,3 +820,11 @@ impl MagiskD {
         }
     }
 }
+
+pub fn kitsune_load_modules_for_su() {
+    let d = MagiskD::get();
+    if let Some(modules) = d.module_list.get() {
+        setup_module_mount();
+        d.apply_modules(modules);
+    }
+}

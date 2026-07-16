@@ -91,15 +91,23 @@ void disable_unmount_su() {
 // su_mount function from KitsuneMag-kitsune
 // This function is called from do_mount_magisk to mount MagiskSU for a specific process
 void su_mount() {
-    // In the original Kitsune Mag, this calls load_modules(true) and mount_su()
-    // For now, we just call enable_mount_su()
+    // In the original Kitsune Mag, this calls load_modules(true) to reload
+    // module mounts in the new namespace, then mounts MagiskSU binaries.
+    // load_modules() was moved to Rust; the FFI call below handles it.
+    // On VPhoneOS/emulators, skip module reload to avoid issues.
+    if (!kitsune_is_emulator()) {
+        kitsune_load_modules_for_su();
+    }
     enable_mount_su();
 }
 
-// mount_mirrors function placeholder
-// This function is declared but not used in revert.cpp
+// mount_mirrors function
+// This function is declared in revert.cpp but never called in current code.
+// The reference (kokoro-no-kitsune) also only forward-declares it —
+// it was never implemented in either project.
+// Module mounting is handled by Rust (setup_module_mount + apply_modules).
 void mount_mirrors() {
-    LOGD("mount_mirrors: placeholder\n");
+    // No-op: module mirror mounting is handled by Rust
 }
 
 // Wrapper for cxx bridge: trace_zygote takes rust::Str, convert to const char*
