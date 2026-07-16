@@ -118,6 +118,13 @@ pub fn connect_daemon() -> Option<i32> {
     Some(fd)
 }
 
+/// 跨平台一致的 CMSG_LEN 包装。
+/// libc crate 的 CMSG_LEN 在不同目标平台返回类型不同（usize 或 u32），
+/// 统一转换为 usize 避免类型错误。
+fn cmsg_len(len: usize) -> usize {
+    libc::CMSG_LEN(len as u32) as usize
+}
+
 pub fn send_fd(sock: i32, fd_to_send: i32) -> bool {
     let mut iov = libc::iovec {
         iov_base: &fd_to_send as *const i32 as *mut c_void,
@@ -136,7 +143,7 @@ pub fn send_fd(sock: i32, fd_to_send: i32) -> bool {
         }
         (*cmsg).cmsg_level = libc::SOL_SOCKET;
         (*cmsg).cmsg_type = libc::SCM_RIGHTS;
-        (*cmsg).cmsg_len = libc::CMSG_LEN(core::mem::size_of::<i32>() as u32) as usize;
+        (*cmsg).cmsg_len = cmsg_len(core::mem::size_of::<i32>());
         core::ptr::write(libc::CMSG_DATA(cmsg) as *mut i32, fd_to_send);
         msg.msg_controllen = libc::CMSG_SPACE(core::mem::size_of::<i32>() as u32) as usize;
     }
@@ -169,9 +176,7 @@ pub fn recv_fds(sock: i32) -> alloc::vec::Vec<i32> {
             && (*cmsg).cmsg_level == libc::SOL_SOCKET
             && (*cmsg).cmsg_type == libc::SCM_RIGHTS
         {
-            // CMSG_LEN() 在 libc crate 中返回 usize 或 u32（取决于目标平台），
-            // 但 cmsg_len 始终是 usize。显式转换为 usize 确保跨平台兼容。
-            let payload_len = (*cmsg).cmsg_len - libc::CMSG_LEN(0) as usize;
+            let payload_len = (*cmsg).cmsg_len - cmsg_len(0);
             let num_fds = payload_len / core::mem::size_of::<i32>();
             let data_ptr = libc::CMSG_DATA(cmsg) as *const i32;
             for i in 0..num_fds {
