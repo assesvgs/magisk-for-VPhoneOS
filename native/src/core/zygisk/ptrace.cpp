@@ -216,8 +216,8 @@ static int remote_inject(int pid, struct user_regs_struct &regs, struct user_reg
     memcpy(&backup, &regs, sizeof(regs));
     auto map = Scan_proc(std::to_string(pid));
     auto local_map = Scan_proc();
-    auto libc_return_addr = find_module_return_addr(map, "libc.so");
-    ZLOGD("libc return addr %p\n", libc_return_addr);
+    auto libc_return_addr = reinterpret_cast<uintptr_t>(find_module_return_addr(map, "libc.so"));
+    ZLOGD("libc return addr %p\n", (void *)libc_return_addr);
 
     auto dlopen_addr = find_func_addr(local_map, map, "libdl.so", "dlopen");
     if (dlopen_addr == nullptr) {
