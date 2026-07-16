@@ -2,7 +2,7 @@ use crate::zygisk::ZygiskState;
 use crate::bootstages::BootState;
 use crate::consts::{
     MAGISK_FILE_CON, MAGISK_FULL_VER, MAGISK_PROC_CON, MAGISK_VER_CODE, MAGISK_VERSION,
-    MAIN_CONFIG, MAIN_SOCKET, ROOTMNT, ROOTOVL,
+    DEVICEDIR, MAIN_CONFIG, MAIN_SOCKET, ROOTMNT, ROOTOVL,
 };
 use crate::db::Sqlite3;
 use crate::ffi::{
@@ -303,6 +303,15 @@ fn daemon_entry() {
         let con = cstr!(MAGISK_PROC_CON);
         current.write_all(con.as_bytes_with_nul()).log_ok();
     }
+
+    // 确保 DEVICEDIR (.magisk/device) 存在。VPhoneOS 上 magiskinit
+    // 可能因镜像挂载模式未创建此目录，而 start_log_daemon() 的 mkfifo
+    // 和稍后的 UnixListener::bind() 都依赖它。
+    cstr::buf::new::<64>()
+        .join_path(get_magisk_tmp())
+        .join_path(DEVICEDIR)
+        .mkdir(0o711)
+        .log_ok();
 
     start_log_daemon();
     magisk_logging();
