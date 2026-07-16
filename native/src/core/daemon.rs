@@ -2,7 +2,7 @@ use crate::zygisk::ZygiskState;
 use crate::bootstages::BootState;
 use crate::consts::{
     MAGISK_FILE_CON, MAGISK_FULL_VER, MAGISK_PROC_CON, MAGISK_VER_CODE, MAGISK_VERSION,
-    DEVICEDIR, MAIN_CONFIG, MAIN_SOCKET, ROOTMNT, ROOTOVL,
+    DEVICEDIR, INTERNAL_DIR, MAIN_CONFIG, MAIN_SOCKET, ROOTMNT, ROOTOVL,
 };
 use crate::db::Sqlite3;
 use crate::ffi::{
@@ -304,14 +304,23 @@ fn daemon_entry() {
         current.write_all(con.as_bytes_with_nul()).log_ok();
     }
 
-    // 确保 DEVICEDIR (.magisk/device) 存在。VPhoneOS 上 magiskinit
-    // 可能因镜像挂载模式未创建此目录，而 start_log_daemon() 的 mkfifo
-    // 和稍后的 UnixListener::bind() 都依赖它。
-    cstr::buf::new::<64>()
-        .join_path(get_magisk_tmp())
-        .join_path(DEVICEDIR)
-        .mkdir(0o711)
-        .log_ok();
+    // 确保 Magisk tmp 目录树存在。VPhoneOS 上 magiskinit 可能因镜像挂载模式
+    // 跳过 setup_tmp()，导致 daemon 依赖的目录未创建。
+    let tmp = get_magisk_tmp();
+    for (sub, mode) in [
+        // INTLROOT (.magisk) — MAIN_CONFIG (config) 和 DEVICEDIR 的父目录
+        (INTERNAL_DIR, 0o711),
+        // DEVICEDIR (.magisk/device) — LOG_PIPE (log) 和 MAIN_SOCKET (socket) 的父目录
+        (DEVICEDIR, 0o711),
+        // ROOTOVL (.magisk/rootdir) — ROOTMNT (.mount_list) 的父目录
+        (ROOTOVL, 0o711),
+    ] {
+        cstr::buf::new::<64>()
+            .join_path(&tmp)
+            .join_path(sub)
+            .mkdir(mode)
+            .log_ok();
+    }
 
     start_log_daemon();
     magisk_logging();

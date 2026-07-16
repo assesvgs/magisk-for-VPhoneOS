@@ -145,7 +145,7 @@ if [ ! -f magisk32 ]; then
     ln -s magisk magisk32 2>/dev/null || cp -af magisk magisk32
 fi
 
-for file in magisk magisk32 magisk64 magiskpolicy zygisk_inject zygisk_inject32 stub.apk; do
+for file in magisk magisk32 magisk64 magiskpolicy init-ld zygisk_inject zygisk_inject32 stub.apk; do
   [ -f ./$file ] || continue
   chmod 755 ./$file
   cp -af ./$file $MAGISKTMP/$file

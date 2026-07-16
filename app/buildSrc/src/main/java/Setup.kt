@@ -140,17 +140,21 @@ fun Project.setupCoreLib() {
                 outputFolder.set(layout.buildDirectory.dir("$variantName/jniLibs"))
                 into(outputFolder)
 
+                fun perAbiFiles(abi: String): List<String> {
+                    val bins = mutableListOf("magiskboot", "magiskinit", "magiskpolicy", "libinit-ld.so")
+                    bins.add("magisk")
+                    bins.add("libzygisk_inject.so")
+                    if (abi in listOf("armeabi-v7a", "x86")) {
+                        bins.add("magisk32")
+                    } else {
+                        bins.add("magisk64")
+                    }
+                    return bins
+                }
                 for (abi in abiList) {
                     into(abi) {
                         from(rootFile("native/out/$abi")) {
-                            val archBins = mutableListOf("magiskboot", "magiskinit", "magiskpolicy", "libinit-ld.so")
-                            archBins.add("magisk")
-                            archBins.add("libzygisk_inject.so")
-                            if (abi in listOf("armeabi-v7a", "x86")) {
-                                archBins.add("magisk32")
-                            } else {
-                                archBins.add("magisk64")
-                            }
+                            val archBins = perAbiFiles(abi)
                             include(archBins)
                             rename { if (it.endsWith(".so")) it else "lib$it.so" }
                         }
@@ -159,9 +163,7 @@ fun Project.setupCoreLib() {
                 from(zipTree(downloadFile(BUSYBOX_DOWNLOAD_URL, BUSYBOX_ZIP_CHECKSUM)))
                 include(abiList.map { "$it/libbusybox.so" })
                 onlyIf {
-                    if (inputs.sourceFiles.files.size != abiList.size * 8)
-                        // 8 = 4 common (magiskboot, magiskinit, magiskpolicy, libinit-ld.so)
-                        //   + magisk + magisk32/magisk64 + libzygisk_inject + busybox per ABI
+                    if (inputs.sourceFiles.files.size != abiList.size * (perAbiFiles(abiList.first()).size + 1))
                         throw StopExecutionException("Please build binaries first! (./build.py binary)")
                     true
                 }
