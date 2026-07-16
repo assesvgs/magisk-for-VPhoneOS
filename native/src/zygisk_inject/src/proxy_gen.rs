@@ -6,8 +6,40 @@ use core::sync::atomic::Ordering;
 use core::cell::UnsafeCell;
 use core::ptr;
 use core::mem;
+use alloc::string::String;
 use crate::jni_env::{jclass, jint, jlong, jboolean};
 use crate::hook_context::{HookContext, get_current_ptr, set_current, set_current_ptr};
+
+fn get_process_name(env: *mut c_void, nice_name_field: *mut c_void) -> String {
+    if nice_name_field.is_null() {
+        return String::from("com.android.internal.os.Zygote");
+    }
+    let jstring = unsafe { *(nice_name_field as *const *mut c_void) };
+    if jstring.is_null() {
+        return String::from("com.android.internal.os.Zygote");
+    }
+    let functions = unsafe { *(env as *mut *mut c_void) } as *mut *mut c_void;
+    if functions.is_null() {
+        return String::from("com.android.internal.os.Zygote");
+    }
+    type GetStringUTFCharsFn = unsafe extern "C" fn(*mut c_void, *mut c_void, *mut u8) -> *const i8;
+    type ReleaseStringUTFCharsFn = unsafe extern "C" fn(*mut c_void, *mut c_void, *const i8);
+    let get_str: GetStringUTFCharsFn =
+        unsafe { core::mem::transmute(*functions.add(69usize)) };
+    let release_str: ReleaseStringUTFCharsFn =
+        unsafe { core::mem::transmute(*functions.add(70usize)) };
+    let chars = unsafe { get_str(env, jstring, core::ptr::null_mut()) };
+    if chars.is_null() {
+        return String::from("com.android.internal.os.Zygote");
+    }
+    let cstr = unsafe { core::ffi::CStr::from_ptr(chars as *const core::ffi::c_char) };
+    let result = cstr
+        .to_str()
+        .map(String::from)
+        .unwrap_or_else(|_| String::from("com.android.internal.os.Zygote"));
+    unsafe { release_str(env, jstring, chars) };
+    result
+}
 
 #[repr(C)]
 pub struct AppSpecializeArgs {
@@ -238,7 +270,8 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_l(
         mount_storage_dirs: core::ptr::null_mut(),
         mount_sysprop_overrides: core::ptr::null_mut(),
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_fork_and_specialize_pre();
@@ -284,7 +317,8 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_o(
         mount_storage_dirs: core::ptr::null_mut(),
         mount_sysprop_overrides: core::ptr::null_mut(),
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_fork_and_specialize_pre();
@@ -330,7 +364,8 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_p(
         mount_storage_dirs: core::ptr::null_mut(),
         mount_sysprop_overrides: core::ptr::null_mut(),
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_fork_and_specialize_pre();
@@ -376,7 +411,8 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_q_alt(
         mount_storage_dirs: core::ptr::null_mut(),
         mount_sysprop_overrides: core::ptr::null_mut(),
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_fork_and_specialize_pre();
@@ -422,7 +458,8 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_r(
         mount_storage_dirs: core::ptr::addr_of_mut!(mount_storage_dirs) as *mut c_void,
         mount_sysprop_overrides: core::ptr::null_mut(),
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_fork_and_specialize_pre();
@@ -468,7 +505,8 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_u(
         mount_storage_dirs: core::ptr::addr_of_mut!(mount_storage_dirs) as *mut c_void,
         mount_sysprop_overrides: core::ptr::addr_of_mut!(mount_sysprop_overrides) as *mut c_void,
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_fork_and_specialize_pre();
@@ -514,7 +552,8 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_m(
         mount_storage_dirs: core::ptr::null_mut(),
         mount_sysprop_overrides: core::ptr::null_mut(),
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_fork_and_specialize_pre();
@@ -560,7 +599,8 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_n(
         mount_storage_dirs: core::ptr::null_mut(),
         mount_sysprop_overrides: core::ptr::null_mut(),
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_fork_and_specialize_pre();
@@ -606,7 +646,8 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_o(
         mount_storage_dirs: core::ptr::null_mut(),
         mount_sysprop_overrides: core::ptr::null_mut(),
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_fork_and_specialize_pre();
@@ -652,7 +693,8 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_samsung_p(
         mount_storage_dirs: core::ptr::null_mut(),
         mount_sysprop_overrides: core::ptr::null_mut(),
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_fork_and_specialize_pre();
@@ -698,7 +740,8 @@ pub unsafe extern "C" fn nativeForkAndSpecialize_grapheneos_u(
         mount_storage_dirs: core::ptr::addr_of_mut!(mount_storage_dirs) as *mut c_void,
         mount_sysprop_overrides: core::ptr::addr_of_mut!(mount_sysprop_overrides) as *mut c_void,
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_fork_and_specialize_pre();
@@ -744,7 +787,8 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_q(
         mount_storage_dirs: core::ptr::null_mut(),
         mount_sysprop_overrides: core::ptr::null_mut(),
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_specialize_app_process_pre();
@@ -784,7 +828,8 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_q_alt(
         mount_storage_dirs: core::ptr::null_mut(),
         mount_sysprop_overrides: core::ptr::null_mut(),
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_specialize_app_process_pre();
@@ -824,7 +869,8 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_r(
         mount_storage_dirs: core::ptr::addr_of_mut!(mount_storage_dirs) as *mut c_void,
         mount_sysprop_overrides: core::ptr::null_mut(),
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_specialize_app_process_pre();
@@ -864,7 +910,8 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_u(
         mount_storage_dirs: core::ptr::addr_of_mut!(mount_storage_dirs) as *mut c_void,
         mount_sysprop_overrides: core::ptr::addr_of_mut!(mount_sysprop_overrides) as *mut c_void,
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_specialize_app_process_pre();
@@ -904,7 +951,8 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_samsung_q(
         mount_storage_dirs: core::ptr::null_mut(),
         mount_sysprop_overrides: core::ptr::null_mut(),
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_specialize_app_process_pre();
@@ -944,7 +992,8 @@ pub unsafe extern "C" fn nativeSpecializeAppProcess_grapheneos_u(
         mount_storage_dirs: core::ptr::addr_of_mut!(mount_storage_dirs) as *mut c_void,
         mount_sysprop_overrides: core::ptr::addr_of_mut!(mount_sysprop_overrides) as *mut c_void,
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let process_name = get_process_name(env, args.nice_name);
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, &process_name);
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_specialize_app_process_pre();
@@ -970,7 +1019,7 @@ pub unsafe extern "C" fn nativeForkSystemServer_l(
         permitted_capabilities: core::ptr::addr_of_mut!(permitted_capabilities) as *mut c_void,
         effective_capabilities: core::ptr::addr_of_mut!(effective_capabilities) as *mut c_void,
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "system_server");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_fork_system_server_pre();
@@ -1002,7 +1051,7 @@ pub unsafe extern "C" fn nativeForkSystemServer_samsung_q(
         permitted_capabilities: core::ptr::addr_of_mut!(permitted_capabilities) as *mut c_void,
         effective_capabilities: core::ptr::addr_of_mut!(effective_capabilities) as *mut c_void,
     };
-    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "com.android.internal.os.Zygote");
+    let mut ctx = HookContext::new(env, core::ptr::addr_of_mut!(args) as *mut c_void, "system_server");
     let _prev_ctx = crate::hook_context::get_current_ptr();
     crate::hook_context::set_current(&mut ctx);
     ctx.native_fork_system_server_pre();

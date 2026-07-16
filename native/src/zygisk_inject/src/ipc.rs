@@ -118,16 +118,6 @@ pub fn connect_daemon() -> Option<i32> {
     Some(fd)
 }
 
-/// 跨平台一致的 CMSG_LEN/CMSG_SPACE 包装。
-/// libc crate 的 CMSG_* 宏是 unsafe fn，且在不同目标平台返回类型不同
-///（usize 或 u32），统一转换为 usize 避免类型错误。
-unsafe fn cmsg_len(len: usize) -> usize {
-    libc::CMSG_LEN(len as u32) as usize
-}
-unsafe fn cmsg_space(len: usize) -> usize {
-    libc::CMSG_SPACE(len as u32) as usize
-}
-
 pub fn send_fd(sock: i32, fd_to_send: i32) -> bool {
     let mut iov = libc::iovec {
         iov_base: &fd_to_send as *const i32 as *mut c_void,
@@ -146,9 +136,9 @@ pub fn send_fd(sock: i32, fd_to_send: i32) -> bool {
         }
         (*cmsg).cmsg_level = libc::SOL_SOCKET;
         (*cmsg).cmsg_type = libc::SCM_RIGHTS;
-        (*cmsg).cmsg_len = cmsg_len(core::mem::size_of::<i32>());
+        (*cmsg).cmsg_len = crate::platform::cmsg_len(core::mem::size_of::<i32>());
         core::ptr::write(libc::CMSG_DATA(cmsg) as *mut i32, fd_to_send);
-        msg.msg_controllen = cmsg_space(core::mem::size_of::<i32>());
+        msg.msg_controllen = crate::platform::cmsg_space(core::mem::size_of::<i32>());
     }
     let ret = unsafe { libc::sendmsg(sock, &msg, 0) };
     ret > 0
@@ -179,7 +169,7 @@ pub fn recv_fds(sock: i32) -> alloc::vec::Vec<i32> {
             && (*cmsg).cmsg_level == libc::SOL_SOCKET
             && (*cmsg).cmsg_type == libc::SCM_RIGHTS
         {
-            let payload_len = (*cmsg).cmsg_len - cmsg_len(0);
+            let payload_len = (*cmsg).cmsg_len - crate::platform::cmsg_len(0);
             let num_fds = payload_len / core::mem::size_of::<i32>();
             let data_ptr = libc::CMSG_DATA(cmsg) as *const i32;
             for i in 0..num_fds {
@@ -263,15 +253,19 @@ pub fn write_string(fd: i32, s: &str) -> bool {
     n == s.len() as isize
 }
 
-/// Daemon IPC 命令码（必须与 lib.rs 中的 ZygiskRequest 枚举的值一致）
-/// ZygiskRequest { GetInfo=0, ConnectCompanion=1, GetModDir=2, SulistRootNs=3, RevertUmount=4 }
+/// Daemon IPC 命令码。
+/// 必须与 `native/src/core/lib.rs:75-81` 的 ZygiskRequest 枚举值一致。
+/// 若在 daemon 端增删命令，请同步更新此处。
+///
+/// ZygiskRequest (daemon):  GetInfo=0, ConnectCompanion=1, GetModDir=2,
+///                          SulistRootNs=3, RevertUmount=4
 #[repr(i32)]
 enum DaemonCommand {
     RemoteGetInfo = 0,
     ConnectCompanion = 1,
-    // 注：值 2 = GetModDir（未被 inject 库直接使用）
-    RequestSulist = 3,    // ZygiskRequest::SulistRootNs
-    RequestUmount = 4,    // ZygiskRequest::RevertUmount
+    /// 值 2 = GetModDir（未被 inject 库直接使用）
+    RequestSulist = 3,    // SulistRootNs
+    RequestUmount = 4,    // RevertUmount
 }
 
 pub fn remote_get_info(uid: i32, process: &str) -> Option<(u32, alloc::vec::Vec<i32>)> {

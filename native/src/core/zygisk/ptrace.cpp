@@ -65,9 +65,10 @@ static void gen_rand_str(char *buf, size_t len) {
 
 
 
-// 返回值：0=成功，1+=失败步骤
-static int inject_on_main(int pid, const char *lib_path) {
-    struct user_regs_struct regs{}, backup{};
+// 返回值：0=成功，>0=失败步骤
+// Stage 1+2: Parse auxv and write break address into remote process
+static int setup_breakpoint(int pid, struct user_regs_struct &regs,
+                            void *&entry_addr, void *&addr_of_entry_addr) {
     auto map = Scan_proc(std::to_string(pid));
     if (!get_regs(pid, regs)) {
         ZLOGD("inject: get_regs failed\n");
@@ -100,8 +101,6 @@ static int inject_on_main(int pid, const char *lib_path) {
     auto auxv = reinterpret_cast<ElfW(auxv_t) *>(p);
     ZLOGD("auxv %p %s\n", auxv, get_addr_mem_region(map, auxv).c_str());
     auto v = auxv;
-    void *entry_addr = nullptr;
-    void *addr_of_entry_addr = nullptr;
     int auxv_limit = 512;
     while (auxv_limit-- > 0) {
         ElfW(auxv_t) buf = {};
@@ -130,6 +129,12 @@ static int inject_on_main(int pid, const char *lib_path) {
         return 4;
     }
     ptrace(PTRACE_CONT, pid, 0, 0);
+    return 0;
+}
+
+// Stage 3: Wait for SIGSEGV at the installed breakpoint, verify IP, restore entry
+static int wait_for_breakpoint(int pid, struct user_regs_struct &regs,
+                               void *entry_addr, void *addr_of_entry_addr) {
     int status;
     if (!wait_for_trace(pid, &status, __WALL)) {
         ZLOGD("inject: wait_for_trace after breakpoint failed\n");
@@ -143,6 +148,7 @@ static int inject_on_main(int pid, const char *lib_path) {
             TRACELOGE("inject: get_regs after SIGSEGV failed\n");
             return 6;
         }
+        uintptr_t break_addr = (-0x05ec1cff & ~1) | ((uintptr_t) entry_addr & 1);
         if ((regs.REG_IP & ~1) != (break_addr & ~1)) {
             ZLOGE("stopped at unknown addr %p\n", (void *) regs.REG_IP);
             TRACELOGE("inject: stopped at unknown addr %p\n", (void *) regs.REG_IP);
@@ -154,95 +160,112 @@ static int inject_on_main(int pid, const char *lib_path) {
             TRACELOGE("inject: restore entry_addr failed\n");
             return 8;
         }
-        memcpy(&backup, &regs, sizeof(regs));
-        map = Scan_proc(std::to_string(pid));
-        auto local_map = Scan_proc();
-        auto libc_return_addr = find_module_return_addr(map, "libc.so");
-        ZLOGD("libc return addr %p\n", libc_return_addr);
-
-        auto dlopen_addr = find_func_addr(local_map, map, "libdl.so", "dlopen");
-        if (dlopen_addr == nullptr) {
-            ZLOGD("inject: dlopen not found\n");
-            TRACELOGE("inject: dlopen not found\n");
-            return 9;
-        }
-        std::vector<long> args;
-        auto str = push_string(pid, regs, lib_path);
-        args.clear();
-        args.push_back((long) str);
-        args.push_back((long) RTLD_NOW);
-        auto remote_handle = remote_call(pid, regs, (uintptr_t) dlopen_addr, (uintptr_t) libc_return_addr, args);
-        ZLOGD("remote handle %p\n", (void *) remote_handle);
-        if (remote_handle == 0) {
-            ZLOGE("remote dlopen failed for %s\n", lib_path);
-            TRACELOGE("inject: remote dlopen returned NULL for %s\n", lib_path);
-            auto dlerror_addr = find_func_addr(local_map, map, "libdl.so", "dlerror");
-            if (dlerror_addr == nullptr) {
-                ZLOGE("find dlerror\n");
-                TRACELOGE("inject: dlerror addr not found\n");
-                return 10;
-            }
-            args.clear();
-            auto dlerror_str_addr = remote_call(pid, regs, (uintptr_t) dlerror_addr, (uintptr_t) libc_return_addr, args);
-            ZLOGD("dlerror str %p\n", (void*) dlerror_str_addr);
-            if (dlerror_str_addr == 0) return 10;
-            auto strlen_addr = find_func_addr(local_map, map, "libc.so", "strlen");
-            if (strlen_addr == nullptr) {
-                ZLOGE("find strlen\n");
-                return 10;
-            }
-            args.clear();
-            args.push_back(dlerror_str_addr);
-            auto dlerror_len = remote_call(pid, regs, (uintptr_t) strlen_addr, (uintptr_t) libc_return_addr, args);
-            ZLOGD("dlerror len %ld\n", dlerror_len);
-            if (dlerror_len <= 0) return 10;
-            std::string err;
-            err.resize(dlerror_len + 1, 0);
-            if (read_proc(pid, (uintptr_t*) dlerror_str_addr, err.data(), dlerror_len) != dlerror_len) {
-                ZLOGE("failed to read dlerror string\n");
-            } else {
-                ZLOGE("dlerror info %s\n", err.c_str());
-                TRACELOGE("inject: dlerror: %s\n", err.c_str());
-            }
-            TRACELOGE("inject: remote dlopen failed\n");
-            return 10;
-        }
-
-        auto dlsym_addr = find_func_addr(local_map, map, "libdl.so", "dlsym");
-        if (dlsym_addr == nullptr) {
-            ZLOGD("inject: dlsym not found\n");
-            TRACELOGE("inject: dlsym not found\n");
-            return 11;
-        }
-        args.clear();
-        str = push_string(pid, regs, "zygisk_inject_entry");
-        args.push_back(remote_handle);
-        args.push_back((long) str);
-        auto injector_entry = remote_call(pid, regs, (uintptr_t) dlsym_addr, (uintptr_t) libc_return_addr, args);
-        ZLOGD("injector entry %p\n", (void*) injector_entry);
-        if (injector_entry == 0) {
-            ZLOGE("injector entry is null\n");
-            TRACELOGE("inject: injector entry is null\n");
-            return 12;
-        }
-
-        args.clear();
-        args.push_back(remote_handle);
-        remote_call(pid, regs, injector_entry, (uintptr_t) libc_return_addr, args);
-
-        backup.REG_IP = (long) entry_addr;
-        ZLOGD("invoke entry\n");
-        if (!set_regs(pid, backup)) {
-            ZLOGD("inject: set_regs failed\n");
-            TRACELOGE("inject: set_regs failed\n");
-            return 13;
-        }
         return 0;
     } else {
         ZLOGE("stopped by other reason: %s\n", parse_status(status).c_str());
         TRACELOGE("inject: stopped by other reason: %s\n", parse_status(status).c_str());
     }
     return 14;
+}
+
+// Stage 4+5+6: Remote dlopen + dlsym + call injector entry + restore registers
+static int remote_inject(int pid, struct user_regs_struct &regs, struct user_regs_struct &backup,
+                         const char *lib_path, void *entry_addr) {
+    memcpy(&backup, &regs, sizeof(regs));
+    auto map = Scan_proc(std::to_string(pid));
+    auto local_map = Scan_proc();
+    auto libc_return_addr = find_module_return_addr(map, "libc.so");
+    ZLOGD("libc return addr %p\n", libc_return_addr);
+
+    auto dlopen_addr = find_func_addr(local_map, map, "libdl.so", "dlopen");
+    if (dlopen_addr == nullptr) {
+        ZLOGD("inject: dlopen not found\n");
+        TRACELOGE("inject: dlopen not found\n");
+        return 9;
+    }
+    std::vector<long> args;
+    auto str = push_string(pid, regs, lib_path);
+    args.clear();
+    args.push_back((long) str);
+    args.push_back((long) RTLD_NOW);
+    auto remote_handle = remote_call(pid, regs, (uintptr_t) dlopen_addr, (uintptr_t) libc_return_addr, args);
+    ZLOGD("remote handle %p\n", (void *) remote_handle);
+    if (remote_handle == 0) {
+        ZLOGE("remote dlopen failed for %s\n", lib_path);
+        TRACELOGE("inject: remote dlopen returned NULL for %s\n", lib_path);
+        auto dlerror_addr = find_func_addr(local_map, map, "libdl.so", "dlerror");
+        if (dlerror_addr == nullptr) {
+            ZLOGE("find dlerror\n");
+            TRACELOGE("inject: dlerror addr not found\n");
+            return 10;
+        }
+        args.clear();
+        auto dlerror_str_addr = remote_call(pid, regs, (uintptr_t) dlerror_addr, (uintptr_t) libc_return_addr, args);
+        ZLOGD("dlerror str %p\n", (void*) dlerror_str_addr);
+        if (dlerror_str_addr == 0) return 10;
+        auto strlen_addr = find_func_addr(local_map, map, "libc.so", "strlen");
+        if (strlen_addr == nullptr) {
+            ZLOGE("find strlen\n");
+            return 10;
+        }
+        args.clear();
+        args.push_back(dlerror_str_addr);
+        auto dlerror_len = remote_call(pid, regs, (uintptr_t) strlen_addr, (uintptr_t) libc_return_addr, args);
+        ZLOGD("dlerror len %ld\n", dlerror_len);
+        if (dlerror_len <= 0) return 10;
+        std::string err;
+        err.resize(dlerror_len + 1, 0);
+        if (read_proc(pid, (uintptr_t*) dlerror_str_addr, err.data(), dlerror_len) != dlerror_len) {
+            ZLOGE("failed to read dlerror string\n");
+        } else {
+            ZLOGE("dlerror info %s\n", err.c_str());
+            TRACELOGE("inject: dlerror: %s\n", err.c_str());
+        }
+        TRACELOGE("inject: remote dlopen failed\n");
+        return 10;
+    }
+
+    auto dlsym_addr = find_func_addr(local_map, map, "libdl.so", "dlsym");
+    if (dlsym_addr == nullptr) {
+        ZLOGD("inject: dlsym not found\n");
+        TRACELOGE("inject: dlsym not found\n");
+        return 11;
+    }
+    args.clear();
+    str = push_string(pid, regs, "zygisk_inject_entry");
+    args.push_back(remote_handle);
+    args.push_back((long) str);
+    auto injector_entry = remote_call(pid, regs, (uintptr_t) dlsym_addr, (uintptr_t) libc_return_addr, args);
+    ZLOGD("injector entry %p\n", (void*) injector_entry);
+    if (injector_entry == 0) {
+        ZLOGE("injector entry is null\n");
+        TRACELOGE("inject: injector entry is null\n");
+        return 12;
+    }
+
+    args.clear();
+    args.push_back(remote_handle);
+    remote_call(pid, regs, injector_entry, (uintptr_t) libc_return_addr, args);
+
+    backup.REG_IP = (long) entry_addr;
+    ZLOGD("invoke entry\n");
+    if (!set_regs(pid, backup)) {
+        ZLOGD("inject: set_regs failed\n");
+        TRACELOGE("inject: set_regs failed\n");
+        return 13;
+    }
+    return 0;
+}
+
+// 返回值：0=成功，>0=失败步骤
+static int inject_on_main(int pid, const char *lib_path) {
+    struct user_regs_struct regs{}, backup{};
+    void *entry_addr = nullptr;
+    void *addr_of_entry_addr = nullptr;
+    int ret;
+    if ((ret = setup_breakpoint(pid, regs, entry_addr, addr_of_entry_addr)) != 0) return ret;
+    if ((ret = wait_for_breakpoint(pid, regs, entry_addr, addr_of_entry_addr)) != 0) return ret;
+    return remote_inject(pid, regs, backup, lib_path, entry_addr);
 }
 
 #define STOPPED_WITH(sig, event) (WIFSTOPPED(status) && WSTOPSIG(status) == (sig) && (status >> 16) == (event))

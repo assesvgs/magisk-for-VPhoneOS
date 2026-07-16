@@ -63,6 +63,48 @@ static void ensure_magisk_tracer() {
     }
 }
 
+// Fork, exec tracer, and wait for result.
+// Returns: 0=success, >0=fail step, -2=signaled, -3=unexpected, -4=timeout.
+// On fork failure returns -1 (caller must log and handle).
+// If kill_on_fail > 0, kills that PID when exec fails in child.
+static int exec_tracer(const string &tracer, const string &pid_str,
+                       const string &inject_lib, const char *log_prefix,
+                       int kill_on_fail = 0) {
+    auto p = xfork();
+    if (p == 0) {
+        TRACELOGW("%s child exec %s\n", log_prefix, tracer.c_str());
+        execl(tracer.c_str(), "magisk", "--zygisk", "trace_zygote",
+              pid_str.c_str(), inject_lib.c_str(), nullptr);
+        PLOGE("zygisk: %s exec %s", log_prefix, tracer.c_str());
+        if (kill_on_fail > 0) kill(kill_on_fail, SIGKILL);
+        _exit(1);
+    } else if (p > 0) {
+        int child_status;
+        for (int i = 0; i < 50; i++) {
+            int ret = waitpid(p, &child_status, WNOHANG);
+            if (ret != p) {
+                usleep(100000);
+                continue;
+            }
+            if (WIFEXITED(child_status)) {
+                int code = WEXITSTATUS(child_status);
+                TRACELOGW("%s tracer exit code=%d for pid=%s\n", log_prefix, code, pid_str.c_str());
+                return code;
+            } else if (WIFSIGNALED(child_status)) {
+                TRACELOGW("%s tracer killed sig=%d for pid=%s\n", log_prefix,
+                          WTERMSIG(child_status), pid_str.c_str());
+                LOGW("zygisk: %s tracer PID %s killed (sig=%d)\n",
+                     log_prefix, pid_str.c_str(), WTERMSIG(child_status));
+                return -2;
+            }
+            return -3;
+        }
+        LOGW("zygisk: %s tracer timeout for PID %s\n", log_prefix, pid_str.c_str());
+        return -4;
+    }
+    return -1;
+}
+
 static void inject_zygote(int pid) {
     auto program = get_program(pid);
     if (program != "/system/bin/app_process" &&
@@ -104,38 +146,12 @@ static void inject_zygote(int pid) {
         ptrace(PTRACE_DETACH, pid, 0, SIGSTOP);
         LOGI("zygisk: tracer path=[%s]\n", tracer.c_str());
         TRACELOGW("inject: fork+exec for pid=%d\n", pid);
-        auto p = xfork();
-        if (p == 0) {
-            TRACELOGW("inject: child exec %s\n", tracer.c_str());
-            execl(tracer.c_str(), "magisk", "--zygisk", "trace_zygote",
-                  pid_str.c_str(), inject_lib.c_str(), nullptr);
-            LOGE("zygisk: exec %s failed: %s\n", tracer.c_str(), strerror(errno));
-            kill(pid, SIGKILL);
-            _exit(1);
-        } else if (p > 0) {
-            int child_status;
-            for (int i = 0; i < 50; i++) {
-                int ret = waitpid(p, &child_status, WNOHANG);
-                if (ret == p) {
-                    if (WIFEXITED(child_status)) {
-                        int code = WEXITSTATUS(child_status);
-                        TRACELOGW("inject: tracer exit code=%d for pid=%d\n", code, pid);
-                        if (code == 0) {
-                            LOGI("zygisk: trace_zygote done for PID %d\n", pid);
-                        } else {
-                            LOGW("zygisk: trace_zygote PID %d fail step=%d\n", pid, code);
-                        }
-                    } else if (WIFSIGNALED(child_status)) {
-                        TRACELOGW("inject: tracer killed sig=%d for pid=%d\n", WTERMSIG(child_status), pid);
-                        LOGW("zygisk: trace_zygote PID %d killed (sig=%d)\n", pid, WTERMSIG(child_status));
-                    }
-                    goto inject_done;
-                }
-                usleep(100000);
-            }
-            LOGW("zygisk: trace_zygote timeout for PID %d\n", pid);
-        inject_done:;
-        } else {
+        int ret = exec_tracer(tracer, pid_str, inject_lib, "inject", pid);
+        if (ret == 0) {
+            LOGI("zygisk: trace_zygote done for PID %d\n", pid);
+        } else if (ret > 0) {
+            LOGW("zygisk: trace_zygote PID %d fail step=%d\n", pid, ret);
+        } else if (ret == -1) {
             PLOGE("failed to fork");
             kill(pid, SIGKILL);
         }
@@ -177,42 +193,18 @@ static bool find_zygote_by_polling() {
             // polling 路径不是 zygote 的 tracer（未从 init 继承 PTRACE_O_TRACEFORK），
             // 无法对其执行 PTRACE_CONT/waitpid。但子 tracer 使用 PTRACE_SEIZE 附加，
             // 不需要目标先进入停止状态。SIGSTOP 在此路径会阻塞 zygote 且无法恢复。
-            auto p = xfork();
-            if (p == 0) {
-                TRACELOGW("inject: poll child exec %s\n", tracer.c_str());
-                string inject_lib;
-                if (program.find("32") != string::npos) {
-                    inject_lib = string(get_magisk_tmp()) + "/zygisk_inject32";
-                } else {
-                    inject_lib = string(get_magisk_tmp()) + "/zygisk_inject";
-                }
-                execl(tracer.c_str(), "magisk", "--zygisk", "trace_zygote",
-                      pid_str.c_str(), inject_lib.c_str(), nullptr);
-                PLOGE("failed to exec");
-                _exit(1);
-            } else if (p > 0) {
-                int child_status;
-                for (int i = 0; i < 50; i++) {
-                    int ret = waitpid(p, &child_status, WNOHANG);
-                    if (ret == p) {
-                        if (WIFEXITED(child_status)) {
-                            int code = WEXITSTATUS(child_status);
-                            TRACELOGW("inject: poll tracer exit code=%d for pid=%d\n", code, pid);
-                            if (code != 0) {
-                                LOGW("zygisk: poll tracer PID %d fail step=%d\n", pid, code);
-                            }
-                        } else if (WIFSIGNALED(child_status)) {
-                            TRACELOGW("inject: poll tracer killed sig=%d for pid=%d\n", WTERMSIG(child_status), pid);
-                        }
-                        goto poll_done;
-                    }
-                    usleep(100000);
-                }
-                LOGW("zygisk: poll tracer timeout for PID %d\n", pid);
-                poll_done:;
+            string inject_lib;
+            if (program.find("32") != string::npos) {
+                inject_lib = string(get_magisk_tmp()) + "/zygisk_inject32";
             } else {
+                inject_lib = string(get_magisk_tmp()) + "/zygisk_inject";
+            }
+            int ret = exec_tracer(tracer, pid_str, inject_lib, "inject: poll");
+            if (ret == -1) {
                 PLOGE("failed to fork");
                 continue;
+            } else if (ret > 0) {
+                LOGW("zygisk: poll tracer PID %d fail step=%d\n", pid, ret);
             }
             return true;
         }

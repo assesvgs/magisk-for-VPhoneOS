@@ -5,6 +5,7 @@
 extern crate alloc;
 
 mod memory;
+mod platform;
 mod plt;
 mod jni_env;
 mod hooks;
@@ -55,12 +56,6 @@ fn fd_path_bytes(fd: i32) -> alloc::vec::Vec<u8> {
     bytes
 }
 
-/// libc::stat 常规文件检查。st_mode 和 S_IFMT/S_IFREG 的类型在不同平台不同
-///（例如 macOS 上 st_mode=u32 但 S_IFMT=u16），统一 cast 为 u32 避免交叉编译类型错误。
-fn is_regular_file(st: &libc::stat) -> bool {
-    (st.st_mode as u32 & libc::S_IFMT as u32) == libc::S_IFREG as u32
-}
-
 /// Zygisk companion daemon entry point (Rust reimplementation of `main.cpp::zygiskd()`).
 ///
 /// Protocol (compatible with C++ `zygiskd()` and `daemon.rs::connect_zygiskd()`):
@@ -100,7 +95,7 @@ pub extern "C" fn zygisk_companion_entry(socket: i32) {
         let mut entry: Option<CompanionFn> = None;
         let mut st: libc::stat = unsafe { core::mem::zeroed() };
         if unsafe { libc::fstat(fd, &mut st) } == 0
-            && is_regular_file(&st)
+            && crate::platform::is_regular_file(&st)
         {
             let path_bytes = fd_path_bytes(fd);
             let c_path = unsafe {
