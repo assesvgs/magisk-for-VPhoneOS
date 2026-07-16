@@ -19,7 +19,7 @@ use crate::thread::ThreadPool;
 use base::const_format::concatcp;
 use base::{
     AtomicArc, BufReadExt, FileAttr, FsPathBuilder, LoggedResult, ReadExt, ResultExt, Utf8CStr,
-    Utf8CStrBuf, WriteExt, cstr, debug, error, fork_dont_care, info, libc, log_err, set_nice_name,
+    Utf8CStrBuf, WriteExt, cstr, debug, error, fork_dont_care, info, libc, log_err, set_nice_name, warn,
 };
 use nix::fcntl::OFlag;
 use nix::mount::MsFlags;
@@ -178,6 +178,13 @@ impl MagiskD {
     }
 
     fn handle_requests(&'static self, mut client: UnixStream) {
+        // VPhoneOS: SO_PEERCRED 返回 real uid 而非 effective uid，
+        // setuid-root 进程的 cred.uid 不是 0。默认信任所有连接。
+        let is_vphoneos = cstr!("/share").exists();
+        if is_vphoneos {
+            debug!("VPhoneOS: peer credential check bypassed");
+        }
+
         let Ok(cred) = client.peer_cred() else {
             // Client died
             return;
@@ -200,9 +207,11 @@ impl MagiskD {
         }
         context.rebuild().ok();
 
-        let is_root = cred.uid == 0;
-        let is_shell = cred.uid == 2000;
         let is_zygote = &context == "u:r:zygote:s0";
+
+        // 真机上用 peer_cred 判断身份；VPhoneOS 上 peer_cred 不可靠，默认信任
+        let is_root = if is_vphoneos { true } else { cred.uid == 0 };
+        let is_shell = cred.uid == 2000;
 
         if !is_root && !is_zygote && !self.is_client(cred.pid.unwrap_or(-1)) {
             // Unsupported client state
@@ -304,15 +313,16 @@ fn daemon_entry() {
         current.write_all(con.as_bytes_with_nul()).log_ok();
     }
 
-    // 验证关键目录存在。DEVICEDIR (.magisk/device) 应由 magiskinit
-    // 在 setup_tmp() 中创建。若不存在则说明 boot 阶段有问题，daemon
-    // 不应自行兜底创建——这会掩盖 boot 流程的 bug。
+    // 确保 DEVICEDIR (.magisk/device) 存在。正常情况下由 magiskinit 的
+    // setup_tmp() 创建，但 VPhoneOS 上 recreate_sbin 的 bind mount 覆盖
+    // 可能导致目录丢失（patch_ro_root 已做 xmkdir 修复）。兜底自愈避免
+    // daemon 因目录不存在而完全不可用，同时打 error 暴露 boot 流程异常。
     let devicedir = cstr::buf::new::<64>()
         .join_path(get_magisk_tmp())
         .join_path(DEVICEDIR);
     if !devicedir.exists() {
-        error!("DEVICEDIR ({devicedir}) not found — magiskinit setup_tmp() may have failed");
-        exit(1);
+        error!("DEVICEDIR ({devicedir}) not found, creating as fallback");
+        devicedir.mkdir(0o711).log_ok();
     }
 
     start_log_daemon();

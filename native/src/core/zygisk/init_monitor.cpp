@@ -146,7 +146,9 @@ static void inject_zygote(int pid) {
     int status;
     if (ptrace(PTRACE_CONT, pid, 0, 0) == -1) {
         PLOGE("ptrace CONT in inject_zygote");
-        ptrace(PTRACE_DETACH, pid, 0, 0);
+        // SIGCONT cancels the pending SIGSTOP sent above; without it
+        // the target process would be stuck in a stopped state forever.
+        ptrace(PTRACE_DETACH, pid, 0, SIGCONT);
         return;
     }
     waitpid(pid, &status, __WALL);

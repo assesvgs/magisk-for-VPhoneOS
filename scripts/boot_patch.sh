@@ -200,13 +200,9 @@ $BOOTMODE && [ -z "$PREINITDEVICE" ] && {
 }
 
 # Compress to save precious ramdisk space
+# Only compress files that will be added to ramdisk overlay:
+# magisk.xz is extracted by init (extract_files), magisk32/64 come from DATABIN
 ./magiskboot compress=xz magisk magisk.xz
-if [ -f magisk32 ]; then
-  ./magiskboot compress=xz magisk32 magisk32.xz
-fi
-if [ -f magisk64 ]; then
-  ./magiskboot compress=xz magisk64 magisk64.xz
-fi
 # Compress zygisk_inject (no_std Rust injection library) for Zygisk
 if [ -f zygisk_inject ]; then
   ./magiskboot compress=xz zygisk_inject zygisk_inject.xz
@@ -267,8 +263,8 @@ set -- \
   "mkdir 0750 overlay.d" \
   "mkdir 0750 overlay.d/sbin" \
   "add 0644 overlay.d/sbin/magisk.xz magisk.xz"
-[ -f magisk32.xz ] && set -- "$@" "add 0644 overlay.d/sbin/magisk32.xz magisk32.xz"
-[ -f magisk64.xz ] && set -- "$@" "add 0644 overlay.d/sbin/magisk64.xz magisk64.xz"
+# magisk32/magisk64 来自 DATABIN（/data/adb/magisk/），不由 boot image 提供
+# （extract_files 也只处理 magisk.xz/stub.xz/init-ld.xz/zygisk_inject*.xz）
 [ -f zygisk_inject.xz ] && set -- "$@" "add 0644 overlay.d/sbin/zygisk_inject.xz zygisk_inject.xz"
 [ -f zygisk_inject32.xz ] && set -- "$@" "add 0644 overlay.d/sbin/zygisk_inject32.xz zygisk_inject32.xz"
 set -- "$@" \

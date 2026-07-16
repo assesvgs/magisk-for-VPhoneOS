@@ -84,6 +84,9 @@ pub mod ffi {
     enum ZygiskStateFlags {
         ProcessGrantedRoot = 0x00000001,
         ProcessOnDenyList = 0x00000002,
+        ProcessOnAllowList = 0x04000000,   // Reserverd: matches module.hpp PROCESS_ON_ALLOWLIST
+        AllowListEnforcing = 0x08000000,   // Reserved: matches module.hpp ALLOWLIST_ENFORCING
+        MagiskHideEnabled = 0x10000000,    // Reserved: matches module.hpp MAGISKHIDE_ENABLED
         DenyListEnforced = 0x40000000,
         ProcessIsMagiskApp = 0x80000000,
     }

@@ -110,9 +110,12 @@ void mount_mirrors() {
     // No-op: module mirror mounting is handled by Rust
 }
 
+// Forward declaration for the ptrace.cpp entry point (takes const char*)
+// Note: not static — actual definition is in ptrace.cpp with external linkage
+bool trace_zygote(int pid, const char *libpath);
+
 // Wrapper for cxx bridge: trace_zygote takes rust::Str, convert to const char*
 bool trace_zygote(int pid, rust::Str libpath) {
-    bool trace_zygote(int pid, const char *libpath);
     return trace_zygote(pid, libpath.data());
 }
 
