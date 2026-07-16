@@ -168,6 +168,48 @@ static int wait_for_breakpoint(int pid, struct user_regs_struct &regs,
     return 14;
 }
 
+// Read and log dlerror from remote process after dlopen failure.
+// Template avoids explicit lsplt::MapInfo type (跨 NDK 版本类型解析不一致)。
+// Always returns 10 so the caller can propagate one unified failure code.
+template<typename MapVec>
+static int log_dlerror(int pid, MapVec &local_map, MapVec &map,
+                        struct user_regs_struct &regs, uintptr_t libc_return_addr) {
+    auto dlerror_addr = find_func_addr(local_map, map, "libdl.so", "dlerror");
+    if (dlerror_addr == nullptr) {
+        ZLOGE("find dlerror\n");
+        TRACELOGE("inject: dlerror addr not found\n");
+        return 10;
+    }
+    std::vector<long> args;
+    auto dlerror_str_addr = remote_call(pid, regs, (uintptr_t) dlerror_addr,
+                                         (uintptr_t) libc_return_addr, args);
+    ZLOGD("dlerror str %p\n", (void*) dlerror_str_addr);
+    if (dlerror_str_addr == 0) return 10;
+
+    auto strlen_addr = find_func_addr(local_map, map, "libc.so", "strlen");
+    if (strlen_addr == nullptr) {
+        ZLOGE("find strlen\n");
+        return 10;
+    }
+    args.clear();
+    args.push_back(dlerror_str_addr);
+    auto dlerror_len = remote_call(pid, regs, (uintptr_t) strlen_addr,
+                                    (uintptr_t) libc_return_addr, args);
+    ZLOGD("dlerror len %ld\n", dlerror_len);
+    if (dlerror_len <= 0) return 10;
+
+    std::string err;
+    err.resize(dlerror_len + 1, 0);
+    if (read_proc(pid, (uintptr_t*) dlerror_str_addr, err.data(), dlerror_len) != dlerror_len) {
+        ZLOGE("failed to read dlerror string\n");
+    } else {
+        ZLOGE("dlerror info %s\n", err.c_str());
+        TRACELOGE("inject: dlerror: %s\n", err.c_str());
+    }
+    TRACELOGE("inject: remote dlopen failed\n");
+    return 10;
+}
+
 // Stage 4+5+6: Remote dlopen + dlsym + call injector entry + restore registers
 static int remote_inject(int pid, struct user_regs_struct &regs, struct user_regs_struct &backup,
                          const char *lib_path, void *entry_addr) {
@@ -193,36 +235,7 @@ static int remote_inject(int pid, struct user_regs_struct &regs, struct user_reg
     if (remote_handle == 0) {
         ZLOGE("remote dlopen failed for %s\n", lib_path);
         TRACELOGE("inject: remote dlopen returned NULL for %s\n", lib_path);
-        auto dlerror_addr = find_func_addr(local_map, map, "libdl.so", "dlerror");
-        if (dlerror_addr == nullptr) {
-            ZLOGE("find dlerror\n");
-            TRACELOGE("inject: dlerror addr not found\n");
-            return 10;
-        }
-        args.clear();
-        auto dlerror_str_addr = remote_call(pid, regs, (uintptr_t) dlerror_addr, (uintptr_t) libc_return_addr, args);
-        ZLOGD("dlerror str %p\n", (void*) dlerror_str_addr);
-        if (dlerror_str_addr == 0) return 10;
-        auto strlen_addr = find_func_addr(local_map, map, "libc.so", "strlen");
-        if (strlen_addr == nullptr) {
-            ZLOGE("find strlen\n");
-            return 10;
-        }
-        args.clear();
-        args.push_back(dlerror_str_addr);
-        auto dlerror_len = remote_call(pid, regs, (uintptr_t) strlen_addr, (uintptr_t) libc_return_addr, args);
-        ZLOGD("dlerror len %ld\n", dlerror_len);
-        if (dlerror_len <= 0) return 10;
-        std::string err;
-        err.resize(dlerror_len + 1, 0);
-        if (read_proc(pid, (uintptr_t*) dlerror_str_addr, err.data(), dlerror_len) != dlerror_len) {
-            ZLOGE("failed to read dlerror string\n");
-        } else {
-            ZLOGE("dlerror info %s\n", err.c_str());
-            TRACELOGE("inject: dlerror: %s\n", err.c_str());
-        }
-        TRACELOGE("inject: remote dlopen failed\n");
-        return 10;
+        return log_dlerror(pid, local_map, map, regs, libc_return_addr);
     }
 
     auto dlsym_addr = find_func_addr(local_map, map, "libdl.so", "dlsym");
