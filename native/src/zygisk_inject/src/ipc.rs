@@ -118,11 +118,14 @@ pub fn connect_daemon() -> Option<i32> {
     Some(fd)
 }
 
-/// 跨平台一致的 CMSG_LEN 包装。
-/// libc crate 的 CMSG_LEN 是 unsafe fn，且在不同目标平台返回类型不同
+/// 跨平台一致的 CMSG_LEN/CMSG_SPACE 包装。
+/// libc crate 的 CMSG_* 宏是 unsafe fn，且在不同目标平台返回类型不同
 ///（usize 或 u32），统一转换为 usize 避免类型错误。
 unsafe fn cmsg_len(len: usize) -> usize {
     libc::CMSG_LEN(len as u32) as usize
+}
+unsafe fn cmsg_space(len: usize) -> usize {
+    libc::CMSG_SPACE(len as u32) as usize
 }
 
 pub fn send_fd(sock: i32, fd_to_send: i32) -> bool {
@@ -145,7 +148,7 @@ pub fn send_fd(sock: i32, fd_to_send: i32) -> bool {
         (*cmsg).cmsg_type = libc::SCM_RIGHTS;
         (*cmsg).cmsg_len = cmsg_len(core::mem::size_of::<i32>());
         core::ptr::write(libc::CMSG_DATA(cmsg) as *mut i32, fd_to_send);
-        msg.msg_controllen = libc::CMSG_SPACE(core::mem::size_of::<i32>() as u32) as usize;
+        msg.msg_controllen = cmsg_space(core::mem::size_of::<i32>());
     }
     let ret = unsafe { libc::sendmsg(sock, &msg, 0) };
     ret > 0
