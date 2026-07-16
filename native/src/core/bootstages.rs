@@ -5,7 +5,7 @@ use bitflags::bitflags;
 use nix::fcntl::OFlag;
 
 // 内部模块
-use crate::consts::{APP_PACKAGE_NAME, BBPATH, DATABIN, MODULEROOT, SECURE_DIR};
+use crate::consts::{APP_PACKAGE_NAME, BBPATH, DATABIN, MODULEROOT, SECURE_DIR, WORKERDIR};
 use crate::daemon::MagiskD;
 use crate::ffi::{
     DbEntryKey, RequestCode, check_key_combo, enable_mount_su, exec_common_scripts,
@@ -273,6 +273,14 @@ impl MagiskD {
         self.set_db_setting(DbEntryKey::BootloopCount, 0).log_ok();
 
         // Mount MagiskSU (Kitsune Mask feature)
+        // 确保 WORKERDIR 存在（patch_ro_root 路径可能未创建此目录）
+        let worker_dir = cstr::buf::default()
+            .join_path(get_magisk_tmp())
+            .join_path(WORKERDIR);
+        if !worker_dir.exists() {
+            debug!("boot_complete: creating WORKERDIR ({worker_dir})");
+            worker_dir.mkdir(0o755).log_ok();
+        }
         info!("boot_complete: enabling mount su");
         enable_mount_su();
 
