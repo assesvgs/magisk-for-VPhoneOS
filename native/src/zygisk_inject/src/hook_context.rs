@@ -130,12 +130,19 @@ impl HookContext {
         let uid = 1000;
         if let Some((info_flags, fds)) = crate::ipc::remote_get_info(uid, &self.process_name) {
             self.info_flags = info_flags;
-            self.run_modules_pre(&fds);
+            self.run_modules_pre_server(&fds);
         }
     }
 
     pub fn server_specialize_post(&mut self) {
-        self.run_modules_post();
+        // system_server fork 子进程：模块在父进程中未加载（只获取了 info_flags），
+        // 需在此加载模块并派发 pre + post 回调。
+        if self.modules.is_empty() {
+            if let Some((_info_flags, fds)) = crate::ipc::remote_get_info(1000, &self.process_name) {
+                self.run_modules_pre_server(&fds);
+            }
+        }
+        self.run_modules_post_server();
         crate::solist::hide_modules();
         self.sanitize_fds();
         self.fork_post();
@@ -143,10 +150,23 @@ impl HookContext {
 
     pub fn native_fork_and_specialize_pre(&mut self) {
         self.fork_pre();
-        if (self.info_flags & 1) != 0 { self.flags.set(Flags::DO_REVERT_UNMOUNT); }
-        if (self.info_flags & 2) != 0 { self.flags.set(Flags::DO_ALLOW); }
-        if (self.info_flags & 4) != 0 { self.flags.set(Flags::ALLOWLIST_ENFORCED); }
-        if (self.info_flags & 8) != 0 { self.flags.set(Flags::DO_FUTILE_HIDE); }
+        // 在 fork 前从 daemon 获取进程信息（info_flags），
+        // 使得 fork 后子进程的 new_unshare 等 hook 能访问正确的 flag。
+        // 注意：此处不加载模块——fork 后子进程自行加载。
+        let uid = if !self.args.is_null() {
+            unsafe {
+                let args = self.args as *const crate::proxy_gen::AppSpecializeArgs;
+                let uid_ptr = (*args).uid as *const i32;
+                *uid_ptr
+            }
+        } else { 0 };
+        if let Some((info_flags, _fds)) = crate::ipc::remote_get_info(uid, &self.process_name) {
+            self.info_flags = info_flags;
+            if (info_flags & 1) != 0 { self.flags.set(Flags::DO_REVERT_UNMOUNT); }
+            if (info_flags & 2) != 0 { self.flags.set(Flags::DO_ALLOW); }
+            if (info_flags & 4) != 0 { self.flags.set(Flags::ALLOWLIST_ENFORCED); }
+            if (info_flags & 8) != 0 { self.flags.set(Flags::DO_FUTILE_HIDE); }
+        }
     }
 
     pub fn native_fork_and_specialize_post(&mut self) {
@@ -170,6 +190,20 @@ impl HookContext {
     }
 
     pub fn native_specialize_app_process_post(&mut self) {
+        // 从 fork+specialize 子进程路径调用时，模块尚未在子进程中加载。
+        // 需先加载模块并派发 pre 回调，再派发 post 回调。
+        if self.modules.is_empty() {
+            let uid = if !self.args.is_null() {
+                unsafe {
+                    let args = self.args as *const crate::proxy_gen::AppSpecializeArgs;
+                    let uid_ptr = (*args).uid as *const i32;
+                    *uid_ptr
+                }
+            } else { 0 };
+            if let Some((_info_flags, fds)) = crate::ipc::remote_get_info(uid, &self.process_name) {
+                self.run_modules_pre(&fds);
+            }
+        }
         self.run_modules_post();
         if self.flags.has(Flags::DO_FUTILE_HIDE) {
             crate::solist::hide_modules();
@@ -185,16 +219,30 @@ impl HookContext {
 
     pub fn native_fork_system_server_pre(&mut self) {
         self.fork_pre();
+        // 父进程：获取 info_flags（子进程通过 COW 继承），
+        // 但不在此加载或派发模块回调——fork 后子进程自行完成。
+        if let Some((info_flags, _fds)) = crate::ipc::remote_get_info(1000, &self.process_name) {
+            self.info_flags = info_flags;
+        }
     }
 
     pub fn native_fork_system_server_post(&mut self) {
-        self.run_modules_post();
+        // 子进程（system_server）：加载模块（如有必要），
+        // 派发 pre 回调，再派发 post 回调。
+        if self.modules.is_empty() {
+            if let Some((_info_flags, fds)) = crate::ipc::remote_get_info(1000, &self.process_name) {
+                self.run_modules_pre_server(&fds);
+            }
+        }
+        self.run_modules_post_server();
         self.sanitize_fds();
         self.fork_post();
     }
 
     pub fn run_modules_pre(&mut self, fds: &[i32]) { self.run_modules_pre_impl(fds); }
     pub fn run_modules_post(&mut self) { self.run_modules_post_impl(); }
+    pub fn run_modules_pre_server(&mut self, fds: &[i32]) { self.run_modules_pre_server_impl(fds); }
+    pub fn run_modules_post_server(&mut self) { self.run_modules_post_server_impl(); }
     pub fn sanitize_fds(&mut self) {
         crate::fd::sanitize_fds(&self.allowed_fds, &self.exempted_fds);
     }

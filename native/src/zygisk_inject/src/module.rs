@@ -143,4 +143,19 @@ impl crate::hook_context::HookContext {
             crate::module_api::call_post_app_specialize(m.api_handle);
         }
     }
+
+    pub fn run_modules_pre_server_impl(&mut self, fds: &[i32]) {
+        if self.modules.is_empty() {
+            self.modules = load_modules(fds);
+        }
+        for m in &self.modules {
+            crate::module_api::call_pre_server_specialize(m.api_handle);
+        }
+    }
+
+    pub fn run_modules_post_server_impl(&mut self) {
+        for m in &self.modules {
+            crate::module_api::call_post_server_specialize(m.api_handle);
+        }
+    }
 }

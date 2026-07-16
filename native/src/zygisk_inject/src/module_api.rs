@@ -169,6 +169,26 @@ pub fn call_post_app_specialize(api_handle: *mut c_void) {
     }
 }
 
+pub fn call_pre_server_specialize(api_handle: *mut c_void) {
+    if api_handle.is_null() { return; }
+    let api = api_handle as *mut ZygiskModuleApi;
+    let impl_ptr = unsafe { (*api).base as *mut ZygiskModuleImpl };
+    if impl_ptr.is_null() { return; }
+    if let Some(handler) = unsafe { (*impl_ptr).pre_server_specialize } {
+        unsafe { handler(api_handle) };
+    }
+}
+
+pub fn call_post_server_specialize(api_handle: *mut c_void) {
+    if api_handle.is_null() { return; }
+    let api = api_handle as *mut ZygiskModuleApi;
+    let impl_ptr = unsafe { (*api).base as *mut ZygiskModuleImpl };
+    if impl_ptr.is_null() { return; }
+    if let Some(handler) = unsafe { (*impl_ptr).post_server_specialize } {
+        unsafe { handler(api_handle) };
+    }
+}
+
 // ===== SpinMutex (no_std 自旋锁) =====
 use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicBool, Ordering};
