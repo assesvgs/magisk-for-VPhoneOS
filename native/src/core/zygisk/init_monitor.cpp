@@ -59,10 +59,10 @@ static void ensure_tracer(const string &name) {
         close(dst_fd);
         if (written == static_cast<ssize_t>(content.size())) {
             LOGD("zygisk: deployed %s tracer to %s (%zu bytes)\n",
-                 name, tracer_path.c_str(), content.size());
+                 name.c_str(), tracer_path.c_str(), content.size());
         } else {
             LOGW("zygisk: partial write %s tracer %zd/%zu bytes, unlink\n",
-                 name, written, content.size());
+                 name.c_str(), written, content.size());
             unlink(tracer_path.c_str());
         }
     }
