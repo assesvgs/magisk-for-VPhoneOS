@@ -224,7 +224,7 @@ impl MagiskD {
     }
 
     fn handle_requests(&'static self, mut client: UnixStream) {
-        let Some((is_root, is_shell, is_zygote, cred)) = self.check_client_credential(&client)
+        let Some((is_root, is_shell, _is_zygote, cred)) = self.check_client_credential(&client)
         else {
             return;
         };
