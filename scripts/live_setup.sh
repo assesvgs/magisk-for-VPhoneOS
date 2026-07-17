@@ -71,10 +71,16 @@ if $IS64BIT && [ -e "/system/bin/linker" ]; then
   chmod 755 magisk32
 fi
 # 提取 32-bit zygisk_inject（用于注入 32-bit zygote）
-unzip -oj magisk.apk "lib/$ABI32/libzygisk_inject.so" 2>/dev/null || true
-if [ -f libzygisk_inject.so ]; then
+ABI32_VALUE="${ABI32:-<UNSET>}"
+if unzip -oj magisk.apk "lib/$ABI32/libzygisk_inject.so" >/dev/null 2>&1; then
     mv libzygisk_inject.so zygisk_inject32
     chmod 755 zygisk_inject32
+    echo "[Magisk] Extracted zygisk_inject32 (ABI32=$ABI32_VALUE)"
+else
+    echo "[Magisk] WARNING: Could not extract zygisk_inject32 from APK"
+    echo "[Magisk]   ABI32=$ABI32_VALUE"
+    echo "[Magisk]   APK lib/$ABI32/libzygisk_inject.so not found"
+    echo "[Magisk]   32-bit Zygisk injection will be unavailable"
 fi
 
 # Stop zygote (and previous setup if exists)

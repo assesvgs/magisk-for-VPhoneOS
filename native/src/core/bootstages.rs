@@ -129,22 +129,22 @@ impl MagiskD {
         if self.get_db_setting(DbEntryKey::ZygiskConfig) != 0 {
             let tmp_magisk = buf.append_path(get_magisk_tmp()).append_path("magisk");
             if !tmp_magisk.exists() {
-                warn!("zygisk: magisk tracer absent in {}, 64-bit Zygisk will fail",
+                debug!("zygisk: magisk tracer absent in {}",
                       get_magisk_tmp());
             }
             let tmp32 = buf.append_path(get_magisk_tmp()).append_path("magisk32");
             if !tmp32.exists() {
-                warn!("zygisk: magisk32 tracer absent in {}, 32-bit Zygisk will fail",
+                debug!("zygisk: magisk32 tracer absent in {}",
                       get_magisk_tmp());
             }
             let tmp_inject = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject");
             if !tmp_inject.exists() {
-                warn!("zygisk: zygisk_inject absent in {}, 64-bit injection target missing",
+                debug!("zygisk: zygisk_inject absent in {}",
                       get_magisk_tmp());
             }
             let tmp_inject32 = buf.append_path(get_magisk_tmp()).append_path("zygisk_inject32");
             if !tmp_inject32.exists() {
-                warn!("zygisk: zygisk_inject32 absent in {}, 32-bit injection target missing",
+                debug!("zygisk: zygisk_inject32 absent in {}",
                       get_magisk_tmp());
             }
         }
