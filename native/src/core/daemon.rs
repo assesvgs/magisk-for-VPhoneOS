@@ -182,6 +182,7 @@ impl MagiskD {
     /// 在 VPhoneOS 上，SO_PEERCRED 返回 real uid 而非 effective uid，
     /// setuid-root 进程的 cred.uid 不是 0，因此默认信任所有连接。
     fn check_client_credential(
+        &self,
         client: &UnixStream,
     ) -> Option<(bool, bool, bool, UCred)> {
         // VPhoneOS 检测（结果被 is_vphoneos() 内部缓存）

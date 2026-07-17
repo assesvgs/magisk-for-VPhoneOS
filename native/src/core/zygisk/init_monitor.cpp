@@ -103,7 +103,7 @@ static void ensure_zygisk_inject32() {
     if (access(lib_path.c_str(), F_OK) == 0) return;
     auto src = string(DATABIN) + "/zygisk_inject32";
     if (access(src.c_str(), F_OK) != 0) {
-        LOGW("zygisk: zygisk_inject32 not found in DATABIN, "
+        LOGD("zygisk: zygisk_inject32 not found in DATABIN, "
              "32-bit injection will be unavailable\n");
         return;
     }
