@@ -257,7 +257,7 @@ pub fn find_and_hook(
 
     // 6) 记录以便卸载时恢复
     let sym_len = symbol.iter().position(|&b| b == 0).unwrap_or(symbol.len());
-    crate::module_api::push_plt_hook(0, 0, got, orig_perms, &symbol[..sym_len],
+    crate::module_api::push_plt_hook(0, 0, got, &symbol[..sym_len],
                                      unsafe { *orig_fn });
     true
 }
@@ -282,8 +282,7 @@ pub fn restore_all_hooks() -> bool {
             continue;
         }
         unsafe { *(addr as *mut *mut c_void) = entry.orig; }
-        let restore = if entry.perms != 0 { entry.perms } else { libc::PROT_READ | libc::PROT_EXEC };
-        unsafe { libc::mprotect(page as *mut c_void, 0x1000, restore); }
+        unsafe { libc::mprotect(page as *mut c_void, 0x1000, libc::PROT_READ | libc::PROT_EXEC); }
     }
     true
 }
