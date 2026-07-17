@@ -113,8 +113,12 @@ extern "C" fn new_dlclose(handle: *mut c_void) -> i32 {
     unsafe { f(handle) }
 }
 
-extern "C" fn new_android_set_create_thread(_func: *mut c_void) {
+extern "C" fn new_android_set_create_thread(func: *mut c_void) {
     crate::jni_env::hook_jni_env();
+    // 必须调用原函数，否则 ART 线程初始化不完整
+    if let Some(f) = orig_fn::<extern "C" fn(*mut c_void)>(HookSlot::AndroidSetCreateThread) {
+        unsafe { f(func) }
+    }
 }
 
 extern "C" fn new_pthread_attr_destroy(attr: *mut c_void) -> i32 {
