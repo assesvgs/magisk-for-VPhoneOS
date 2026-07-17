@@ -177,17 +177,21 @@ impl MagiskD {
         true
     }
 
-    fn handle_requests(&'static self, mut client: UnixStream) {
-        // VPhoneOS: SO_PEERCRED 返回 real uid 而非 effective uid，
-        // setuid-root 进程的 cred.uid 不是 0。默认信任所有连接。
+    /// 检查客户端身份凭证。
+    /// 返回 (is_root, is_shell, is_zygote, cred) 四元组。
+    /// 在 VPhoneOS 上，SO_PEERCRED 返回 real uid 而非 effective uid，
+    /// setuid-root 进程的 cred.uid 不是 0，因此默认信任所有连接。
+    fn check_client_credential(
+        client: &UnixStream,
+    ) -> Option<(bool, bool, bool, UCred)> {
+        // VPhoneOS 检测（结果被 is_vphoneos() 内部缓存）
         let is_vphoneos = base::is_vphoneos();
         if is_vphoneos {
             debug!("VPhoneOS: peer credential check bypassed");
         }
 
         let Ok(cred) = client.peer_cred() else {
-            // Client died
-            return;
+            return None;
         };
 
         // There are no abstractions for SO_PEERSEC yet, call the raw C API.
@@ -200,24 +204,29 @@ impl MagiskD {
                 libc::SO_PEERSEC,
                 context.as_mut_ptr().cast(),
                 &mut len,
-            ) != 0
-            {
-                return;
+            ) != 0 {
+                return None;
             }
         }
         context.rebuild().ok();
 
         let is_zygote = &context == "u:r:zygote:s0";
-
         // 真机上用 peer_cred 判断身份；VPhoneOS 上 peer_cred 不可靠，默认信任
         let is_root = if is_vphoneos { true } else { cred.uid == 0 };
         let is_shell = cred.uid == 2000;
 
         if !is_root && !is_zygote && !self.is_client(cred.pid.unwrap_or(-1)) {
-            // Unsupported client state
-            client.write_pod(&RespondCode::ACCESS_DENIED.repr).log_ok();
-            return;
+            return None;
         }
+
+        Some((is_root, is_shell, is_zygote, cred))
+    }
+
+    fn handle_requests(&'static self, mut client: UnixStream) {
+        let Some((is_root, is_shell, is_zygote, cred)) = self.check_client_credential(&client)
+        else {
+            return;
+        };
 
         let mut code = -1;
         client.read_pod(&mut code).ok();
