@@ -71,6 +71,60 @@ static void ensure_tracer(const string &name) {
 static void ensure_magisk_tracer() { ensure_tracer("magisk"); }
 static void ensure_magisk32_tracer() { ensure_tracer("magisk32"); }
 
+static void ensure_zygisk_inject() {
+    auto lib_path = string(get_magisk_tmp()) + "/zygisk_inject";
+    if (access(lib_path.c_str(), F_OK) == 0) return;
+    auto src = string(DATABIN) + "/zygisk_inject";
+    if (access(src.c_str(), F_OK) != 0) {
+        LOGD("zygisk: zygisk_inject not found in DATABIN, "
+             "64-bit injection will be unavailable\n");
+        return;
+    }
+    int src_fd = xopen(src.c_str(), O_RDONLY | O_CLOEXEC);
+    if (src_fd < 0) return;
+    auto content = full_read(src_fd);
+    close(src_fd);
+    int dst_fd = xopen(lib_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0755);
+    if (dst_fd >= 0) {
+        auto written = write(dst_fd, content.data(), content.size());
+        close(dst_fd);
+        if (written == static_cast<ssize_t>(content.size())) {
+            LOGD("zygisk: deployed zygisk_inject from DATABIN (%zu bytes)\n", content.size());
+        } else {
+            LOGW("zygisk: partial write zygisk_inject %zd/%zu bytes, unlink\n",
+                 written, content.size());
+            unlink(lib_path.c_str());
+        }
+    }
+}
+
+static void ensure_zygisk_inject32() {
+    auto lib_path = string(get_magisk_tmp()) + "/zygisk_inject32";
+    if (access(lib_path.c_str(), F_OK) == 0) return;
+    auto src = string(DATABIN) + "/zygisk_inject32";
+    if (access(src.c_str(), F_OK) != 0) {
+        LOGW("zygisk: zygisk_inject32 not found in DATABIN, "
+             "32-bit injection will be unavailable\n");
+        return;
+    }
+    int src_fd = xopen(src.c_str(), O_RDONLY | O_CLOEXEC);
+    if (src_fd < 0) return;
+    auto content = full_read(src_fd);
+    close(src_fd);
+    int dst_fd = xopen(lib_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0755);
+    if (dst_fd >= 0) {
+        auto written = write(dst_fd, content.data(), content.size());
+        close(dst_fd);
+        if (written == static_cast<ssize_t>(content.size())) {
+            LOGD("zygisk: deployed zygisk_inject32 from DATABIN (%zu bytes)\n", content.size());
+        } else {
+            LOGW("zygisk: partial write zygisk_inject32 %zd/%zu bytes, unlink\n",
+                 written, content.size());
+            unlink(lib_path.c_str());
+        }
+    }
+}
+
 // Fork, exec tracer, and wait for result.
 // Returns: 0=success, >0=fail step, -2=signaled, -3=unexpected, -4=timeout.
 // On fork failure returns -1 (caller must log and handle).
@@ -139,8 +193,17 @@ static void inject_zygote(int pid) {
         inject_lib = string(get_magisk_tmp()) + "/zygisk_inject";
     }
 
+    ensure_zygisk_inject();
+    ensure_zygisk_inject32();
     ensure_magisk_tracer();
     ensure_magisk32_tracer();
+
+    if (access(inject_lib.c_str(), F_OK) == -1) {
+        LOGW("zygisk: skip injection PID=%d inject_lib=%s (%s)\n",
+             pid, inject_lib.c_str(), strerror(errno));
+        return;
+    }
+
     if (access(tracer.c_str(), X_OK) == -1) {
         LOGW("zygisk: skip injection PID=%d tracer=%s (%s)\n",
              pid, tracer.c_str(), strerror(errno));
@@ -210,8 +273,23 @@ static bool find_zygote_by_polling() {
             if (program == "/system/bin/app_process32")
                 tracer = string(get_magisk_tmp()) + "/magisk32";
             auto pid_str = to_string(pid);
+            string inject_lib;
+            if (program.find("32") != string::npos) {
+                inject_lib = string(get_magisk_tmp()) + "/zygisk_inject32";
+            } else {
+                inject_lib = string(get_magisk_tmp()) + "/zygisk_inject";
+            }
+            ensure_zygisk_inject();
+            ensure_zygisk_inject32();
             ensure_magisk_tracer();
             ensure_magisk32_tracer();
+
+            if (access(inject_lib.c_str(), F_OK) == -1) {
+                LOGW("zygisk: poll skip injection PID=%d inject_lib=%s (%s)\n",
+                     pid, inject_lib.c_str(), strerror(errno));
+                continue;
+            }
+
             if (access(tracer.c_str(), X_OK) == -1) {
                 LOGW("zygisk: poll skip injection PID=%d tracer=%s (%s)\n",
                      pid, tracer.c_str(), strerror(errno));
@@ -221,12 +299,6 @@ static bool find_zygote_by_polling() {
             // polling 路径不是 zygote 的 tracer（未从 init 继承 PTRACE_O_TRACEFORK），
             // 无法对其执行 PTRACE_CONT/waitpid。但子 tracer 使用 PTRACE_SEIZE 附加，
             // 不需要目标先进入停止状态。SIGSTOP 在此路径会阻塞 zygote 且无法恢复。
-            string inject_lib;
-            if (program.find("32") != string::npos) {
-                inject_lib = string(get_magisk_tmp()) + "/zygisk_inject32";
-            } else {
-                inject_lib = string(get_magisk_tmp()) + "/zygisk_inject";
-            }
             int ret = exec_tracer(tracer, pid_str, inject_lib, "inject: poll");
             if (ret == 0) {
                 LOGI("zygisk: poll injected PID %d\n", pid);
