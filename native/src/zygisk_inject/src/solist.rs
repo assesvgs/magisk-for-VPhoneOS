@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::ffi::c_void;
 use core::ptr;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 static NEEDS_HIDE: AtomicBool = AtomicBool::new(true);
@@ -27,6 +27,12 @@ fn read_file(path: &[u8]) -> Vec<u8> {
     buf
 }
 
+const UNCACHED: u8 = 0;
+const CACHED_TRUE: u8 = 1;
+const CACHED_FALSE: u8 = 2;
+
+static VPHONEOS_CACHE: AtomicU8 = AtomicU8::new(UNCACHED);
+
 /// VPhoneOS 检测（此 crate 为 no_std，无法依赖 `base` crate）。
 ///
 /// 检测逻辑与 `base::files::is_vphoneos()` 一致（检查 `/share` 目录存在性）。
@@ -34,7 +40,19 @@ fn read_file(path: &[u8]) -> Vec<u8> {
 ///
 /// 若未来 `zygisk_inject` 不再需要 no_std 约束，应统一使用 `base::is_vphoneos()`。
 pub fn is_vphoneos() -> bool {
-    unsafe { libc::access(b"/share\0".as_ptr() as *const libc::c_char, libc::F_OK) == 0 }
+    match VPHONEOS_CACHE.load(Ordering::Relaxed) {
+        CACHED_TRUE => return true,
+        CACHED_FALSE => return false,
+        _ => {}
+    }
+    let result = unsafe {
+        libc::access(b"/share\0".as_ptr() as *const libc::c_char, libc::F_OK) == 0
+    };
+    VPHONEOS_CACHE.store(
+        if result { CACHED_TRUE } else { CACHED_FALSE },
+        Ordering::Relaxed,
+    );
+    result
 }
 
 pub fn initialize() -> bool {

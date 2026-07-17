@@ -19,6 +19,7 @@ use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::io::{AsRawFd, OwnedFd, RawFd};
 use std::path::Path;
+use std::sync::OnceLock;
 use std::{io, mem, ptr, slice};
 
 pub trait ReadExt {
@@ -904,7 +905,8 @@ fn parse_mount_info_line(line: &str) -> Option<MountInfo> {
 /// 注意：zygisk_inject crate（no_std）有独立的检测实现（`solist.rs`），
 /// 因为该 crate 无法依赖 `base`（依赖 std）。
 pub fn is_vphoneos() -> bool {
-    cstr!("/share").exists()
+    static IS_VPHONEOS: OnceLock<bool> = OnceLock::new();
+    *IS_VPHONEOS.get_or_init(|| cstr!("/share").exists())
 }
 
 pub fn parse_mount_info(pid: &str) -> Vec<MountInfo> {

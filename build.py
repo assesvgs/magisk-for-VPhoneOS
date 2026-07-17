@@ -329,10 +329,16 @@ def build_cdylib():
     elif args.verbose > 1:
         cmds.append("--verbose")
 
+    success = 0
+    failed = []
     for triple in build_abis.values():
         proc = run_cargo(cmds + ["--target", triple])
         if proc.returncode != 0:
-            error("Build zygisk_inject staticlib failed!")
+            failed.append(triple)
+            vprint(f"Build zygisk_inject staticlib FAILED for target: {triple}\n"
+                   f"  Make sure the target is installed: rustup target add {triple}")
+        else:
+            success += 1
 
     # Copy .a into native/out/<arch>/ for ndk-build to link into .so
     for arch, triple in build_abis.items():
@@ -340,10 +346,14 @@ def build_cdylib():
         arch_out.mkdir(mode=0o755, exist_ok=True)
         source = rust_out / triple / profile / "libzygisk_inject.a"
         if not source.exists():
-            vprint(f"WARNING: {source} not found, skipping")
+            vprint(f"WARNING: {source} not found (arch={arch}, target={triple}), skipping")
             continue
         target = arch_out / "libzygisk_inject.a"
         mv(source, target)
+
+    vprint(f"build_cdylib: {success} succeeded, {len(failed)} failed")
+    if failed:
+        error(f"Build failed for {len(failed)} target(s): {', '.join(failed)}")
 
 
 def write_if_diff(file_name: Path, text: str):
