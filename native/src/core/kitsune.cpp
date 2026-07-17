@@ -43,9 +43,6 @@ int bind_mount_(const char *from, const char *to) {
 static int mount_su() {
     char buf[4096];
     ssprintf(buf, sizeof(buf), "%s/" WORKERDIR, get_magisk_tmp());
-    // 确保 WORKERDIR 存在（patch_ro_root 路径不会像 setup_tmp 那样预创建）。
-    // 权限不重要——后续 xmount("mode=755") 的 tmpfs 会覆盖底层目录。
-    mkdir(buf, 0755);
     if (xmount("magisk", buf, "tmpfs", 0, "mode=755"))
         return -1;
     xmount(nullptr, buf, nullptr, MS_PRIVATE, nullptr);

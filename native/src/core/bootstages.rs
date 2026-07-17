@@ -273,12 +273,13 @@ impl MagiskD {
         self.set_db_setting(DbEntryKey::BootloopCount, 0).log_ok();
 
         // Mount MagiskSU (Kitsune Mask feature)
-        // 确保 WORKERDIR 存在（patch_ro_root 路径可能未创建此目录）
+        // WORKERDIR 由 setup_tmp() 在正常 boot 路径下创建，但 VPhoneOS 的
+        // patch_ro_root 路径不执行此步骤。此处兜底确保目录存在。
         let worker_dir = cstr::buf::default()
             .join_path(get_magisk_tmp())
             .join_path(WORKERDIR);
         if !worker_dir.exists() {
-            debug!("boot_complete: creating WORKERDIR ({worker_dir})");
+            info!("boot_complete: creating WORKERDIR ({worker_dir})");
             worker_dir.mkdir(0o755).log_ok();
         }
         info!("boot_complete: enabling mount su");
