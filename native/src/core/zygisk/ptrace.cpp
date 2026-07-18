@@ -229,7 +229,7 @@ static int remote_inject(int pid, struct user_regs_struct &regs, struct user_reg
     auto str = push_string(pid, regs, lib_path);
     args.clear();
     args.push_back((long) str);
-    args.push_back((long) RTLD_NOW);
+    args.push_back((long) RTLD_LAZY);
     auto remote_handle = remote_call(pid, regs, (uintptr_t) dlopen_addr, (uintptr_t) libc_return_addr, args);
     ZLOGD("remote handle %p\n", (void *) remote_handle);
     if (remote_handle == 0) {
