@@ -23,7 +23,6 @@ extern void *self_handle;
 
 extern int system_server_fd;
 
-void hook_functions();
 int remote_get_info(int uid, const char *process, uint32_t *flags, std::vector<int> &fds);
 int remote_request_sulist();
 int remote_request_umount();

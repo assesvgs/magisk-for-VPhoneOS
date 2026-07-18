@@ -99,6 +99,8 @@ impl ZygiskModule {
         })
     }
 
+    /// 模块加载后的生命周期钩子，当前为空操作。
+    /// 模块特定的初始化在 `load_modules()` 中通过 `android_dlopen_ext` 完成。
     pub fn on_load(&self, _env: *mut c_void) {}
 }
 

@@ -108,6 +108,13 @@ impl HookContext {
             unsafe {
                 let args = self.args as *const crate::proxy_gen::AppSpecializeArgs;
                 let uid_ptr = (*args).uid as *const i32;
+                // 若 mount_external == 0 (MOUNT_EXTERNAL_NONE)，临时提升为 MOUNT_EXTERNAL_DEFAULT，
+                // 以确保创建独立挂载命名空间（unshare CLONE_NEWNS），并记下 flag 以便在 new_unshare hook 中恢复。
+                let mount_ext_ptr = (*args).mount_external as *const i32;
+                if !mount_ext_ptr.is_null() && *mount_ext_ptr == 0 {
+                    *(mount_ext_ptr as *mut i32) = 1;  // → MOUNT_EXTERNAL_DEFAULT
+                    self.flags.set(Flags::RESTORE_MOUNT_EXTERNAL_NONE);
+                }
                 *uid_ptr
             }
         } else { 0 };
@@ -156,6 +163,14 @@ impl HookContext {
         let uid = if !self.args.is_null() {
             unsafe {
                 let args = self.args as *const crate::proxy_gen::AppSpecializeArgs;
+                // 若 mount_external == 0 (MOUNT_EXTERNAL_NONE)，临时提升为 1 (DEFAULT)，
+                // 确保 unshare(CLONE_NEWNS) 创建独立挂载命名空间；
+                // new_unshare hook 会看到 RESTORE_MOUNT_EXTERNAL_NONE flag 并在二次 unshare 后恢复。
+                let mount_ext_ptr = (*args).mount_external as *const i32;
+                if !mount_ext_ptr.is_null() && *mount_ext_ptr == 0 {
+                    *(mount_ext_ptr as *mut i32) = 1;
+                    self.flags.set(Flags::RESTORE_MOUNT_EXTERNAL_NONE);
+                }
                 let uid_ptr = (*args).uid as *const i32;
                 *uid_ptr
             }

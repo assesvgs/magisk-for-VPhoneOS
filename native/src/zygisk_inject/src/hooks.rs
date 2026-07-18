@@ -62,9 +62,16 @@ extern "C" fn new_unshare(flags: i32) -> i32 {
                 // 二次 unshare 失败—挂载 ID 空洞未修复，不影响主要功能
             }
             if ctx.flags.has(crate::hook_context::Flags::RESTORE_MOUNT_EXTERNAL_NONE) {
-                // TODO: 通过 AppSpecializeArgs.mount_external 恢复
-                // let args_ptr = ctx.args as *mut crate::proxy_gen::AppSpecializeArgs;
-                // unsafe { *((*args_ptr).mount_external as *mut i32) = 0; }
+                // 恢复 mount_external=0（MOUNT_EXTERNAL_NONE），
+                // 防止 app 继承 zygote 的外部存储挂载权限。
+                // args.mount_external 指向 orig_fn 的局部变量，在 orig_fn 读取前写入。
+                let args_ptr = ctx.args as *mut crate::proxy_gen::AppSpecializeArgs;
+                if !args_ptr.is_null() {
+                    let mount_ext = unsafe { (*args_ptr).mount_external };
+                    if !mount_ext.is_null() {
+                        unsafe { *(mount_ext as *mut i32) = 0; }
+                    }
+                }
             }
         }
     }

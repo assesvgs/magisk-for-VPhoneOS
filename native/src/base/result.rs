@@ -149,6 +149,7 @@ impl<T> ResultExt<T> for LoggedResult<T> {
         self.inspect_err(|_| do_log_msg(LogLevel::Error, caller, f))
     }
 
+    // Release 模式 NOP：成功日志仅在 debug 构建中有意义，LTO 会优化此函数
     fn log_ok(self) {}
 }
 

@@ -112,10 +112,13 @@ unsafe extern "C" fn default_connect_companion(_fd: i32) {
     crate::ipc::connect_companion(_fd);
 }
 
+// 默认回调：模块未实现 `set_option` 时为空操作
 unsafe extern "C" fn default_set_option(_option: u32) {}
 
+// 默认回调：模块未实现 `get_module_dir` 时返回 -1（未找到）
 unsafe extern "C" fn default_get_module_dir(_id: i32) -> i32 { -1 }
 
+// 默认回调：模块未设置标志时返回 0（无特殊行为）
 unsafe extern "C" fn default_get_flags() -> u32 { 0 }
 
 // ===== Vtable 填充 =====

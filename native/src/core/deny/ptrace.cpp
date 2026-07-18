@@ -13,6 +13,9 @@
 #include <sys/syscall.h>
 #include <sys/inotify.h>
 #include <errno.h>
+#include <dlfcn.h>
+#include <link.h>
+#include <sys/uio.h>
 #include <core.hpp>
 #include <cstdio>
 
@@ -33,6 +36,319 @@ static inline long xptrace(int request, pid_t pid, void *addr, uintptr_t data) {
 }
 
 #define WEVENT(s) (((s) & 0xffff0000) >> 16)
+
+/* -----------------------------------------------------------------
+ * 远程内存写入辅助函数：通过 process_vm_writev 或 PTRACE_POKEDATA
+ * 将数据写入目标进程的地址空间。
+ * ----------------------------------------------------------------- */
+static bool remote_write(pid_t pid, uintptr_t addr, const void *buf, size_t len) {
+    // 尝试使用 process_vm_writev（更高效）
+    struct iovec local_iov = { .iov_base = const_cast<void*>(buf), .iov_len = len };
+    struct iovec remote_iov = { .iov_base = (void*)addr, .iov_len = len };
+    ssize_t ret = process_vm_writev(pid, &local_iov, 1, &remote_iov, 1, 0);
+    if ((size_t)ret == len) return true;
+
+    // fallback: PTRACE_POKEDATA 逐字写入
+    size_t words = (len + sizeof(long) - 1) / sizeof(long);
+    const long *src = (const long *)buf;
+    for (size_t i = 0; i < words; i++) {
+        if (ptrace(PTRACE_POKEDATA, pid, (void*)(addr + i * sizeof(long)),
+                   (void*)src[i]) != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// BPF 常量（linux/filter.h 在 NDK 中可能不全）
+#ifndef BPF_LD
+#define BPF_LD 0x00
+#endif
+#ifndef BPF_W
+#define BPF_W 0x00
+#endif
+#ifndef BPF_ABS
+#define BPF_ABS 0x20
+#endif
+#ifndef BPF_RET
+#define BPF_RET 0x06
+#endif
+#ifndef BPF_K
+#define BPF_K 0x00
+#endif
+#ifndef SECCOMP_RET_ALLOW
+#define SECCOMP_RET_ALLOW 0x7fff0000
+#endif
+#ifndef SECCOMP_SET_MODE_FILTER
+#define SECCOMP_SET_MODE_FILTER 1
+#endif
+
+// BPF 指令: return ALLOW（允许所有系统调用）
+// struct sock_filter { u16 code; u8  jt; u8  jf; u32 k; };
+// = { 0x06, 0, 0, 0x7fff0000 }
+#define BPF_ALLOW_ALL { BPF_RET | BPF_K, 0, 0, SECCOMP_RET_ALLOW }
+
+/* -----------------------------------------------------------------
+ * remote_bypass_seccomp — 在目标进程中绕过 seccomp 过滤
+ *
+ * 流程：
+ * 1. 在目标进程栈上写入 BPF "allow all" 过滤器
+ * 2. 在目标进程栈上写入 struct sock_fprog
+ * 3. 调用 seccomp(SECCOMP_SET_MODE_FILTER, 0, &fprog)
+ * 4. 清理栈上的临时数据
+ *
+ * 原理：SECCOMP_SET_MODE_FILTER 可以用新过滤器叠加，
+ * 这里安装的 allow-all 过滤器优先级高于原有过滤器。
+ *
+ * 返回值：0=成功，-1=失败
+ * ----------------------------------------------------------------- */
+static long remote_bypass_seccomp(pid_t pid) {
+    long ret_val = -1;
+#if defined(__aarch64__)
+    // 1. 保存寄存器并读取 SP
+    struct user_regs_struct saved_regs;
+    struct iovec iov = { &saved_regs, sizeof(saved_regs) };
+    if (ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &iov) != 0) {
+        PLOGE("seccomp_bypass: getregs");
+        return -1;
+    }
+
+    uintptr_t sp = (uintptr_t)saved_regs.sp;
+    // 在栈顶下 128 字节处放置数据（避免踩到现有栈帧）
+    uintptr_t filter_addr = sp - 96;   // BPF 指令
+    uintptr_t fprog_addr  = sp - 80;   // sock_fprog 结构体
+
+    // 2. 构建 BPF "allow all" 指令
+    // struct sock_filter { __u16 code; __u8 jt; __u8 jf; __u32 k; };
+    struct sock_filter {
+        uint16_t code;
+        uint8_t jt, jf;
+        uint32_t k;
+    };
+    struct sock_filter filter = BPF_ALLOW_ALL;
+    if (!remote_write(pid, filter_addr, &filter, sizeof(filter))) {
+        LOGD("seccomp_bypass: write filter failed\n");
+        return -1;
+    }
+
+    // 3. 构建 struct sock_fprog
+    // struct sock_fprog { unsigned short len; struct sock_filter *filter; };
+    struct {
+        uint16_t len;
+        uint16_t pad;
+        uint32_t pad2;
+        uint64_t filter_ptr;
+    } fprog __attribute__((packed));
+    fprog.len = 1;
+    fprog.filter_ptr = (uint64_t)filter_addr;
+    if (!remote_write(pid, fprog_addr, &fprog, sizeof(fprog))) {
+        LOGD("seccomp_bypass: write fprog failed\n");
+        return -1;
+    }
+
+    // 4. 获取远程 syscall 地址
+    uintptr_t remote_syscall_addr = 0;
+    {
+        char path[64], line[512];
+        sprintf(path, "/proc/%d/maps", pid);
+        FILE *fp = fopen(path, "re");
+        if (fp) {
+            while (fgets(line, sizeof(line), fp)) {
+                uintptr_t start, end;
+                char perms[8], name[256] = {};
+                if (sscanf(line, "%lx-%lx %7s %*lx %*x:%*x %*lu %255s",
+                           &start, &end, perms, name) >= 4 &&
+                    strstr(name, "libc.so") && strstr(perms, "x")) {
+                    static void *local_syscall = nullptr;
+                    static uintptr_t local_libc_base = 0;
+                    if (!local_syscall) {
+                        local_syscall = dlsym(RTLD_DEFAULT, "syscall");
+                        if (!local_syscall) { fclose(fp); return -1; }
+                        Dl_info info;
+                        dladdr(local_syscall, &info);
+                        local_libc_base = (uintptr_t)info.dli_fbase;
+                    }
+                    remote_syscall_addr =
+                        start + ((uintptr_t)local_syscall - local_libc_base);
+                    break;
+                }
+            }
+            fclose(fp);
+        }
+    }
+    if (!remote_syscall_addr) return -1;
+
+    // 5. 调用 seccomp(SECCOMP_SET_MODE_FILTER, 0, &fprog)
+    // 通过 remote_call 调用 syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &fprog)
+    struct user_regs_struct call_regs;
+    memcpy(&call_regs, &saved_regs, sizeof(call_regs));
+    call_regs.regs[0] = __NR_seccomp;                    // syscall number
+    call_regs.regs[1] = SECCOMP_SET_MODE_FILTER;         // op
+    call_regs.regs[2] = 0;                                // flags
+    call_regs.regs[3] = (long)fprog_addr;                 // args (sock_fprog *)
+    call_regs.regs[30] = 0x1;                             // LR = SIGSEGV
+    call_regs.pc = remote_syscall_addr;
+
+    iov.iov_base = &call_regs;
+    if (ptrace(PTRACE_SETREGSET, pid, NT_PRSTATUS, &iov) != 0) {
+        PLOGE("seccomp_bypass: setregs");
+        goto restore_seccomp;
+    }
+
+    if (ptrace(PTRACE_CONT, pid, 0, 0) != 0) {
+        PLOGE("seccomp_bypass: cont");
+        goto restore_seccomp;
+    }
+
+    int status;
+    waitpid(pid, &status, __WALL);
+    if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSEGV) {
+        iov.iov_base = &call_regs;
+        if (ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &iov) == 0) {
+            ret_val = (long)call_regs.regs[0];
+        }
+    } else if (WIFSTOPPED(status)) {
+        LOGW("seccomp_bypass: pid=%d unexpected sig=%d\n", pid, WSTOPSIG(status));
+    }
+
+restore_seccomp:
+    iov.iov_base = &saved_regs;
+    ptrace(PTRACE_SETREGSET, pid, NT_PRSTATUS, &iov);
+    return ret_val;
+
+#else
+    (void)pid;
+    return -1;
+#endif
+}
+
+/* -----------------------------------------------------------------
+ * remote_call_func — 在目标进程中通过 ptrace 执行远程函数调用
+ *
+ * 原理：找到远程进程 libc 中 target_fn 的地址，
+ * 通过 ptrace 设置寄存器让目标进程执行 target_fn(args...)。
+ *
+ * 执行流程：
+ * 1. 保存目标寄存器
+ * 2. 设置 x0-x5 = 参数, x30(LR) = 1(无效→SIGSEGV→被我们捕获)
+ * 3. 设置 PC = 远程函数地址
+ * 4. PTRACE_CONT 单步执行
+ * 5. waitpid 捕获 SIGSEGV（函数返回时因 LR=1 触发）
+ * 6. 读 x0 = 返回值
+ * 7. 恢复原始寄存器
+ *
+ * 返回值：远程函数的返回值
+ *        失败返回 -1
+ * ----------------------------------------------------------------- */
+static long remote_call_func(pid_t pid, uintptr_t fn_addr,
+                              long arg1, long arg2, long arg3, long arg4) {
+    long ret_val = -1;
+#if defined(__aarch64__)
+    struct user_regs_struct old_regs, new_regs;
+    struct iovec iov = { &old_regs, sizeof(old_regs) };
+
+    if (ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &iov) != 0) {
+        PLOGE("remote_call: getregs");
+        return -1;
+    }
+
+    memcpy(&new_regs, &old_regs, sizeof(new_regs));
+    // ARM64 函数调用约定: x0-x5 = 参数, x30 = LR, PC = 函数地址
+    new_regs.regs[0] = arg1;
+    new_regs.regs[1] = arg2;
+    new_regs.regs[2] = arg3;
+    new_regs.regs[3] = arg4;
+    new_regs.regs[30] = 0x1;      // LR = 无效地址 → 返回时 SIGSEGV
+    new_regs.pc = fn_addr;
+
+    iov.iov_base = &new_regs;
+    if (ptrace(PTRACE_SETREGSET, pid, NT_PRSTATUS, &iov) != 0) {
+        PLOGE("remote_call: setregs");
+        return -1;
+    }
+
+    if (ptrace(PTRACE_CONT, pid, 0, 0) != 0) {
+        PLOGE("remote_call: cont");
+        goto restore;
+    }
+
+    int status;
+    waitpid(pid, &status, __WALL);
+    if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSEGV) {
+        iov.iov_base = &new_regs;
+        if (ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &iov) == 0) {
+            ret_val = (long)new_regs.regs[0];
+        }
+    } else if (WIFSTOPPED(status)) {
+        LOGW("remote_call: pid=%d unexpected sig=%d\n", pid, WSTOPSIG(status));
+    } else {
+        LOGW("remote_call: pid=%d unexpected status=%x\n", pid, status);
+    }
+
+restore:
+    iov.iov_base = &old_regs;
+    ptrace(PTRACE_SETREGSET, pid, NT_PRSTATUS, &iov);
+    return ret_val;
+
+#else
+    (void)pid; (void)fn_addr; (void)arg1; (void)arg2; (void)arg3; (void)arg4;
+    return -1;
+#endif
+}
+
+/* -----------------------------------------------------------------
+ * remote_syscall — 在目标进程中执行系统调用（通过 libc syscall() 函数）
+ *
+ * 在 libc 中找到 syscall 函数的远程地址，然后通过 remote_call_func 调用。
+ * 用于在 denylist 目标进程中执行 seccomp 操作。
+ *
+ * 参数: pid - 目标进程 PID
+ *       sysno - 系统调用号 (__NR_xxx)
+ *       arg1-arg3 - 系统调用参数
+ *
+ * 返回值: 系统调用的返回值，失败返回 -1
+ * ----------------------------------------------------------------- */
+static long remote_syscall(pid_t pid, long sysno, long arg1, long arg2, long arg3) {
+    // 扫描远程进程 /proc/pid/maps 找到 libc 基址（可执行段）
+    char path[64], line[512];
+    uintptr_t remote_libc_base = 0;
+    sprintf(path, "/proc/%d/maps", pid);
+
+    FILE *fp = fopen(path, "re");
+    if (!fp) return -1;
+    while (fgets(line, sizeof(line), fp)) {
+        uintptr_t start, end;
+        char perms[8], name[256] = {};
+        if (sscanf(line, "%lx-%lx %7s %*lx %*x:%*x %*lu %255s",
+                   &start, &end, perms, name) >= 4 &&
+            strstr(name, "libc.so") && strstr(perms, "x")) {
+            remote_libc_base = start;
+            break;
+        }
+    }
+    fclose(fp);
+    if (!remote_libc_base) return -1;
+
+    // 通过 dlsym + dladdr 计算本地 libc 中 syscall 的偏移
+    static void *local_syscall = nullptr;
+    static uintptr_t local_libc_base = 0;
+    if (!local_syscall) {
+        local_syscall = dlsym(RTLD_DEFAULT, "syscall");
+        if (!local_syscall) return -1;
+        Dl_info info;
+        if (!dladdr(local_syscall, &info) || !info.dli_fbase)
+            return -1;
+        local_libc_base = (uintptr_t)info.dli_fbase;
+    }
+
+    uintptr_t remote_syscall_addr =
+        remote_libc_base + ((uintptr_t)local_syscall - local_libc_base);
+
+    // syscall() 的函数签名：long syscall(long number, ...);
+    // ARM64 bionic 实现：mov x8, x0; mov x0, x1; mov x1, x2; ... svc #0; ret
+    // 所以参数移位：x0=sysno(→x8), x1=arg1(→x0), x2=arg2(→x1), x3=arg3(→x2)
+    return remote_call_func(pid, remote_syscall_addr, sysno, arg1, arg2, arg3);
+}
 
 // Process monitoring
 pthread_t monitor_thread;
@@ -612,8 +928,10 @@ void proc_monitor() {
                 PTRACE_LOG("SIGSTOP from child\n");
                 xptrace(PTRACE_SETOPTIONS, pid, nullptr,
                     PTRACE_O_TRACESYSGOOD);
+                // 在目标进程栈上注入 BPF allow-all 过滤器绕过 seccomp，
+                // 确保 denylist ptrace 追踪不被 seccomp 拦截。
+                remote_bypass_seccomp(pid);
                 xptrace(PTRACE_SYSCALL, pid);
-                // TODO : inject syscall
             } else {
                 // This is a thread, do NOT monitor
                 PTRACE_LOG("SIGSTOP from thread\n");
